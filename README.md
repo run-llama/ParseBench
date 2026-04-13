@@ -1,5 +1,6 @@
 # ParseBench
 
+[![Website](https://img.shields.io/badge/Website-parsebench.ai-blue)](https://parsebench.ai)
 [![arXiv](https://img.shields.io/badge/arXiv-2604.08538-b31b1b.svg)](https://arxiv.org/abs/2604.08538)
 [![Dataset](https://img.shields.io/badge/HuggingFace-Dataset-yellow)](https://huggingface.co/datasets/llamaindex/ParseBench)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
