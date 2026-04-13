@@ -279,7 +279,7 @@ src/parse_bench/
 ```bibtex
 @misc{zhang2026parsebench,
   title={ParseBench: A Document Parsing Benchmark for AI Agents},
-  author={Boyang Zhang and Sebastián G. Acosta and Preston Carlson and Sacha Bron and Pierre-Loïc Doulcet and Simon Suo},
+  author={Boyang Zhang and Sebastián G. Acosta and Preston Carlson and Sacha Bron and Pierre-Loïc Doulcet and Daniel B. Ospina and Simon Suo},
   year={2026},
   eprint={2604.08538},
   archivePrefix={arXiv},
