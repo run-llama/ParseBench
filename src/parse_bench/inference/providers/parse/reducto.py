@@ -76,6 +76,9 @@ class ReductoProvider(Provider):
               (default: ["text"])
             - `table_output_format`: Table output format - "html", "md", "json", "jsonbbox", "csv" or "dynamic"
               (default: "html")
+            - `formatting_include`: List of Reducto formatting include flags to preserve
+              additional semantic annotations such as change tracking/highlights/comments
+              (default: [])
             - `advanced_chart_agent`: Enable advanced chart agent for figure agentic scope
               to convert charts/graphs to tabular format (default: False)
         """
@@ -93,6 +96,7 @@ class ReductoProvider(Provider):
         self._agentic = self.base_config.get("agentic", True)
         self._agentic_scopes = self.base_config.get("agentic_scopes", ["text"])
         self._table_output_format = self.base_config.get("table_output_format", "html")
+        self._formatting_include = self.base_config.get("formatting_include", [])
         self._advanced_chart_agent = self.base_config.get("advanced_chart_agent", False)
 
     def _is_pdf_file(self, file_path: str) -> bool:
@@ -162,6 +166,8 @@ class ReductoProvider(Provider):
             formatting_config = {
                 "table_output_format": self._table_output_format,
             }
+            if self._formatting_include:
+                formatting_config["include"] = self._formatting_include
 
             settings_config = {
                 "ocr_system": self._ocr_system,
@@ -217,6 +223,7 @@ class ReductoProvider(Provider):
                 "agentic": self._agentic,
                 "agentic_scopes": self._agentic_scopes,
                 "table_output_format": self._table_output_format,
+                "formatting_include": self._formatting_include,
                 "advanced_chart_agent": self._advanced_chart_agent,
                 "total_pages": num_pages,
             }

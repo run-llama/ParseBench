@@ -804,6 +804,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    register_fn(
+        PipelineSpec(
+            pipeline_name="reducto_agentic_formatting",
+            provider_name="reducto",
+            product_type=ProductType.PARSE,
+            config={
+                "ocr_system": "standard",
+                "agentic": True,
+                "agentic_scopes": ["text", "table", "figure"],
+                "table_output_format": "html",
+                "formatting_include": ["change_tracking", "highlight", "comments"],
+            },
+        )
+    )
+
     # =========================================================================
     # DeepSeek-OCR-2
     # =========================================================================
