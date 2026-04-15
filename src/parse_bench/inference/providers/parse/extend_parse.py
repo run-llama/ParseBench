@@ -12,7 +12,7 @@ from typing import Any
 
 from extend_ai import Extend
 from extend_ai.core.api_error import ApiError
-from extend_ai.types import ParseConfig, ParseConfigChunkingStrategy, ParseRequestFile
+from extend_ai.types import FileFromId, ParseConfig, ParseConfigChunkingStrategy
 from pypdf import PdfReader
 
 from parse_bench.inference.providers.base import (
@@ -44,6 +44,11 @@ EXTEND_LABEL_MAP: dict[str, str] = {
     "text": "Text",
     "table": "Table",
     "figure": "Picture",
+    "header": "Page-header",
+    "footer": "Page-footer",
+    "key_value": "Key-Value Region",
+    "page_number": "Page-footer",
+    "formula": "Formula",
 }
 
 # Virtual page dimensions for normalized coordinate conversion.
@@ -166,7 +171,7 @@ class ExtendParseProvider(Provider):
         """
         try:
             with open(file_path, "rb") as f:
-                upload_response = self._client.file.upload(file=f)
+                upload_response = self._client.files.upload(file=f)
 
             # Extract file ID from response
             if hasattr(upload_response, "id"):
@@ -252,7 +257,7 @@ class ExtendParseProvider(Provider):
         try:
             # The Extend SDK parse method
             parse_response = self._client.parse(
-                file=ParseRequestFile(file_id=file_id),
+                file=FileFromId(id=file_id),
                 config=ParseConfig(**parse_config) if parse_config else None,
             )
 
@@ -362,24 +367,28 @@ class ExtendParseProvider(Provider):
 
         raw_output = raw_result.raw_output
 
+        # SDK 1.x wraps content under raw_output["output"]; legacy responses had it at the top level.
+        # Source the chunk-bearing payload from whichever shape applies.
+        payload = raw_output.get("output") if isinstance(raw_output.get("output"), dict) else raw_output
+
         # Extract markdown content from response
         # Extend API can return content in different formats depending on config
         markdown = ""
 
         # Try different response formats
         # 1. Direct markdown field
-        if "markdown" in raw_output:
-            markdown = raw_output["markdown"]
+        if "markdown" in payload:
+            markdown = payload["markdown"]
         # 2. Content field
-        elif "content" in raw_output:
-            content = raw_output["content"]
+        elif "content" in payload:
+            content = payload["content"]
             if isinstance(content, str):
                 markdown = content
             elif isinstance(content, dict):
                 markdown = content.get("markdown", "") or content.get("text", "")
         # 3. Chunks array (similar to Reducto)
-        elif "chunks" in raw_output:
-            chunks = raw_output["chunks"]
+        elif "chunks" in payload:
+            chunks = payload["chunks"]
             if chunks and isinstance(chunks, list):
                 # Concatenate all chunk contents
                 chunk_contents = []
@@ -392,8 +401,8 @@ class ExtendParseProvider(Provider):
                         chunk_contents.append(chunk)
                 markdown = "\n\n".join(chunk_contents)
         # 4. Pages array
-        elif "pages" in raw_output:
-            pages = raw_output["pages"]
+        elif "pages" in payload:
+            pages = payload["pages"]
             if pages and isinstance(pages, list):
                 page_contents = []
                 for page in pages:
@@ -411,7 +420,7 @@ class ExtendParseProvider(Provider):
         # Build layout_pages from chunk blocks for layout cross-evaluation
         metadata = raw_output.get("_extend_metadata", {})
         page_dims = metadata.get("page_dims", {})
-        chunks = raw_output.get("chunks", [])
+        chunks = payload.get("chunks", [])
         layout_pages = _build_layout_pages(chunks, page_dims)
 
         output = ParseOutput(
@@ -485,6 +494,8 @@ def _build_layout_pages(
             continue
 
     pages_items: dict[int, list[LayoutItemIR]] = defaultdict(list)
+    pages_headers: dict[int, list[str]] = defaultdict(list)
+    pages_footers: dict[int, list[str]] = defaultdict(list)
 
     for chunk in chunks:
         if not isinstance(chunk, dict):
@@ -573,6 +584,14 @@ def _build_layout_pages(
                 )
             )
 
+            section_content = (
+                f"<page_number>{content}</page_number>" if block_type == "page_number" else content
+            )
+            if canonical_label == "Page-header" and content:
+                pages_headers[page_num].append(section_content)
+            elif canonical_label == "Page-footer" and content:
+                pages_footers[page_num].append(section_content)
+
     layout_pages: list[ParseLayoutPageIR] = []
     for page_num in sorted(pages_items.keys()):
         layout_pages.append(
@@ -581,6 +600,8 @@ def _build_layout_pages(
                 width=_VIRTUAL_PAGE_DIM,
                 height=_VIRTUAL_PAGE_DIM,
                 items=pages_items[page_num],
+                page_header_markdown="\n\n".join(pages_headers.get(page_num, [])),
+                page_footer_markdown="\n\n".join(pages_footers.get(page_num, [])),
             )
         )
 

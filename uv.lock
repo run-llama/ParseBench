@@ -690,7 +690,7 @@ wheels = [
 
 [[package]]
 name = "extend-ai"
-version = "0.0.14"
+version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -698,9 +698,9 @@ dependencies = [
     { name = "pydantic-core" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7b/a6/2629d4b2b76e72750dac14b8d3e39aeb187e890d54b40da3e892a1f55bcb/extend_ai-0.0.14.tar.gz", hash = "sha256:cf4b0a567cd3ebd3ae05f97edb337ab8a9e8451d110e7c025ca0a3c5ca94a77a", size = 106320, upload-time = "2025-11-13T18:55:54.184Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/6f/519194532dd5971d7f32ddd2df75096f09a5f1862751e465c240939c5150/extend_ai-1.8.0.tar.gz", hash = "sha256:234405ff40b55c18c8af6bc24b0ba0947c71b6e6bead181883384f5619abc0d4", size = 390736, upload-time = "2026-04-10T21:54:43.65Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ee/12/76e2e1af047cc07e2b9ad4d705a6cb278f2450923e934a759b67c802b717/extend_ai-0.0.14-py3-none-any.whl", hash = "sha256:4cd795a90cf3af127e3955d426ce4e044b19fd079daa3f84790b55db9a403a91", size = 258985, upload-time = "2025-11-13T18:55:53.171Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/79/89dac4a16f92b9a159e8d4979df6dad27b6b353193b3f473bfca02dc0b7b/extend_ai-1.8.0-py3-none-any.whl", hash = "sha256:d1c3373d459e4aa2fc84ec43de0e9938be7b8e78c87eb7873777021045911371", size = 929757, upload-time = "2026-04-10T21:54:41.989Z" },
 ]
 
 [[package]]

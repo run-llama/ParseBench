@@ -38,7 +38,7 @@ runners = [
     "chunkr-ai>=0.0.43",
     "docling-core>=2.71.0",
     "datalab-python-sdk",
-    "extend-ai>=0.0.1",
+    "extend-ai>=1.8.0",
     "google-genai>=1.0.0",
     "google-cloud-documentai>=2.20.0",
     "landingai-ade>=1.4.0",
