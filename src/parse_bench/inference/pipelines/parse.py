@@ -1289,6 +1289,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Anthropic Opus 4.7 - Parse with Layout File
+    register_fn(
+        PipelineSpec(
+            pipeline_name="anthropic_opus_4_7_parse_with_layout_file",
+            provider_name="anthropic",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "claude-opus-4-7",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+            },
+        )
+    )
+
     # Anthropic Haiku - Parse with Layout File - Thinking
     register_fn(
         PipelineSpec(

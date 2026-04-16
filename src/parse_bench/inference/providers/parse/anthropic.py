@@ -77,6 +77,7 @@ _ANTHROPIC_PRICING_PER_M: dict[str, tuple[float, float]] = {
     "claude-haiku-3": (0.25, 1.25),
     "claude-sonnet-4": (3.00, 15.00),
     "claude-sonnet-3": (3.00, 15.00),
+    "claude-opus-4-7": (5.00, 25.00),
     "claude-opus-4-6": (5.00, 25.00),
     "claude-opus-4-5": (5.00, 25.00),
     "claude-opus-4-1": (15.00, 75.00),
@@ -119,6 +120,9 @@ class AnthropicProvider(Provider):
         self._timeout = self.base_config.get("timeout", 120)
         self._mode = self.base_config.get("mode", "image")  # "image", "file", or "parse_with_layout"
         self._thinking = self.base_config.get("thinking")  # e.g. {"type": "enabled", "budget_tokens": 32768}
+        self._effort = self.base_config.get("effort")  # e.g. "high", "xhigh" — for Opus 4.7+
+        # Opus 4.7+ rejects temperature/top_p/top_k at non-default values (400 error)
+        self._supports_temperature = not self._model.startswith("claude-opus-4-7")
 
         if self._mode not in ("image", "file", "parse_with_layout", "parse_with_layout_file"):
             raise ProviderConfigError(
@@ -286,8 +290,10 @@ class AnthropicProvider(Provider):
             extra_kwargs: dict[str, Any] = {}
             if self._thinking:
                 extra_kwargs["thinking"] = self._thinking
-            else:
+            elif self._supports_temperature:
                 extra_kwargs["temperature"] = 0
+            if self._effort:
+                extra_kwargs["output_config"] = {"effort": self._effort}
 
             response = self._client.messages.create(
                 model=self._model,
@@ -340,8 +346,10 @@ class AnthropicProvider(Provider):
             extra_kwargs: dict[str, Any] = {}
             if self._thinking:
                 extra_kwargs["thinking"] = self._thinking
-            else:
+            elif self._supports_temperature:
                 extra_kwargs["temperature"] = 0
+            if self._effort:
+                extra_kwargs["output_config"] = {"effort": self._effort}
 
             response = self._client.messages.create(
                 model=self._model,
@@ -405,8 +413,10 @@ class AnthropicProvider(Provider):
             extra_kwargs: dict[str, Any] = {}
             if self._thinking:
                 extra_kwargs["thinking"] = self._thinking
-            else:
+            elif self._supports_temperature:
                 extra_kwargs["temperature"] = 0
+            if self._effort:
+                extra_kwargs["output_config"] = {"effort": self._effort}
 
             response = self._client.beta.messages.create(
                 model=self._model,
@@ -460,8 +470,10 @@ class AnthropicProvider(Provider):
             extra_kwargs: dict[str, Any] = {}
             if self._thinking:
                 extra_kwargs["thinking"] = self._thinking
-            else:
+            elif self._supports_temperature:
                 extra_kwargs["temperature"] = 0
+            if self._effort:
+                extra_kwargs["output_config"] = {"effort": self._effort}
 
             response = self._client.beta.messages.create(
                 model=self._model,
