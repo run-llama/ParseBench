@@ -804,6 +804,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    register_fn(
+        PipelineSpec(
+            pipeline_name="reducto_agentic_formatting",
+            provider_name="reducto",
+            product_type=ProductType.PARSE,
+            config={
+                "ocr_system": "standard",
+                "agentic": True,
+                "agentic_scopes": ["text", "table", "figure"],
+                "table_output_format": "html",
+                "formatting_include": ["change_tracking", "highlight", "comments"],
+            },
+        )
+    )
+
     # =========================================================================
     # DeepSeek-OCR-2
     # =========================================================================
@@ -1256,6 +1271,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             product_type=ProductType.PARSE,
             config={
                 "model": "claude-opus-4-6",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+            },
+        )
+    )
+
+    # Anthropic Opus 4.7 - Parse with Layout File
+    register_fn(
+        PipelineSpec(
+            pipeline_name="anthropic_opus_4_7_parse_with_layout_file",
+            provider_name="anthropic",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "claude-opus-4-7",
                 "max_tokens": 32768,
                 "mode": "parse_with_layout_file",
             },
