@@ -93,7 +93,19 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                 "chunking_strategy": "page",
                 "engine": "parse_performance",
                 "engineVersion": "2.0.0-beta",
-                "block_options": {"tables": {"target_format": "html"}},
+                "block_options": {
+                    "tables": {"target_format": "html"},
+                    "figures": {
+                        "enabled": True,
+                        "figureImageClippingEnabled": True,
+                        "advancedChartExtractionEnabled": True,
+                    },
+                    "formulas": {"enabled": True},
+                },
+                "advanced_options": {
+                    "enrichmentFormat": "xml",
+                    "formattingDetection": [{"type": "change_tracking"}],
+                },
             },
         )
     )

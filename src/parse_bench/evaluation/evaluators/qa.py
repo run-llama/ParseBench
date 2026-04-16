@@ -46,7 +46,7 @@ class QAEvaluator(BaseEvaluator):
         :param enable_qa: Enable QA evaluation (default: True)
         """
         self._enable_qa = enable_qa
-        self._llm_service = llm_service or QALLMService()
+        self._llm_service = llm_service
         self._answer_metric = AnswerComparisonMetric()
 
     def can_evaluate(self, inference_result: InferenceResult, test_case: TestCase) -> bool:
@@ -124,6 +124,8 @@ class QAEvaluator(BaseEvaluator):
                     options = str(qa_config.metadata.get("options", ""))
                     unit = str(qa_config.metadata.get("unit", ""))
 
+                if self._llm_service is None:
+                    self._llm_service = QALLMService()
                 predicted_answer = self._llm_service.answer_question(
                     markdown=markdown_content,
                     question=qa_config.question,
