@@ -1909,7 +1909,7 @@ requires-dist = [
     { name = "datalab-python-sdk", marker = "extra == 'runners'" },
     { name = "datasets", specifier = ">=4.8.4" },
     { name = "docling-core", marker = "extra == 'runners'", specifier = ">=2.71.0" },
-    { name = "extend-ai", marker = "extra == 'runners'", specifier = ">=0.0.1" },
+    { name = "extend-ai", marker = "extra == 'runners'", specifier = ">=1.8.0" },
     { name = "fire", specifier = ">=0.7.1" },
     { name = "fuzzysearch", specifier = ">=0.7.3" },
     { name = "google-cloud-documentai", marker = "extra == 'runners'", specifier = ">=2.20.0" },
