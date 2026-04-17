@@ -887,6 +887,54 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # Qwen3.5-35B-A3B FP8 (unified multimodal, GDN + attention hybrid, MoE 35B/3B)
+    # =========================================================================
+
+    # Qwen3.5-35B-A3B FP8 vLLM — parse mode (pure markdown, no layout)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="qwen3_5_35b_a3b_fp8_vllm_parse",
+            provider_name="qwen3_5",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "qwen3.5-35b-a3b-fp8",
+                "prompt_mode": "parse",
+            },
+        )
+    )
+
+    # =========================================================================
+    # Qwen3.6-35B-A3B FP8 (unified multimodal, GDN + attention hybrid, MoE 35B/3B)
+    # =========================================================================
+
+    # Qwen3.6-35B-A3B FP8 vLLM — parse mode (pure markdown, no layout)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="qwen3_6_35b_a3b_fp8_vllm_parse",
+            provider_name="qwen3_5",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "qwen3.6-35b-a3b-fp8",
+                "prompt_mode": "parse",
+            },
+        )
+    )
+
+    # Qwen3.6-35B-A3B FP8 vLLM — parse_layout (unified: one layout-prompt call,
+    # cross-evaluated on both parse and layout detection, same pattern as dots_ocr_1_5_parse)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="qwen3_6_35b_a3b_fp8_vllm_parse_layout",
+            provider_name="qwen3_5",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "qwen3.6-35b-a3b-fp8",
+                "prompt_mode": "layout",
+            },
+        )
+    )
+
+    # =========================================================================
     # Gemma 4
     # =========================================================================
 

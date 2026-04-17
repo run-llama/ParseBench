@@ -1969,7 +1969,7 @@ class Qwen35LayoutAdapter(LayoutAdapter):
             config = raw_output.get("_config", {})
             if isinstance(config, dict):
                 model = config.get("model", "")
-                return isinstance(model, str) and model.startswith("qwen3.5")
+                return isinstance(model, str) and (model.startswith("qwen3.5") or model.startswith("qwen3.6"))
         return False
 
     def to_layout_output(

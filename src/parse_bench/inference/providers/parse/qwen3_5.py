@@ -94,14 +94,27 @@ PROMPT_LAYOUT = (
 
 
 class LayoutItem(BaseModel):
-    """Single layout element from the model response."""
+    """Single layout element from the model response.
+
+    Different Qwen model versions use different field names:
+    - 4B: bbox_2d, category, text
+    - 3.5-35B: bbox_2d, label (no text)
+    - 3.6-35B: bbox, category, text
+    We normalize all variants here.
+    """
 
     model_config = {"extra": "ignore"}
 
     bbox: list[float] | None = None
     bbox_2d: list[float] | None = None
     category: str = "Text"
+    label: str | None = None
     text: str = ""
+
+    def model_post_init(self, __context: Any) -> None:
+        # Some models use "label" instead of "category"
+        if self.label is not None and self.category == "Text":
+            self.category = self.label
 
     @property
     def coords(self) -> list[float]:
