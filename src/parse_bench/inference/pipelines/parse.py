@@ -572,7 +572,7 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             config={
                 "model": "gemini-3.1-flash-lite-preview",
                 "dpi": 150,
-                "max_tokens": 8192,
+                "max_tokens": 32768,
             },
         )
     )
@@ -1051,6 +1051,35 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                 "max_tokens": 65536,
                 "mode": "parse_with_layout_file",
                 "thinking_level": "high",
+            },
+        )
+    )
+
+    # Gemini 3.1 Flash Lite - Parse with Layout
+    register_fn(
+        PipelineSpec(
+            pipeline_name="google_gemini_3_1_flash_lite_parse_with_layout",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-3.1-flash-lite-preview",
+                "dpi": 150,
+                "max_tokens": 32768,
+                "mode": "parse_with_layout",
+            },
+        )
+    )
+
+    # Gemini 3.1 Flash Lite - Parse with Layout File
+    register_fn(
+        PipelineSpec(
+            pipeline_name="google_gemini_3_1_flash_lite_parse_with_layout_file",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-3.1-flash-lite-preview",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
             },
         )
     )
