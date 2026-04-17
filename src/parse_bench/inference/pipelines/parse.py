@@ -1242,6 +1242,35 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # OpenAI GPT-5.4 Nano - Parse with Layout
+    register_fn(
+        PipelineSpec(
+            pipeline_name="openai_gpt_5_4_nano_parse_with_layout",
+            provider_name="openai",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gpt-5.4-nano",
+                "dpi": 150,
+                "max_tokens": 32768,
+                "mode": "parse_with_layout",
+            },
+        )
+    )
+
+    # OpenAI GPT-5.4 Nano - Parse with Layout File
+    register_fn(
+        PipelineSpec(
+            pipeline_name="openai_gpt_5_4_nano_parse_with_layout_file",
+            provider_name="openai",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gpt-5.4-nano",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+            },
+        )
+    )
+
     # =========================================================================
     # Anthropic - Parse with Layout
     # =========================================================================
