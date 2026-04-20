@@ -964,6 +964,19 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Gemma 4 31B vLLM — layout mode (div+bbox wrappers, Gemini-style)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="gemma4_31b_vllm_with_layout",
+            provider_name="gemma4",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemma-4-31b",
+                "prompt_mode": "layout",
+            },
+        )
+    )
+
     # Gemma 4 E4B vLLM — dense 8B variant (4.5B effective)
     register_fn(
         PipelineSpec(
