@@ -1,7 +1,7 @@
-"""Provider for Gemma 4 26B-A4B Modal vLLM server.
+"""Provider for Gemma 4 Modal vLLM server.
 
-Gemma 4 is Google's MoE multimodal model (26B total, 3.8B active) with
-built-in vision. Supports OCR, document parsing, and chart comprehension.
+Gemma 4 is Google's multimodal model family with built-in vision.
+Supports OCR, document parsing, and chart comprehension.
 
 Supports two prompt modes:
 - "parse" (default): Pure markdown output, with md-table-to-HTML conversion
