@@ -302,6 +302,7 @@ class LayoutDetectionModel(str, Enum):
     GOOGLE_DOCAI_LAYOUT = "google_docai_layout"
     UNSTRUCTURED_LAYOUT = "unstructured_layout"
     DEEPSEEK_OCR2_LAYOUT = "deepseek_ocr2_layout"
+    MINERU25_LAYOUT = "mineru25_layout"
     CHANDRA2_LAYOUT = "chandra2_layout"
     QFOCR_LAYOUT = "qfocr_layout"
     DATALAB_LAYOUT = "datalab_layout"

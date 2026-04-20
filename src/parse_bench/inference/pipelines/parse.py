@@ -1453,3 +1453,18 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             },
         )
     )
+
+    # =========================================================================
+    # MinerU 2.5 (opendatalab/MinerU2.5-2509-1.2B, 1.2B Qwen2-VL derivative)
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="mineru25_vllm",
+            provider_name="mineru25",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",  # Set via MINERU25_SERVER_URL or override
+            },
+        )
+    )
