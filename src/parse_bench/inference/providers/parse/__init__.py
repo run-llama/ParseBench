@@ -22,6 +22,7 @@ _PROVIDER_MODULES = [
     "landingai",
     "llamaparse",
     "llamaparse_v2_normalization",
+    "mineru25",
     "openai",
     "paddleocr",
     "pymupdf",
