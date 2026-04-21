@@ -16,7 +16,7 @@ The benchmark covers ~2,000 human-verified pages from real enterprise documents 
 ## Leaderboard
 
 <!-- LEADERBOARD:START -->
-_Top 10 by Overall score. Click any column header on the [full sortable leaderboard](leaderboard.csv) to re-rank by Tables, Cost, or any other dimension._
+_Top 10 by Overall score. For the full sortable, filterable leaderboard, see [parsebench.ai](https://parsebench.ai/#leaderboard); for raw data, see [leaderboard.csv](leaderboard.csv)._
 
 | Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|

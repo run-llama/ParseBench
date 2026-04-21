@@ -65,9 +65,9 @@ def main() -> None:
     table = build_table(rows)
     block = (
         f"{START_MARKER}\n"
-        f"_Top {TOP_N} by Overall score. Click any column header on the "
-        f"[full sortable leaderboard](leaderboard.csv) to re-rank by Tables, "
-        f"Cost, or any other dimension._\n\n"
+        f"_Top {TOP_N} by Overall score. For the full sortable, filterable leaderboard, "
+        f"see [parsebench.ai](https://parsebench.ai/#leaderboard); for raw data, "
+        f"see [leaderboard.csv](leaderboard.csv)._\n\n"
         f"{table}\n"
         f"{END_MARKER}"
     )
