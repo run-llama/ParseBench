@@ -13,6 +13,25 @@ The benchmark covers ~2,000 human-verified pages from real enterprise documents 
   <img src="docs/parsebench_teaser.png" alt="ParseBench overview: five capability dimensions" width="100%">
 </p>
 
+## Leaderboard
+
+<!-- LEADERBOARD:START -->
+_Top 10 by Overall score. Click any column header on the [full sortable leaderboard](leaderboard.csv) to re-rank by Tables, Cost, or any other dimension._
+
+| Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
+|---:|---|---|---:|---:|---:|---:|---:|---:|---:|
+| 1 | LlamaParse Agentic | LlamaParse | 84.88 | 90.74 | 78.11 | 89.68 | 85.24 | 80.62 | 1.25¢ |
+| 2 | Google Gemini 3 Flash (Thinking High) | VLM - Proprietary | 75.05 | 91.50 | 64.79 | 90.87 | 68.31 | 59.77 | 2.41¢ |
+| 3 | Reducto (Agentic) | Commercial - Startup APIs | 72.97 | 80.42 | 73.4 | 86.37 | 57.6 | 67.07 | 4.76¢ |
+| 4 | LlamaParse Cost Effective | LlamaParse | 71.89 | 73.16 | 66.66 | 88.02 | 73.04 | 58.56 | 0.38¢ |
+| 5 | Google Gemini 3 Flash (Thinking Minimal) | VLM - Proprietary | 71.04 | 89.85 | 64.83 | 86.19 | 58.35 | 55.97 | 0.65¢ |
+| 6 | Chandra-ocr-2 | VLM - Open Weight | 70.1 | 89.2 | 65.1 | 83.7 | 61.4 | 51.2 | — |
+| 7 | Google Gemini 3.1 Pro | VLM - Proprietary | 69.14 | 91.00 | 41.13 | 90.16 | 52.43 | 70.99 | 8.49¢ |
+| 8 | Reducto | Commercial - Startup APIs | 67.83 | 70.33 | 56.99 | 86.37 | 56.75 | 68.71 | 2.38¢ |
+| 9 | Extend (Beta) | Commercial - Startup APIs | 67.83 | 85.93 | 40.42 | 85.03 | 59.49 | 68.28 | 2.50¢ |
+| 10 | Anthropic Opus 4.7 | VLM - Proprietary | 63.34 | 87.17 | 55.84 | 90.26 | 69.42 | 13.99 | 7.14¢ |
+<!-- LEADERBOARD:END -->
+
 ## Quick Start
 
 **Prerequisites:** Create a `.env` file with the API key for the parsing tool you want to evaluate (see [Configuration](#configuration) for details).

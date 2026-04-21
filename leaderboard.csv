@@ -1,0 +1,39 @@
+Provider,Category,Overall,Tables,Charts,Content_Faithfulness,Semantic_Formatting,Visual_Grounding,Cost_Per_Page,Cost_Charts,Cost_Tables,Cost_Text,Cost_Layout,HF_Model_ID
+LlamaParse Cost Effective,LlamaParse,71.89,73.16,66.66,88.02,73.04,58.56,0.375,,,,,
+LlamaParse Agentic,LlamaParse,84.88,90.74,78.11,89.68,85.24,80.62,1.25,,,,,
+OpenAI GPT-5 Mini (Reasoning Minimal),VLM - Proprietary,46.83,69.82,30.13,82.30,45.77,6.15,0.88,0.70,1.22,0.67,0.91,
+OpenAI GPT-5 Mini (Reasoning Medium),VLM - Proprietary,51.52,74.60,38.96,85.68,45.35,13.03,3.05,2.93,3.43,2.67,3.15,
+Anthropic Haiku 4.5 (Disable Thinking),VLM - Proprietary,45.17,77.21,13.77,78.74,49.39,6.72,1.64,0.97,2.46,1.53,1.60,
+Anthropic Haiku 4.5 (Thinking),VLM - Proprietary,53.12,78.70,27.39,84.83,62.36,12.30,3.69,3.49,4.26,3.16,3.83,
+Google Gemini 3 Flash (Thinking Minimal),VLM - Proprietary,71.04,89.85,64.83,86.19,58.35,55.97,0.65,0.49,0.84,0.56,0.69,
+Google Gemini 3 Flash (Thinking High),VLM - Proprietary,75.05,91.50,64.79,90.87,68.31,59.77,2.41,2.38,2.29,2.25,2.70,
+Anthropic Opus 4.6,VLM - Proprietary,54.07,86.52,13.49,89.70,64.19,16.47,5.78,4.02,8.16,5.19,6.40,
+Anthropic Opus 4.7,VLM - Proprietary,63.34,87.17,55.84,90.26,69.42,13.99,7.14,5.69,8.63,6.07,8.17,
+Google Gemini 3.1 Pro,VLM - Proprietary,69.14,91.00,41.13,90.16,52.43,70.99,8.49,6.69,9.69,7.73,10.54,
+Google Gemini 3.1 Flash Lite,VLM - Proprietary,58.32,85.48,9.92,89.46,58.38,48.38,0.29,0.19,0.37,0.27,0.31,
+OpenAI GPT-5.4,VLM - Proprietary,62.23,83.89,65.22,85.57,59.52,16.95,2.90,2.55,4.04,2.13,3.00,
+OpenAI GPT-5.4 Nano,VLM - Proprietary,43.35,60.16,17.57,78.05,54.56,6.41,0.25,0.17,0.35,0.19,0.28,
+AWS Textract,Commercial - IDP,47.88,84.58,5.97,74.76,3.71,70.36,1.5,,,,,
+Google Cloud Document AI,Commercial - IDP,50.39,55.10,1.44,83.65,50.51,61.26,1,,,,,
+Azure Document Intelligence (Layout),Commercial - IDP,59.64,86.00,1.56,84.93,51.93,73.78,1,,,,,
+Reducto (Agentic),Commercial - Startup APIs,72.97,80.42,73.4,86.37,57.6,67.07,4.76,6,3.4,4.2,5,
+Reducto,Commercial - Startup APIs,67.83,70.33,56.99,86.37,56.75,68.71,2.38,3,1.7,2.1,2.5,
+Extend,Commercial - Startup APIs,55.75,85.05,1.59,84.08,47.36,60.67,2.5,,,,,
+Extend (Beta),Commercial - Startup APIs,67.83,85.93,40.42,85.03,59.49,68.28,2.5,,,,,
+LandingAI,Commercial - Startup APIs,45.23,73.72,10.88,88.60,27.87,25.08,3,,,,,
+Firecrawl,Commercial - Startup APIs,31.08,55.88,0,74.37,25.16,0,0.9,,,,,
+Qwen3-VL-8B-Instruct,VLM - Open Weight,61.97,74.61,28.18,87.63,64.23,55.18,,,,,,Qwen/Qwen3-VL-8B-Instruct
+Dots.mocr,VLM - Open Weight,55.79,85.15,0.95,90.03,46.99,55.81,,,,,,rednote-hilab/dots.mocr
+Docling-models,VLM - Open Weight,50.65,66.41,52.76,66.93,1.03,66.11,,,,,,docling-project/docling-models
+Chandra-ocr-2,VLM - Open Weight,70.1,89.2,65.1,83.7,61.4,51.2,,,,,,datalab-to/chandra-ocr-2
+Gemma-4-31B-it,VLM - Open Weight,62.4,80.6,15,89.9,69.3,57.4,,,,,,google/gemma-4-31B-it
+Gemma-4-26B-A4B-it,VLM - Open Weight,58.5,70,14.2,83.8,65.1,59.2,,,,,,google/gemma-4-26B-A4B-it
+LightOnOCR-2-1B,VLM - Open Weight,48,75.5,13.5,87.8,63.2,0,,,,,,lightonai/LightOnOCR-2-1B
+Qianfan-OCR,VLM - Open Weight,46.2,72.3,0.9,83.5,53.8,20.6,,,,,,baidu/Qianfan-OCR
+MinerU2.5-2509-1.2B,VLM - Open Weight,45.9,71.7,1.1,80.8,4.5,71.5,,,,,,opendatalab/MinerU2.5-2509-1.2B
+Qwen3.6-35B-A3B,VLM - Open Weight,44.1,19.1,5.1,90.7,58.3,47.4,,,,,,Qwen/Qwen3.6-35B-A3B
+DeepSeek-OCR-2,VLM - Open Weight,41.2,61.7,1.1,82,54,7,,,,,,deepseek-ai/DeepSeek-OCR-2
+PaddleOCR-VL,VLM - Open Weight,40.9,67.1,0.9,82.7,54,0,,,,,,PaddlePaddle/PaddleOCR-VL
+Gemma-4-E4B-it,VLM - Open Weight,40.5,25,7.7,81.4,52.5,35.8,,,,,,google/gemma-4-E4B-it
+Qwen3.5-4B,VLM - Open Weight,35.4,8,2.5,88.9,57.8,19.7,,,,,,Qwen/Qwen3.5-4B
+GLM-OCR,VLM - Open Weight,29.6,66.1,1.7,78,2.3,0,,,,,,zai-org/GLM-OCR
