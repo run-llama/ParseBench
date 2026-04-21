@@ -22,6 +22,7 @@ Extend,Commercial - Startup APIs,55.75,85.05,1.59,84.08,47.36,60.67,2.5,,,,,
 Extend (Beta),Commercial - Startup APIs,67.83,85.93,40.42,85.03,59.49,68.28,2.5,,,,,
 LandingAI,Commercial - Startup APIs,45.23,73.72,10.88,88.60,27.87,25.08,3,,,,,
 Firecrawl,Commercial - Startup APIs,31.08,55.88,0,74.37,25.16,0,0.9,,,,,
+Databricks AI Parse,Commercial - IDP,52.22,83.67,0,88.25,55.25,33.91,0.28,,,,,
 Qwen3-VL-8B-Instruct,VLM - Open Weight,61.97,74.61,28.18,87.63,64.23,55.18,,,,,,Qwen/Qwen3-VL-8B-Instruct
 Dots.mocr,VLM - Open Weight,55.79,85.15,0.95,90.03,46.99,55.81,,,,,,rednote-hilab/dots.mocr
 Docling-models,VLM - Open Weight,50.65,66.41,52.76,66.93,1.03,66.11,,,,,,docling-project/docling-models
