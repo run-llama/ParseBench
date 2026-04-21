@@ -76,9 +76,7 @@ def main() -> None:
     start = readme.find(START_MARKER)
     end = readme.find(END_MARKER)
     if start == -1 or end == -1:
-        raise SystemExit(
-            f"Markers not found in README.md. Add {START_MARKER} and {END_MARKER}."
-        )
+        raise SystemExit(f"Markers not found in README.md. Add {START_MARKER} and {END_MARKER}.")
     new_readme = readme[:start] + block + readme[end + len(END_MARKER) :]
     README_PATH.write_text(new_readme)
     print(f"Updated README.md with top {TOP_N} from {CSV_PATH.name}")

@@ -28,9 +28,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CSV_PATH = REPO_ROOT / "leaderboard.csv"
 
-LEADERBOARD_API = (
-    "https://huggingface.co/api/datasets/llamaindex/ParseBench/leaderboard?limit=100"
-)
+LEADERBOARD_API = "https://huggingface.co/api/datasets/llamaindex/ParseBench/leaderboard?limit=100"
 YAML_URL_MAIN = "https://huggingface.co/{model_id}/raw/main/.eval_results/parsebench.yaml"
 YAML_URL_PR = "https://huggingface.co/{model_id}/raw/refs%2Fpr%2F{pr}/.eval_results/parsebench.yaml"
 
@@ -44,9 +42,19 @@ TASK_TO_COLUMN = {
 }
 
 FIELDNAMES = [
-    "Provider", "Category", "Overall", "Tables", "Charts",
-    "Content_Faithfulness", "Semantic_Formatting", "Visual_Grounding",
-    "Cost_Per_Page", "Cost_Charts", "Cost_Tables", "Cost_Text", "Cost_Layout",
+    "Provider",
+    "Category",
+    "Overall",
+    "Tables",
+    "Charts",
+    "Content_Faithfulness",
+    "Semantic_Formatting",
+    "Visual_Grounding",
+    "Cost_Per_Page",
+    "Cost_Charts",
+    "Cost_Tables",
+    "Cost_Text",
+    "Cost_Layout",
     "HF_Model_ID",
 ]
 
@@ -107,11 +115,7 @@ def main() -> None:
             continue
 
         pr = entry.get("pullRequest")
-        url = (
-            YAML_URL_PR.format(model_id=model_id, pr=pr)
-            if pr
-            else YAML_URL_MAIN.format(model_id=model_id)
-        )
+        url = YAML_URL_PR.format(model_id=model_id, pr=pr) if pr else YAML_URL_MAIN.format(model_id=model_id)
         yaml_text = fetch_text(url)
         if yaml_text is None:
             missing_yaml.append(f"{model_id} ({url})")
@@ -125,7 +129,7 @@ def main() -> None:
         name = model_id.split("/")[-1]
         if name and name[0].islower():
             name = name[0].upper() + name[1:]
-        row = {k: "" for k in FIELDNAMES}
+        row = dict.fromkeys(FIELDNAMES, "")
         row["Provider"] = name
         row["Category"] = "VLM - Open Weight"
         for col, val in scores.items():
