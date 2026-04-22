@@ -948,6 +948,78 @@ class ReductoLayoutAdapter(LayoutAdapter):
         )
 
 
+@register_layout_adapter("databricks_ai_parse", priority=90)
+class DatabricksAiParseLayoutAdapter(LayoutAdapter):
+    """Adapter that extracts LayoutOutput from Databricks ai_parse_document
+    ParseOutput.layout_pages (normalized [0,1] xywh + Canonical17 labels)."""
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            filtered = [p for p in inference_result.output.predictions if p.page == page_filter]
+            return inference_result.output.model_copy(update={"predictions": filtered})
+
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("DatabricksAiParseLayoutAdapter requires ParseOutput or LayoutOutput")
+
+        layout_pages = inference_result.output.layout_pages
+        if not layout_pages:
+            raise ValueError("DatabricksAiParseLayoutAdapter requires non-empty layout_pages")
+
+        first_page = layout_pages[0]
+        output_width = int(first_page.width or 1)
+        output_height = int(first_page.height or 1)
+
+        predictions: list[LayoutPrediction] = []
+        for lp in layout_pages:
+            page_number = lp.page_number
+            if page_filter is not None and page_number != page_filter:
+                continue
+
+            page_w = float(lp.width or output_width)
+            page_h = float(lp.height or output_height)
+
+            for item in lp.items:
+                for seg in item.layout_segments:
+                    label = seg.label or item.type or "Text"
+
+                    x1 = seg.x * page_w
+                    y1 = seg.y * page_h
+                    x2 = (seg.x + seg.w) * page_w
+                    y2 = (seg.y + seg.h) * page_h
+
+                    content = _build_vendor_content(label, item.value)
+
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[x1, y1, x2, y2],
+                            score=float(seg.confidence) if seg.confidence is not None else 1.0,
+                            label=label,
+                            page=page_number,
+                            content=content,
+                            provider_metadata={
+                                "order_index": len(predictions),
+                            },
+                        )
+                    )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.DATABRICKS_LAYOUT,
+            image_width=max(output_width, 1),
+            image_height=max(output_height, 1),
+            predictions=predictions,
+        )
+
+
 @register_layout_adapter("textract", priority=89)
 class TextractLayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from Textract ParseOutput.layout_pages.

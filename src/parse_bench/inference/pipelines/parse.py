@@ -1468,3 +1468,34 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             },
         )
     )
+
+    # =========================================================================
+    # Databricks ai_parse_document
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="databricks_ai_parse",
+            provider_name="databricks_ai_parse",
+            product_type=ProductType.PARSE,
+            config={
+                "version": "2.0",
+            },
+        )
+    )
+
+    # Batched variant: same provider, batch_size > 1 coalesces multiple
+    # requests into a single SQL statement to amortize warehouse/AI-function
+    # warm-up overhead. Model DBUs are unchanged (per-page billing).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="databricks_ai_parse_batch",
+            provider_name="databricks_ai_parse",
+            product_type=ProductType.PARSE,
+            config={
+                "version": "2.0",
+                "batch_size": 20,
+                "batch_wait_seconds": 10,
+            },
+        )
+    )
