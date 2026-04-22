@@ -886,6 +886,45 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Qwen3.5-9B vLLM — layout mode (structured JSON with bboxes + content)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="qwen3_5_9b_vllm_layout",
+            provider_name="qwen3_5",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "qwen3.5-9b",
+                "prompt_mode": "layout",
+            },
+        )
+    )
+
+    # Qwen3.5-2B vLLM — layout mode
+    register_fn(
+        PipelineSpec(
+            pipeline_name="qwen3_5_2b_vllm_layout",
+            provider_name="qwen3_5",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "qwen3.5-2b",
+                "prompt_mode": "layout",
+            },
+        )
+    )
+
+    # Qwen3.5-0.8B vLLM — layout mode
+    register_fn(
+        PipelineSpec(
+            pipeline_name="qwen3_5_0_8b_vllm_layout",
+            provider_name="qwen3_5",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "qwen3.5-0.8b",
+                "prompt_mode": "layout",
+            },
+        )
+    )
+
     # =========================================================================
     # Qwen3.5-35B-A3B FP8 (unified multimodal, GDN + attention hybrid, MoE 35B/3B)
     # =========================================================================
