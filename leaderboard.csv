@@ -37,4 +37,7 @@ DeepSeek-OCR-2,VLM - Open Weight,41.2,61.7,1.1,82,54,7,,,,,,deepseek-ai/DeepSeek
 PaddleOCR-VL,VLM - Open Weight,40.9,67.1,0.9,82.7,54,0,,,,,,PaddlePaddle/PaddleOCR-VL
 Gemma-4-E4B-it,VLM - Open Weight,40.5,25,7.7,81.4,52.5,35.8,,,,,,google/gemma-4-E4B-it
 Qwen3.5-4B,VLM - Open Weight,35.4,8,2.5,88.9,57.8,19.7,,,,,,Qwen/Qwen3.5-4B
+Qwen3.5-9B,VLM - Open Weight,31.9,9.9,5.4,90.5,22,31.8,,,,,,Qwen/Qwen3.5-9B
+Qwen3.5-0.8B,VLM - Open Weight,28.4,1.5,0.4,82,43.1,15,,,,,,Qwen/Qwen3.5-0.8B
+Qwen3.5-2B,VLM - Open Weight,27.3,0,0.1,87.2,31.1,18.3,,,,,,Qwen/Qwen3.5-2B
 GLM-OCR,VLM - Open Weight,29.6,66.1,1.7,78,2.3,0,,,,,,zai-org/GLM-OCR
