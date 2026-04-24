@@ -76,6 +76,7 @@ _OPENAI_PRICING_PER_M: dict[str, tuple[float, float]] = {
     "gpt-5.4-mini": (0.75, 4.50),
     "gpt-5.4": (2.50, 15.00),
     "gpt-5.4-nano": (0.20, 1.25),
+    "gpt-5.5": (5.00, 30.00),
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
     "gpt-4.1-mini": (0.40, 1.60),

@@ -1371,6 +1371,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # OpenAI GPT-5.5 - Parse with Layout File (default reasoning)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="openai_gpt_5_5_parse_with_layout_file",
+            provider_name="openai",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gpt-5.5",
+                "max_tokens": 65536,
+                "mode": "parse_with_layout_file",
+            },
+        )
+    )
+
     # OpenAI GPT-5.4 Nano - Parse with Layout
     register_fn(
         PipelineSpec(
