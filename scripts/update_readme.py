@@ -66,7 +66,7 @@ def main() -> None:
     block = (
         f"{START_MARKER}\n"
         f"_Top {TOP_N} by Overall score. For the full sortable, filterable leaderboard, "
-        f"see [parsebench.ai](https://parsebench.ai/#leaderboard); for raw data, "
+        f"see [parsebench.ai](https://parsebench.ai); for raw data, "
         f"see [leaderboard.csv](leaderboard.csv)._\n\n"
         f"{table}\n"
         f"{END_MARKER}"

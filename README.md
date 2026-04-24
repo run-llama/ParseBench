@@ -16,7 +16,7 @@ The benchmark covers ~2,000 human-verified pages from real enterprise documents 
 ## Leaderboard
 
 <!-- LEADERBOARD:START -->
-_Top 10 by Overall score. For the full sortable, filterable leaderboard, see [parsebench.ai](https://parsebench.ai/); for raw data, see [leaderboard.csv](leaderboard.csv)._
+_Top 10 by Overall score. For the full sortable, filterable leaderboard, see [parsebench.ai](https://parsebench.ai); for raw data, see [leaderboard.csv](leaderboard.csv)._
 
 | Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
@@ -29,7 +29,7 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | 7 | Google Gemini 3.1 Pro | VLM - Proprietary | 69.14 | 91.00 | 41.13 | 90.16 | 52.43 | 70.99 | 8.49¢ |
 | 8 | Reducto | Commercial - Startup APIs | 67.83 | 70.33 | 56.99 | 86.37 | 56.75 | 68.71 | 2.38¢ |
 | 9 | Extend (Beta) | Commercial - Startup APIs | 67.83 | 85.93 | 40.42 | 85.03 | 59.49 | 68.28 | 2.50¢ |
-| 10 | Anthropic Opus 4.7 | VLM - Proprietary | 63.34 | 87.17 | 55.84 | 90.26 | 69.42 | 13.99 | 7.14¢ |
+| 10 | OpenAI GPT-5.5 (Reasoning Medium) | VLM - Proprietary | 67.76 | 90.05 | 65.53 | 86.81 | 60.12 | 36.28 | 13.09¢ |
 <!-- LEADERBOARD:END -->
 
 ## Quick Start

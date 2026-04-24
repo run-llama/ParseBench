@@ -1371,6 +1371,36 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # OpenAI GPT-5.5 - Parse with Layout File - Reasoning Medium
+    register_fn(
+        PipelineSpec(
+            pipeline_name="openai_gpt_5_5_reasoning_medium_parse_with_layout_file",
+            provider_name="openai",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gpt-5.5",
+                "max_tokens": 65536,
+                "mode": "parse_with_layout_file",
+                "reasoning_effort": "medium",
+            },
+        )
+    )
+
+    # OpenAI GPT-5.5 - Parse with Layout File - Reasoning None
+    register_fn(
+        PipelineSpec(
+            pipeline_name="openai_gpt_5_5_reasoning_none_parse_with_layout_file",
+            provider_name="openai",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gpt-5.5",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+                "reasoning_effort": "none",
+            },
+        )
+    )
+
     # OpenAI GPT-5.4 Nano - Parse with Layout
     register_fn(
         PipelineSpec(
