@@ -105,3 +105,33 @@ def test_pipeline_run_input_dir_routing(test_flag: bool, expected_relative: Path
     # InferenceCLI.run receives the resolved input_dir; assert routing works.
     inf_kwargs = mock_inf.run.call_args.kwargs
     assert inf_kwargs["input_dir"] == expected_relative
+
+
+@pytest.mark.parametrize(
+    "test_flag,expected_relative",
+    [(False, Path("./data")), (True, Path("./data/test"))],
+)
+def test_pipeline_run_auto_download_routing(test_flag: bool, expected_relative: Path) -> None:
+    """When the dataset isn't on disk, ``pipeline.run`` must auto-download to
+    the test-routed path — not silently to ``./data``.
+
+    This is the second half of the original bug: even after fixing the
+    ``input_dir`` default, a wrong download target would re-introduce the
+    overlay/masking problem on a fresh machine.
+    """
+    from parse_bench.pipeline.cli import PipelineCLI
+
+    cli = PipelineCLI()
+    with patch("parse_bench.pipeline.cli.is_dataset_ready", return_value=False), \
+         patch("parse_bench.pipeline.cli.download_dataset") as mock_dl, \
+         patch("parse_bench.pipeline.cli.InferenceCLI") as mock_inf_cls, \
+         patch.object(cli, "_run_multi_group_evaluation", return_value=0):
+        mock_inf = mock_inf_cls.return_value
+        mock_inf.run.return_value = 0
+        rc = cli.run(pipeline="dummy", test=test_flag)
+
+    assert rc == 0
+    mock_dl.assert_called_once()
+    dl_kwargs = mock_dl.call_args.kwargs
+    assert dl_kwargs["data_dir"] == expected_relative
+    assert dl_kwargs["test"] is test_flag
