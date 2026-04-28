@@ -116,6 +116,12 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | **`reducto`** | Default Reducto (In paper: *Reducto*) | `REDUCTO_API_KEY` |
 | **`reducto_agentic`** | Agentic mode (In paper: *Reducto (Agentic)*) | `REDUCTO_API_KEY` |
 
+### Pulse
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `pulse` | Default with HTML table output | `PULSE_API_KEY` |
+
 ### Chunkr
 
 | Pipeline | Description | Env Var |

@@ -26,6 +26,7 @@ _PROVIDER_MODULES = [
     "mineru25",
     "openai",
     "paddleocr",
+    "pulse",
     "pymupdf",
     "pypdf",
     "qwen3_5",

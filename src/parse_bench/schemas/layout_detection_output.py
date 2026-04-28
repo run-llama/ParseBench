@@ -294,6 +294,7 @@ class LayoutDetectionModel(str, Enum):
     LAYOUT_V3 = "layout_v3"
     CHUNKR = "chunkr"
     DOTS_OCR = "dots_ocr"
+    PULSE_LAYOUT = "pulse_layout"
     REDUCTO_LAYOUT = "reducto_layout"
     TEXTRACT_LAYOUT = "textract_layout"
     LANDINGAI_LAYOUT = "landingai_layout"
@@ -362,6 +363,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.DOTS_OCR: {
         "name": "dots.ocr",
         "hf_url": "https://huggingface.co/rednote-hilab/dots.ocr",
+    },
+    LayoutDetectionModel.PULSE_LAYOUT: {
+        "name": "Pulse Layout",
+        "hf_url": "https://www.runpulse.com/",
     },
     LayoutDetectionModel.REDUCTO_LAYOUT: {
         "name": "Reducto Layout",

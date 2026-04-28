@@ -191,6 +191,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # Pulse Pipelines
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="pulse",
+            provider_name="pulse",
+            product_type=ProductType.PARSE,
+            config={
+                "return_html": True,
+            },
+        )
+    )
+
+    # =========================================================================
     # Chunkr Pipelines
     # =========================================================================
 
