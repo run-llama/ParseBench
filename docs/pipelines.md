@@ -221,6 +221,7 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 | Pipeline | Description | Env Vars |
 |---|---|---|
 | **`docling_parse`** | Docling HTTP endpoint (In paper: *Docling*) | `DOCLING_PARSE_ENDPOINT_URL`, `DOCLING_PARSE_API_KEY` (optional) |
+| `docling_serve` | Docling Serve HTTP endpoint | `DOCLING_SERVE_ENDPOINT_URL`, `DOCLING_SERVE_API_KEY` (optional) |
 
 ---
 

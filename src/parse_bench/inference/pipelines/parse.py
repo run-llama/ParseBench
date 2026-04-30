@@ -251,6 +251,22 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # Docling Serve
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="docling_serve",
+            provider_name="docling_serve",
+            product_type=ProductType.PARSE,
+            config={
+                "endpoint_url": "",  # Set via environment or override
+                "timeout": 120,
+            },
+        )
+    )
+
+    # =========================================================================
     # Landing AI Pipelines
     # =========================================================================
 
