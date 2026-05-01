@@ -41,6 +41,9 @@ _MAX_POLL_ATTEMPTS = 150  # 5 minutes at 2s interval
 _VIRTUAL_PAGE_DIM = 1000.0
 
 # Map Pulse bounding_boxes label keys to canonical layout labels.
+# "Header" is intentionally a default; it gets disambiguated into
+# Page-header vs Section-header by Y-position in _build_layout_pages
+# because Pulse lumps both into the same bucket.
 _PULSE_LABEL_MAP: dict[str, str] = {
     "Title": "Title",
     "Text": "Text",
@@ -49,7 +52,14 @@ _PULSE_LABEL_MAP: dict[str, str] = {
     "Page Number": "Page-footer",
     "Images": "Picture",
     "Tables": "Table",
+    "caption": "Caption",
 }
+
+# Y-position bands used to split Pulse's "Header" bucket. A header whose
+# top edge lies inside the top or bottom margin is treated as a page
+# header; anything in the middle band is a section header.
+_PAGE_HEADER_TOP_BAND = 0.10
+_PAGE_HEADER_BOTTOM_BAND = 0.90
 
 
 @register_provider("pulse")
@@ -363,9 +373,17 @@ def _build_layout_pages(bounding_boxes: dict[str, Any]) -> list[ParseLayoutPageI
                 confidence = 1.0
 
             x, y, w, h = _polygon_to_xywh(coords)
-            seg = LayoutSegmentIR(x=x, y=y, w=w, h=h, confidence=confidence, label=canonical_label)
 
-            norm_label = canonical_label.strip().lower()
+            # Pulse's "Header" bucket mixes page-headers (top/bottom margin) and
+            # section-headers (mid-page). Split by Y position so Section-header
+            # GT rules score against the right predictions.
+            elem_label = canonical_label
+            if label_key == "Header" and _PAGE_HEADER_TOP_BAND <= y <= _PAGE_HEADER_BOTTOM_BAND:
+                elem_label = "Section-header"
+
+            seg = LayoutSegmentIR(x=x, y=y, w=w, h=h, confidence=confidence, label=elem_label)
+
+            norm_label = elem_label.strip().lower()
             if norm_label == "table":
                 item_type = "table"
             elif norm_label == "picture":

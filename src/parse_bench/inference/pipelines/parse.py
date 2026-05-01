@@ -205,6 +205,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # pulse-ultra-2: vision-language model with built-in refinement,
+    # figure/chart extraction, and word-level bounding boxes
+    # (10 credits/page vs 1 credit/page for default).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="pulse_ultra_2",
+            provider_name="pulse",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "pulse-ultra-2",
+                "return_html": True,
+            },
+        )
+    )
+
     # =========================================================================
     # Chunkr Pipelines
     # =========================================================================
