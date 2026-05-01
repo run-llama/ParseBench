@@ -1119,6 +1119,23 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Granite Vision 4.1 4B (ibm-granite/granite-vision-4.1-4b)
+    # Native vLLM support. Provider runs three task tags concurrently per
+    # image and concatenates outputs -- one pipeline covers tables, charts,
+    # and text without per-dataset task selection.
+    register_fn(
+        PipelineSpec(
+            pipeline_name="granite_vision_4_1_4b",
+            provider_name="granite_vision",
+            product_type=ProductType.PARSE,
+            config={
+                "api_format": "openai",
+                "task": ["ocr", "tables_html", "chart2csv"],
+                "served_model_name": "granite-vision-4.1-4b",
+            },
+        )
+    )
+
     # =========================================================================
     # Gemini - Parse with Layout
     # =========================================================================

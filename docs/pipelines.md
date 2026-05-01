@@ -202,6 +202,7 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 | Pipeline | Description | Env Var |
 |---|---|---|
 | `granite_vision_pipeline` | PP-DocLayout + per-region Granite Vision | `GRANITE_VISION_SERVER_URL` |
+| `granite_vision_4_1_4b` | Granite Vision 4.1 4B (vLLM, multi-task) | `VLLM_API_KEY` |
 
 ### PaddleOCR-VL
 
