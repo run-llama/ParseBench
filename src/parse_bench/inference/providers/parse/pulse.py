@@ -1,14 +1,21 @@
 """Provider for Pulse PARSE.
 
-Uses the Pulse Python SDK (pulse-python-sdk) to convert documents into
-markdown with optional HTML table output via the /extract endpoint.
+Calls the Pulse /extract REST endpoint directly via multipart/form-data.
+Exposes the full set of documented controls (model, refine, refine_options,
+extract_figure, figure_description, custom_image_prompt, custom_refine_prompt,
+additional_prompt) so that pipelines can be configured to match published
+runs.
 """
 
+import json
 import os
 import time
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+import requests
 
 from parse_bench.inference.providers.base import (
     Provider,
@@ -32,18 +39,15 @@ from parse_bench.schemas.pipeline_io import (
 )
 from parse_bench.schemas.product import ProductType
 
-# Polling settings for async jobs.
-_POLL_INTERVAL = 2.0
-_MAX_POLL_ATTEMPTS = 150  # 5 minutes at 2s interval
+_API_URL = "https://api.runpulse.com/extract"
 
-# Virtual page dimension for normalized [0,1] → pixel coordinate conversion.
+# Virtual page dimension for normalized [0,1] -> pixel coordinate conversion.
 # Evaluation divides pixel coords by page dimensions, so these cancel out.
 _VIRTUAL_PAGE_DIM = 1000.0
 
-# Map Pulse bounding_boxes label keys to canonical layout labels.
-# "Header" is intentionally a default; it gets disambiguated into
-# Page-header vs Section-header by Y-position in _build_layout_pages
-# because Pulse lumps both into the same bucket.
+# Map Pulse bounding_boxes label keys to canonical layout labels. "Header" is
+# disambiguated into Page-header vs Section-header by Y-position in
+# _build_layout_pages because Pulse lumps both into the same bucket.
 _PULSE_LABEL_MAP: dict[str, str] = {
     "Title": "Title",
     "Text": "Text",
@@ -55,19 +59,13 @@ _PULSE_LABEL_MAP: dict[str, str] = {
     "caption": "Caption",
 }
 
-# Y-position bands used to split Pulse's "Header" bucket. A header whose
-# top edge lies inside the top or bottom margin is treated as a page
-# header; anything in the middle band is a section header.
 _PAGE_HEADER_TOP_BAND = 0.10
 _PAGE_HEADER_BOTTOM_BAND = 0.90
 
 
 @register_provider("pulse")
 class PulseProvider(Provider):
-    """Provider for Pulse document extraction.
-
-    Uses the Pulse SDK to call the /extract endpoint for document parsing.
-    """
+    """Provider for Pulse document extraction via REST."""
 
     CREDIT_RATE_USD = 0.015  # PAYGO rate: $0.015 per credit
 
@@ -81,108 +79,96 @@ class PulseProvider(Provider):
             )
         self._api_key: str = api_key
 
-        self._return_html: bool = self.base_config.get("return_html", False)
-        self._return_xml: bool = self.base_config.get("return_xml", False)
-        self._word_level_bboxes: bool = self.base_config.get(
-            "word_level_bboxes", self.base_config.get("wlbb", False)
-        )
+        # Core controls
         self._model: str | None = self.base_config.get("model")
-        self._figure_description: bool = self.base_config.get("figure_description", False)
-        self._use_async: bool = self.base_config.get("use_async", False)
-        self._pages: str | None = self.base_config.get("pages", None)
-        self._timeout: float = float(self.base_config.get("timeout", 300))
+
+        # Refinement
+        self._refine: bool = bool(self.base_config.get("refine", False))
+        refine_options = self.base_config.get("refine_options")
+        if refine_options is not None and not isinstance(refine_options, dict):
+            raise ProviderConfigError("refine_options must be a dict")
+        self._refine_options: dict[str, bool] | None = refine_options
+
+        # Figures / charts
+        self._extract_figure: bool = bool(self.base_config.get("extract_figure", False))
+        self._figure_description: bool = bool(self.base_config.get("figure_description", False))
+
+        # Prompt overrides
+        self._additional_prompt: str | None = self.base_config.get("additional_prompt")
+        self._custom_image_prompt: str | None = self.base_config.get("custom_image_prompt")
+        self._custom_refine_prompt: str | None = self.base_config.get("custom_refine_prompt")
+
+        # Misc
+        self._pages: str | None = self.base_config.get("pages")
+        self._timeout: float = float(self.base_config.get("timeout", 600))
 
     # --------------------------------------------------------------------- #
-    # Internal helpers
+    # HTTP call
     # --------------------------------------------------------------------- #
+
+    def _build_form_fields(self) -> list[tuple[str, tuple[None, str]]]:
+        """Build the non-file multipart fields for the /extract POST."""
+        fields: list[tuple[str, tuple[None, str]]] = []
+
+        def add(name: str, value: Any) -> None:
+            if value is None:
+                return
+            if isinstance(value, bool):
+                fields.append((name, (None, "true" if value else "false")))
+            elif isinstance(value, (dict, list)):
+                fields.append((name, (None, json.dumps(value))))
+            else:
+                fields.append((name, (None, str(value))))
+
+        add("model", self._model)
+        add("refine", self._refine or None)
+        add("refine_options", self._refine_options)
+        add("extract_figure", self._extract_figure or None)
+        add("figure_description", self._figure_description or None)
+        add("additional_prompt", self._additional_prompt)
+        add("custom_image_prompt", self._custom_image_prompt)
+        add("custom_refine_prompt", self._custom_refine_prompt)
+        add("pages", self._pages)
+
+        return fields
 
     def _extract(self, file_path: str) -> dict[str, Any]:
-        """Extract a document using the Pulse SDK."""
-        try:
-            from pulse import Pulse
-        except ImportError as e:
-            raise ProviderConfigError(
-                "pulse-python-sdk package not installed. Run: pip install pulse-python-sdk"
-            ) from e
-
-        client = Pulse(api_key=self._api_key, timeout=self._timeout)
-
-        # Build optional kwargs
-        kwargs: dict[str, Any] = {}
-        if self._model:
-            kwargs["model"] = self._model
-        if self._pages:
-            kwargs["pages"] = self._pages
-        if self._use_async:
-            kwargs["async_"] = True
-
-        # Figure processing
-        if self._figure_description:
-            from pulse.types import ExtractRequestFigureProcessing
-
-            kwargs["figure_processing"] = ExtractRequestFigureProcessing(description=True)
-
-        # The SDK currently exposes the documented extensions object, but
-        # serializes nested multipart fields as a dict. Use the first-class
-        # primitive argument for HTML so table eval gets HTML reliably.
-        if self._return_html:
-            kwargs["return_html"] = True
-
-        if self._return_xml or self._word_level_bboxes:
-            from pulse.types import (
-                ExtractRequestExtensions,
-                ExtractRequestExtensionsAltOutputs,
-            )
-
-            kwargs["extensions"] = ExtractRequestExtensions(
-                alt_outputs=ExtractRequestExtensionsAltOutputs(
-                    wlbb=self._word_level_bboxes or None,
-                    return_xml=self._return_xml or None,
-                )
-            )
+        headers = {"x-api-key": self._api_key}
+        form_fields = self._build_form_fields()
 
         with open(file_path, "rb") as f:
-            response = client.extract(file=f, **kwargs)
+            files: list[tuple[str, Any]] = [("file", (Path(file_path).name, f, "application/pdf"))]
+            files.extend(form_fields)
 
-        # If async mode, poll for completion
-        if self._use_async and hasattr(response, "job_id") and response.job_id:
-            response = self._poll_job(client, response.job_id)
+            response = requests.post(_API_URL, headers=headers, files=files, timeout=self._timeout)
 
-        # Serialize response to dict
-        if hasattr(response, "model_dump"):
-            raw: dict[str, Any] = response.model_dump()
-        elif hasattr(response, "dict"):
-            raw = response.dict()
-        elif isinstance(response, dict):
-            raw = response
-        else:
-            raw = {"markdown": getattr(response, "markdown", ""), "raw": str(response)}
+        if response.status_code == 401:
+            raise ProviderConfigError(f"Pulse auth failed (401): {response.text[:300]}")
+        if response.status_code == 429:
+            raise ProviderRateLimitError(f"Pulse rate limit (429): {response.text[:300]}")
+        if response.status_code in (502, 503, 504):
+            raise ProviderTransientError(f"Pulse transient {response.status_code}: {response.text[:300]}")
+        if response.status_code >= 400:
+            raise ProviderPermanentError(f"Pulse {response.status_code}: {response.text[:300]}")
 
-        # For large docs (70+ pages), Pulse returns a URL — fetch it
+        try:
+            raw: dict[str, Any] = response.json()
+        except ValueError as e:
+            raise ProviderPermanentError(f"Pulse returned non-JSON response: {e}") from e
+
+        # For large docs Pulse returns a URL pointer to the full result.
         if raw.get("is_url") and raw.get("url"):
-            import requests
-
-            url_resp = requests.get(raw["url"], timeout=300)
-            if url_resp.status_code == 200:
-                url_result = url_resp.json()
-                if "plan_info" in raw or "plan-info" in raw:
-                    url_result["plan_info"] = raw.get("plan_info", raw.get("plan-info"))
-                raw = url_result
+            url_resp = requests.get(raw["url"], timeout=self._timeout)
+            if url_resp.status_code != 200:
+                raise ProviderTransientError(
+                    f"Failed to fetch result URL ({url_resp.status_code}): {url_resp.text[:300]}"
+                )
+            url_result = url_resp.json()
+            if "plan_info" in raw or "plan-info" in raw:
+                url_result["plan_info"] = raw.get("plan_info", raw.get("plan-info"))
+            raw = url_result
 
         return raw
-
-    @staticmethod
-    def _poll_job(client: Any, job_id: str) -> Any:
-        """Poll for async job completion using the SDK."""
-        for _ in range(_MAX_POLL_ATTEMPTS):
-            job_status = client.jobs.get_job(job_id=job_id)
-            status = getattr(job_status, "status", "").lower()
-            if status == "completed":
-                return getattr(job_status, "result", job_status)
-            if status in ("failed", "canceled"):
-                raise ProviderPermanentError(f"Pulse job {job_id} {status}: {getattr(job_status, 'message', '')}")
-            time.sleep(_POLL_INTERVAL)
-        raise ProviderTransientError(f"Pulse job {job_id} timed out after {_MAX_POLL_ATTEMPTS * _POLL_INTERVAL}s")
 
     # --------------------------------------------------------------------- #
     # Provider interface
@@ -190,7 +176,9 @@ class PulseProvider(Provider):
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         if request.product_type != ProductType.PARSE:
-            raise ProviderPermanentError(f"PulseProvider only supports PARSE product type, got {request.product_type}")
+            raise ProviderPermanentError(
+                f"PulseProvider only supports PARSE product type, got {request.product_type}"
+            )
 
         file_path = Path(request.source_file_path)
         if not file_path.exists():
@@ -200,48 +188,6 @@ class PulseProvider(Provider):
 
         try:
             raw_output = self._extract(str(file_path))
-
-            # Store config for reproducibility
-            raw_output["_config"] = {
-                "return_html": self._return_html,
-                "return_xml": self._return_xml,
-                "word_level_bboxes": self._word_level_bboxes,
-                "model": self._model,
-                "figure_description": self._figure_description,
-                "use_async": self._use_async,
-                "pages": self._pages,
-            }
-
-            # Cost tracking — API returns credits_used at top level and
-            # page info under "plan-info" (hyphen) or "plan_info" (underscore).
-            plan_info = raw_output.get("plan-info", raw_output.get("plan_info", {}))
-            if isinstance(plan_info, dict):
-                pages_used = plan_info.get("pages_used", raw_output.get("page_count"))
-                if pages_used and pages_used > 0:
-                    raw_output["num_pages"] = pages_used
-
-            credits = raw_output.get("credits_used")
-            if credits is not None and credits > 0:
-                cost_usd = credits * self.CREDIT_RATE_USD
-                raw_output["cost_usd"] = cost_usd
-                num_pages = raw_output.get("num_pages", raw_output.get("page_count", 0))
-                if num_pages and num_pages > 0:
-                    raw_output["cost_per_page_usd"] = cost_usd / num_pages
-
-            completed_at = datetime.now()
-            latency_ms = int((completed_at - started_at).total_seconds() * 1000)
-
-            return RawInferenceResult(
-                request=request,
-                pipeline=pipeline,
-                pipeline_name=pipeline.pipeline_name,
-                product_type=request.product_type,
-                raw_output=raw_output,
-                started_at=started_at,
-                completed_at=completed_at,
-                latency_in_ms=latency_ms,
-            )
-
         except (
             ProviderPermanentError,
             ProviderTransientError,
@@ -249,15 +195,52 @@ class PulseProvider(Provider):
             ProviderRateLimitError,
         ):
             raise
+        except requests.Timeout as e:
+            raise ProviderTransientError(f"Pulse request timed out: {e}") from e
+        except requests.ConnectionError as e:
+            raise ProviderTransientError(f"Pulse connection error: {e}") from e
         except Exception as e:
-            error_str = str(e).lower()
-            if "rate limit" in error_str or "429" in error_str:
-                raise ProviderRateLimitError(f"Pulse rate limit: {e}") from e
-            if any(kw in error_str for kw in ["timeout", "timed out", "network", "connection", "503", "502"]):
-                raise ProviderTransientError(f"Transient error: {e}") from e
-            if "401" in error_str or "unauthorized" in error_str:
-                raise ProviderConfigError(f"Pulse auth failed: {e}") from e
             raise ProviderPermanentError(f"Unexpected error during inference: {e}") from e
+
+        raw_output["_config"] = {
+            "model": self._model,
+            "refine": self._refine,
+            "refine_options": self._refine_options,
+            "extract_figure": self._extract_figure,
+            "figure_description": self._figure_description,
+            "custom_image_prompt": self._custom_image_prompt,
+            "custom_refine_prompt": self._custom_refine_prompt,
+            "additional_prompt": self._additional_prompt,
+            "pages": self._pages,
+        }
+
+        plan_info = raw_output.get("plan-info", raw_output.get("plan_info", {}))
+        if isinstance(plan_info, dict):
+            pages_used = plan_info.get("pages_used", raw_output.get("page_count"))
+            if pages_used and pages_used > 0:
+                raw_output["num_pages"] = pages_used
+
+        credits = raw_output.get("credits_used")
+        if credits is not None and credits > 0:
+            cost_usd = credits * self.CREDIT_RATE_USD
+            raw_output["cost_usd"] = cost_usd
+            num_pages = raw_output.get("num_pages", raw_output.get("page_count", 0))
+            if num_pages and num_pages > 0:
+                raw_output["cost_per_page_usd"] = cost_usd / num_pages
+
+        completed_at = datetime.now()
+        latency_ms = int((completed_at - started_at).total_seconds() * 1000)
+
+        return RawInferenceResult(
+            request=request,
+            pipeline=pipeline,
+            pipeline_name=pipeline.pipeline_name,
+            product_type=request.product_type,
+            raw_output=raw_output,
+            started_at=started_at,
+            completed_at=completed_at,
+            latency_in_ms=latency_ms,
+        )
 
     def normalize(self, raw_result: RawInferenceResult) -> InferenceResult:
         if raw_result.product_type != ProductType.PARSE:
@@ -266,12 +249,8 @@ class PulseProvider(Provider):
             )
 
         raw = raw_result.raw_output
-
-        # Prefer HTML output if available (better for table evaluation)
         html_content = _get_pulse_html(raw)
         markdown = html_content or raw.get("markdown", "")
-
-        # Build layout pages from bounding_boxes for Visual Grounding evaluation
         layout_pages = _build_layout_pages(raw.get("bounding_boxes", {}))
 
         output = ParseOutput(
@@ -296,6 +275,11 @@ class PulseProvider(Provider):
         )
 
 
+# ------------------------------------------------------------------------- #
+# Output normalization helpers
+# ------------------------------------------------------------------------- #
+
+
 def _polygon_to_xywh(coords: list[float]) -> tuple[float, float, float, float]:
     """Convert an 8-float polygon [x1,y1, x2,y2, x3,y3, x4,y4] to (x, y, w, h)."""
     xs = [coords[i] for i in range(0, 8, 2)]
@@ -306,8 +290,6 @@ def _polygon_to_xywh(coords: list[float]) -> tuple[float, float, float, float]:
 
 
 def _get_pulse_html(raw: dict[str, Any]) -> str:
-    """Return Pulse HTML alt output across SDK/API response spellings."""
-
     extensions = raw.get("extensions")
     if isinstance(extensions, dict):
         for key in ("alt_outputs", "altOutputs"):
@@ -317,7 +299,6 @@ def _get_pulse_html(raw: dict[str, Any]) -> str:
                 if isinstance(html, str) and html:
                     return html
 
-    # Legacy/deprecated response shape when the old return_html field is used.
     html = raw.get("html")
     if isinstance(html, str) and html:
         return html
@@ -326,14 +307,6 @@ def _get_pulse_html(raw: dict[str, Any]) -> str:
 
 
 def _build_layout_pages(bounding_boxes: dict[str, Any]) -> list[ParseLayoutPageIR]:
-    """Build layout_pages from Pulse bounding_boxes for layout cross-evaluation.
-
-    Pulse returns bounding_boxes grouped by label type (Title, Text, Header,
-    Footer, Images, Tables) with normalized [0,1] coordinates as 8-point
-    polygons.
-    """
-    from collections import defaultdict
-
     pages_items: dict[int, list[LayoutItemIR]] = defaultdict(list)
 
     for label_key, canonical_label in _PULSE_LABEL_MAP.items():
@@ -342,18 +315,15 @@ def _build_layout_pages(bounding_boxes: dict[str, Any]) -> list[ParseLayoutPageI
             continue
 
         for elem in elements:
-            # Tables have a different structure
             if label_key == "Tables":
                 table_info = elem.get("table_info", {})
                 location = table_info.get("location", {})
                 coords = location.get("coordinates", [])
                 page_num = location.get("page", 1)
                 conf_raw = table_info.get("confidence")
-                # Reconstruct table text from cell_data
                 cell_texts = []
                 for cell in elem.get("cell_data", []):
                     text = cell.get("text", "")
-                    # Strip the "0t-" prefix Pulse adds
                     if text.startswith("0t-"):
                         text = text[3:]
                     cell_texts.append(text)
@@ -374,9 +344,6 @@ def _build_layout_pages(bounding_boxes: dict[str, Any]) -> list[ParseLayoutPageI
 
             x, y, w, h = _polygon_to_xywh(coords)
 
-            # Pulse's "Header" bucket mixes page-headers (top/bottom margin) and
-            # section-headers (mid-page). Split by Y position so Section-header
-            # GT rules score against the right predictions.
             elem_label = canonical_label
             if label_key == "Header" and _PAGE_HEADER_TOP_BAND <= y <= _PAGE_HEADER_BOTTOM_BAND:
                 elem_label = "Section-header"
