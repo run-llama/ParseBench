@@ -395,7 +395,7 @@ def _build_docling_parse_content(item_type: str, text: str) -> LayoutTextContent
     return LayoutTextContent(text=text)
 
 
-@register_layout_adapter("docling_parse", priority=90)
+@register_layout_adapter("docling_parse", "docling_serve", priority=90)
 class DoclingParseLayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from Docling ParseOutput.layout_pages."""
 
