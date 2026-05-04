@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from docling_core.transforms.serializer.html import HTMLTableSerializer
+from docling_core.transforms.serializer.markdown import MarkdownDocSerializer
+from docling_core.types.doc.base import ImageRefMode
 from docling_core.types.doc.document import DoclingDocument
 
 from parse_bench.inference.providers.base import (
@@ -334,11 +337,10 @@ class DoclingServeProvider(Provider):
                 }
             ],
             "options": {
-                "to_formats": ["md", "json"],
+                "to_formats": ["json"],
                 "pipeline": "standard",
                 "include_images": False,
                 "image_export_mode": "placeholder",
-                "md_page_break_placeholder": _MD_PAGE_BREAK_PLACEHOLDER,
             },
         }
 
@@ -458,18 +460,12 @@ class DoclingServeProvider(Provider):
         # Response format:
         # {
         #   "document": {
-        #     "md_content": "...",
         #     "json_content": {...},
         #   }
         # }
-        full_markdown = raw_result.raw_output.get("document", {}).get("md_content", "")
+        full_markdown = ""
         raw_docling_document = raw_result.raw_output.get("document", {}).get("json_content", "")
-        raw_pages = full_markdown.split(_MD_PAGE_BREAK_PLACEHOLDER)
-
-        # Convert to PageIR list (0-indexed)
         pages: list[PageIR] = []
-        for page_index, markdown in enumerate(raw_pages):
-            pages.append(PageIR(page_index=page_index, markdown=markdown))
 
         layout_pages: list[ParseLayoutPageIR] = []
         if raw_docling_document is not None:
@@ -477,6 +473,18 @@ class DoclingServeProvider(Provider):
                 docling_document = DoclingDocument.model_validate(raw_docling_document)
             except Exception as e:
                 raise ProviderPermanentError(f"Failed to validate docling_document payload: {e}") from e
+
+            doc_serializer = MarkdownDocSerializer(doc=docling_document)
+            doc_serializer.table_serializer = HTMLTableSerializer()
+
+            full_markdown = doc_serializer.serialize(
+                page_break_placeholder=_MD_PAGE_BREAK_PLACEHOLDER, image_mode=ImageRefMode.PLACEHOLDER
+            ).text
+            raw_pages = full_markdown.split(_MD_PAGE_BREAK_PLACEHOLDER)
+
+            # Convert to PageIR list (0-indexed)
+            for page_index, markdown in enumerate(raw_pages):
+                pages.append(PageIR(page_index=page_index, markdown=markdown))
 
             layout_pages = _build_docling_layout_pages(
                 doc=docling_document,
