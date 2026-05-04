@@ -199,15 +199,12 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             pipeline_name="pulse",
             provider_name="pulse",
             product_type=ProductType.PARSE,
-            config={
-                "return_html": True,
-            },
+            config={},
         )
     )
 
-    # pulse-ultra-2: vision-language model with built-in refinement,
-    # figure/chart extraction, and word-level bounding boxes
-    # (10 credits/page vs 1 credit/page for default).
+    # pulse-ultra-2: vision-language model with figure extraction,
+    # figure descriptions, and refinement enabled.
     register_fn(
         PipelineSpec(
             pipeline_name="pulse_ultra_2",
@@ -215,7 +212,14 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             product_type=ProductType.PARSE,
             config={
                 "model": "pulse-ultra-2",
-                "return_html": True,
+                "extract_figure": True,
+                "figure_description": True,
+                "refine": True,
+                # Optional: select which refinement passes run.
+                "refine_options": {"tables": False, "text": True, "formatting": True},
+                # Optional: domain-specific guidance — replace as needed.
+                "additional_prompt": "<placeholder>",
+                "custom_refine_prompt": "<placeholder>",
             },
         )
     )
