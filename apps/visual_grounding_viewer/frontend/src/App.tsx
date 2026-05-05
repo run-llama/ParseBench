@@ -38,7 +38,7 @@ const DEFAULT_VISIBLE_LAYERS: OverlayLayerVisibility = {
   cell: true,
   field: true,
 }
-const LLAMAINDEX_LOGO_URL = `${import.meta.env.BASE_URL}static/llamaindex-favicon.ico`
+const LLAMAINDEX_LOGO_URL = `${import.meta.env.BASE_URL}static/llamaindex-favicon.ico?v=2`
 
 type DocumentSortDirection = 'highest' | 'lowest'
 
