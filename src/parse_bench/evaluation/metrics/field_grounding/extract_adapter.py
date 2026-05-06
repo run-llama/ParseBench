@@ -24,11 +24,13 @@ from parse_bench.evaluation.metrics.field_grounding.value_compare import (
     COMPARATOR_VERSION,
     ExpectedType,
     compare_attributed_value,
+    compare_field_with_rule,
+    compare_value_against_rule,
     expected_type_for_field_path,
 )
 from parse_bench.schemas.evaluation import MetricValue
 from parse_bench.test_cases.extract_field_paths import get_path, parse_field_path
-from parse_bench.test_cases.schema import ExtractFieldTestRule
+from parse_bench.test_cases.schema import ExtractFieldTestRule, iter_rule_evidence
 
 _MISSING = object()
 
@@ -81,6 +83,15 @@ def compute_extract_field_grounding_metrics(
     metrics.extend(_compute_null_hallucination_metrics(field_rules, extracted_data))
     metrics.extend(
         _compute_extract_pass_rate_metrics(
+            field_rules,
+            extracted_data,
+            field_citations,
+            skip_field_paths=skip_field_paths,
+            data_schema=data_schema,
+        )
+    )
+    metrics.extend(
+        _compute_v02_grounded_pass_rate_metrics(
             field_rules,
             extracted_data,
             field_citations,
@@ -181,7 +192,18 @@ def _compute_null_hallucination_metrics(
     "missed-null" outcome). The runner's standard tp/fp/fn pooling
     produces ``total_null_hallucination_rate_*`` for the global view.
     """
-    null_rules = [rule for rule in field_rules if rule.expected_value is None and rule.verified]
+
+    # v0.2: a rule is null-expected only when neither expected_value nor any
+    # evidence entry carries a value. Legacy rules (no evidence) collapse to
+    # the original ``expected_value is None`` check.
+    def _is_null_expected(rule: ExtractFieldTestRule) -> bool:
+        if rule.expected_value is not None:
+            return False
+        if rule.evidence:
+            return all(entry.value is None for entry in rule.evidence)
+        return True
+
+    null_rules = [rule for rule in field_rules if _is_null_expected(rule) and rule.verified]
     if not null_rules:
         return []
 
@@ -314,19 +336,33 @@ def _compute_extract_pass_rate_metrics(
     rule_results: list[dict[str, Any]] = []
 
     for rule in value_rules:
+        rule_iou_threshold = rule.iou_threshold
         group = _pattern_group(rule.field_path)
         gt_boxes: list[BBox] = []
-        for gt_bbox in rule.bboxes:
-            normalized = _as_xywh(gt_bbox.bbox)
-            if normalized is not None:
-                gt_boxes.append(BBox(page=gt_bbox.page, bbox=normalized, group=group))
+        if rule.evidence is not None:
+            for entry in rule.evidence:
+                if entry.bbox is None:
+                    continue
+                normalized = _as_xywh(entry.bbox)
+                if normalized is not None:
+                    gt_boxes.append(BBox(page=entry.page, bbox=normalized, group=group))
+        else:
+            for gt_bbox in rule.bboxes:
+                normalized = _as_xywh(gt_bbox.bbox)
+                if normalized is not None:
+                    gt_boxes.append(BBox(page=gt_bbox.page, bbox=normalized, group=group))
 
         expected_type = expected_type_for_field_path(data_schema, rule.field_path, rule.expected_value)
         comparison: ValueComparison | None = value_match_by_rule.get(id(rule))
         matched_pred_path = matched_pred_path_by_rule.get(id(rule))
         if gt_boxes:
             pred_boxes = citations_by_field_path.get(matched_pred_path, []) if matched_pred_path else []
-            selected_pred_boxes = _select_best_bbox_group(gt_boxes, pred_boxes, comparison=comparison)
+            selected_pred_boxes = _select_best_bbox_group(
+                gt_boxes,
+                pred_boxes,
+                comparison=comparison,
+                strict_iou_threshold=rule_iou_threshold,
+            )
             bbox_summary = compute_standard_iou_metrics(gt_boxes, selected_pred_boxes)
             bbox_recall_summary = compute_bbox_metrics(gt_boxes, selected_pred_boxes)
             iou = bbox_summary.iou
@@ -346,6 +382,7 @@ def _compute_extract_pass_rate_metrics(
             iou=iou,
             max_ioa=max_ioa,
             comparison=comparison,
+            strict_iou_threshold=rule_iou_threshold,
         )
         attr_pass = loc_pass and comparison is not None and comparison.passed
 
@@ -377,7 +414,12 @@ def _compute_extract_pass_rate_metrics(
                 "mode": comparison.mode if comparison is not None else "missing",
                 "reason": comparison.reason if comparison is not None else "missing_prediction",
                 "localization_reason": (
-                    field_grounding_localization_reason(iou=iou, max_ioa=max_ioa, comparison=comparison)
+                    field_grounding_localization_reason(
+                        iou=iou,
+                        max_ioa=max_ioa,
+                        comparison=comparison,
+                        strict_iou_threshold=rule_iou_threshold,
+                    )
                     if selected_pred_boxes or loc_pass
                     else "no_support_match"
                 ),
@@ -482,11 +524,288 @@ def _compute_extract_pass_rate_metrics(
     ]
 
 
+def _compute_v02_grounded_pass_rate_metrics(
+    field_rules: list[ExtractFieldTestRule],
+    extracted_data: Any,
+    field_citations: list[Any],
+    *,
+    skip_field_paths: Iterable[str] = (),
+    data_schema: dict[str, Any] | None = None,
+) -> list[MetricValue]:
+    """v0.2 page-grounded + bbox-grounded pass-rate triplets.
+
+    For every verified non-stray rule emits, scoped to the rule's field-family
+    pattern (with coarse-parent prefix walking on the citation side):
+
+    - ``extract_page_grounded_pass_rate`` — passes when there is a citation
+      whose page matches some evidence entry AND the pipeline value at the
+      rule's pattern matches that entry's value. Page-only citations qualify.
+    - ``extract_page_grounded_pass_rate_covered`` — same numerator, denominator
+      restricted to rules where at least one matching citation exists.
+    - ``extract_page_grounded_coverage`` — fraction of rules with a qualifying
+      citation (per-leaf binary).
+    - ``extract_attribution_pass_rate_covered`` — M2b numerator (page+IoU+
+      value), denominator restricted to rules where at least one citation has
+      a bbox at the rule's pattern.
+    - ``extract_attribution_coverage`` — fraction of rules with a bbox-bearing
+      citation at the rule's pattern.
+
+    These metrics filter to ``verified=True`` — they're meaningful only on
+    annotated v0.2 gold. Legacy ``extract_attribution_pass_rate`` is unchanged.
+    """
+    skip_set = set(skip_field_paths)
+    eligible = [
+        rule for rule in field_rules if not _is_stray_rule(rule) and rule.field_path not in skip_set and rule.verified
+    ]
+    if not eligible:
+        return []
+
+    # Index citations by their PATTERN. Page-only citations (bbox=None) are
+    # kept; the page filter still applies because page-grounded scoring needs a
+    # page.
+    citations_by_pattern: dict[tuple[str | None, ...], list[Any]] = defaultdict(list)
+    for citation in field_citations:
+        cit_field_path = getattr(citation, "field_path", None)
+        if not cit_field_path:
+            continue
+        if _as_int(getattr(citation, "page", None)) is None:
+            continue
+        cit_pattern = _field_pattern(cit_field_path)
+        if cit_pattern is None:
+            continue
+        citations_by_pattern[cit_pattern].append(citation)
+
+    page_pass = 0
+    page_pass_covered = 0
+    page_qualified = 0
+    bbox_pass_covered = 0
+    bbox_qualified = 0
+
+    rule_results: list[dict[str, Any]] = []
+
+    for rule in eligible:
+        rule_pattern = _field_pattern(rule.field_path)
+        if rule_pattern is None:
+            continue
+        rule_iou_threshold = rule.iou_threshold
+        evidence_entries = iter_rule_evidence(rule)
+
+        # Exact pattern citations
+        exact_cits = list(citations_by_pattern.get(rule_pattern, []))
+        # Coarse parent prefix-walk: any strict prefix of rule_pattern with
+        # citations counts as a coarse cite (M2a only, never M2b).
+        coarse_cits: list[Any] = []
+        for prefix_len in range(1, len(rule_pattern)):
+            coarse_cits.extend(citations_by_pattern.get(rule_pattern[:prefix_len], []))
+
+        page_qual = bool(exact_cits or coarse_cits)
+        bbox_qual = any(getattr(cit, "bbox", None) is not None for cit in exact_cits)
+        page_qualified += int(page_qual)
+        bbox_qualified += int(bbox_qual)
+
+        # Predictions in the rule's field family. M2a aligns by value+page —
+        # any prediction in the family that value-matches against an evidence
+        # entry whose page matches a citation's page passes.
+        predictions = list(_iter_values_for_pattern(extracted_data, rule_pattern))
+        expected_type = expected_type_for_field_path(data_schema, rule.field_path, rule.expected_value)
+
+        page_pass_for_rule = False
+        if page_qual and predictions and evidence_entries:
+            cit_pages = {_as_int(getattr(c, "page", None)) for c in (exact_cits + coarse_cits)}
+            cit_pages.discard(None)
+            for ev in evidence_entries:
+                if ev.page not in cit_pages:
+                    continue
+                for prediction in predictions:
+                    comparison = compare_field_with_rule(
+                        rule,
+                        ev.value if ev.value is not None else rule.expected_value,
+                        prediction,
+                        expected_type=expected_type,
+                        source_kind="structured_value_no_citation_text",
+                    )
+                    if comparison.passed:
+                        page_pass_for_rule = True
+                        break
+                if page_pass_for_rule:
+                    break
+
+        if page_pass_for_rule:
+            page_pass += 1
+            if page_qual:
+                page_pass_covered += 1
+
+        # M2b _covered: only exact citations with bbox; reuse the same combined
+        # IoU rule the legacy metric uses, scoped to evidence (not just
+        # expected_value). Pass requires (page+IoU) AND value match against
+        # some evidence entry.
+        bbox_pass_for_rule = False
+        if bbox_qual:
+            group = _pattern_group(rule.field_path)
+            # Build GT boxes from evidence entries that have bboxes; fall back
+            # to legacy rule.bboxes when evidence is absent.
+            gt_boxes: list[BBox] = []
+            if rule.evidence is not None:
+                for ev in evidence_entries:
+                    if ev.bbox is None:
+                        continue
+                    normalized = _as_xywh(ev.bbox)
+                    if normalized is None:
+                        continue
+                    gt_boxes.append(BBox(page=ev.page, bbox=normalized, group=group))
+            else:
+                for gt_bbox in rule.bboxes:
+                    normalized = _as_xywh(gt_bbox.bbox)
+                    if normalized is None:
+                        continue
+                    gt_boxes.append(BBox(page=gt_bbox.page, bbox=normalized, group=group))
+
+            if gt_boxes:
+                bbox_cits = [c for c in exact_cits if getattr(c, "bbox", None) is not None]
+                pred_boxes = [
+                    BBox(page=_as_int(c.page), bbox=normalized, group=group)
+                    for c in bbox_cits
+                    if (normalized := _as_xywh(getattr(c, "bbox", None))) is not None
+                    and _as_int(getattr(c, "page", None)) is not None
+                ]
+                if pred_boxes:
+                    # Find any prediction that value-matches against any
+                    # evidence entry; use that comparison to drive the
+                    # localization rule (the relaxed branch reads canonical
+                    # exact text from comparison).
+                    best_comparison: ValueComparison | None = None
+                    for prediction in predictions:
+                        cmp = compare_value_against_rule(
+                            rule,
+                            prediction,
+                            expected_type=expected_type,
+                            source_kind="structured_value_no_citation_text",
+                        )
+                        if (
+                            best_comparison is None
+                            or (cmp.passed and not best_comparison.passed)
+                            or (cmp.passed == best_comparison.passed and cmp.score > best_comparison.score)
+                        ):
+                            best_comparison = cmp
+                    selected = _select_best_bbox_group(
+                        gt_boxes,
+                        pred_boxes,
+                        comparison=best_comparison,
+                        strict_iou_threshold=rule_iou_threshold,
+                    )
+                    summary = compute_standard_iou_metrics(gt_boxes, selected)
+                    max_ioa = field_grounding_max_ioa(summary)
+                    loc_pass = field_grounding_localization_passes(
+                        iou=summary.iou,
+                        max_ioa=max_ioa,
+                        comparison=best_comparison,
+                        strict_iou_threshold=rule_iou_threshold,
+                    )
+                    bbox_pass_for_rule = bool(loc_pass and best_comparison is not None and best_comparison.passed)
+
+        if bbox_pass_for_rule:
+            bbox_pass_covered += 1
+
+        rule_results.append(
+            {
+                "field_path": rule.field_path,
+                "page_pass": page_pass_for_rule,
+                "page_qualified": page_qual,
+                "bbox_pass": bbox_pass_for_rule,
+                "bbox_qualified": bbox_qual,
+                "exact_citation_count": len(exact_cits),
+                "coarse_citation_count": len(coarse_cits),
+            }
+        )
+
+    total = len(eligible)
+    base_meta: dict[str, Any] = {
+        "total": total,
+        "verified_only": True,
+        "rule_results": rule_results,
+        "skipped_field_paths": sorted(skip_set),
+    }
+
+    metrics: list[MetricValue] = []
+
+    metrics.append(
+        MetricValue(
+            metric_name="extract_page_grounded_pass_rate",
+            value=page_pass / total if total > 0 else 0.0,
+            metadata={
+                **base_meta,
+                "tp": page_pass,
+                "fp": total - page_pass,
+                "fn": 0,
+                "denominator": "all_verified_rules",
+            },
+        )
+    )
+    metrics.append(
+        MetricValue(
+            metric_name="extract_page_grounded_pass_rate_covered",
+            value=page_pass_covered / page_qualified if page_qualified > 0 else 0.0,
+            metadata={
+                **base_meta,
+                "tp": page_pass_covered,
+                "fp": page_qualified - page_pass_covered,
+                "fn": 0,
+                "denominator": "page_qualified_rules",
+                "covered_total": page_qualified,
+            },
+        )
+    )
+    metrics.append(
+        MetricValue(
+            metric_name="extract_page_grounded_coverage",
+            value=page_qualified / total if total > 0 else 0.0,
+            metadata={
+                **base_meta,
+                "tp": page_qualified,
+                "fp": total - page_qualified,
+                "fn": 0,
+                "denominator": "all_verified_rules",
+                "definition": "per_leaf_binary_any_matching_citation_with_page",
+            },
+        )
+    )
+    metrics.append(
+        MetricValue(
+            metric_name="extract_attribution_pass_rate_covered",
+            value=bbox_pass_covered / bbox_qualified if bbox_qualified > 0 else 0.0,
+            metadata={
+                **base_meta,
+                "tp": bbox_pass_covered,
+                "fp": bbox_qualified - bbox_pass_covered,
+                "fn": 0,
+                "denominator": "bbox_qualified_rules",
+                "covered_total": bbox_qualified,
+            },
+        )
+    )
+    metrics.append(
+        MetricValue(
+            metric_name="extract_attribution_coverage",
+            value=bbox_qualified / total if total > 0 else 0.0,
+            metadata={
+                **base_meta,
+                "tp": bbox_qualified,
+                "fp": total - bbox_qualified,
+                "fn": 0,
+                "denominator": "all_verified_rules",
+                "definition": "per_leaf_binary_any_matching_citation_with_bbox",
+            },
+        )
+    )
+    return metrics
+
+
 def _select_best_bbox_group(
     gt_boxes: list[BBox],
     pred_boxes: list[BBox],
     *,
     comparison: ValueComparison | None,
+    strict_iou_threshold: float | None = None,
 ) -> list[BBox]:
     """Select the predicted citation bbox group using field localization semantics."""
     if not gt_boxes or not pred_boxes:
@@ -507,6 +826,7 @@ def _select_best_bbox_group(
             iou=summary.iou,
             max_ioa=max_ioa,
             comparison=comparison,
+            strict_iou_threshold=strict_iou_threshold,
         )
         key = (
             float(loc_candidate),
@@ -569,17 +889,22 @@ def _is_stray_rule(rule: ExtractFieldTestRule) -> bool:
     Stray rules are bbox-only evidence rules: they assert that some content
     exists at a location without prescribing a value. They are excluded from
     value F1 (already) and from record-level metrics; they remain in bbox
-    metrics. ``expected_value is None`` covers both explicit stray-tagged
-    rules and the small set of null-value rules with bboxes that aren't
-    formally tagged (e.g., the K-1 part_iii_line_* anomalies in v0.6).
+    metrics.
+
+    v0.2: rules with ``expected_value=None`` but evidence carrying non-null
+    values are NOT stray — they prescribe values via the evidence list. A rule
+    is stray when both ``expected_value`` is None AND no evidence entry
+    contributes a value (legacy null-expected behavior preserved).
     """
     tags = {tag.casefold() for tag in rule.tags}
-    return (
-        rule.expected_value is None
-        or "stray" in tags
-        or "no_value" in tags
-        or any(tag.endswith(":stray") for tag in tags)
-    )
+    if "stray" in tags or "no_value" in tags or any(tag.endswith(":stray") for tag in tags):
+        return True
+    if rule.expected_value is not None:
+        return False
+    if rule.evidence:
+        if any(entry.value is not None for entry in rule.evidence):
+            return False
+    return True
 
 
 def _field_pattern(field_path: str) -> tuple[str | None, ...] | None:
@@ -699,8 +1024,8 @@ def _match_value_group_detailed(
     for rule_index, rule in enumerate(rules):
         expected_type = expected_type_for_field_path(data_schema, rule.field_path, rule.expected_value)
         for pred_index, prediction in enumerate(predictions):
-            comparison = compare_attributed_value(
-                rule.expected_value,
+            comparison = compare_value_against_rule(
+                rule,
                 prediction,
                 expected_type=expected_type,
                 source_kind="structured_value_no_citation_text",
@@ -769,13 +1094,21 @@ def _match_value_group_detailed_with_geometry(
     best_by_rule: dict[int, tuple[tuple[float, float, float, float, float, float], str, ValueComparison]] = {}
 
     for rule_index, rule in enumerate(rules):
+        rule_iou_threshold = rule.iou_threshold
         expected_type = expected_type_for_field_path(data_schema, rule.field_path, rule.expected_value)
         group = _pattern_group(rule.field_path)
-        gt_boxes = [
-            BBox(page=bbox.page, bbox=normalized, group=group)
-            for bbox in rule.bboxes
-            if (normalized := _as_xywh(bbox.bbox)) is not None
-        ]
+        if rule.evidence is not None:
+            gt_boxes = [
+                BBox(page=entry.page, bbox=normalized, group=group)
+                for entry in rule.evidence
+                if entry.bbox is not None and (normalized := _as_xywh(entry.bbox)) is not None
+            ]
+        else:
+            gt_boxes = [
+                BBox(page=bbox.page, bbox=normalized, group=group)
+                for bbox in rule.bboxes
+                if (normalized := _as_xywh(bbox.bbox)) is not None
+            ]
         for pred_path in pred_paths:
             comparison = _compare_prediction_path_value(
                 rule,
@@ -793,6 +1126,7 @@ def _match_value_group_detailed_with_geometry(
                     gt_boxes,
                     citations_by_field_path.get(pred_path, []),
                     comparison=comparison,
+                    strict_iou_threshold=rule_iou_threshold,
                 )
                 summary = compute_standard_iou_metrics(gt_boxes, selected)
                 iou = summary.iou
@@ -802,6 +1136,7 @@ def _match_value_group_detailed_with_geometry(
                     iou=iou,
                     max_ioa=max_ioa,
                     comparison=comparison,
+                    strict_iou_threshold=rule_iou_threshold,
                 )
 
             key = (
@@ -835,8 +1170,8 @@ def _compare_prediction_path_value(
     expected_type: ExpectedType,
 ) -> ValueComparison:
     if pred_path in value_by_path:
-        return compare_attributed_value(
-            rule.expected_value,
+        return compare_value_against_rule(
+            rule,
             value_by_path[pred_path],
             expected_type=expected_type,
             source_kind="structured_value_no_citation_text",
@@ -844,8 +1179,8 @@ def _compare_prediction_path_value(
 
     best: ValueComparison | None = None
     for value in fallback_values:
-        comparison = compare_attributed_value(
-            rule.expected_value,
+        comparison = compare_value_against_rule(
+            rule,
             value,
             expected_type=expected_type,
             source_kind="structured_value_no_citation_text",

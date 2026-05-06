@@ -18,6 +18,7 @@ from parse_bench.test_cases.bbox_value_strict_comparator import (
 from parse_bench.test_cases.bbox_value_strict_comparator import (
     compare as compare_bbox_value,
 )
+from parse_bench.test_cases.schema import ExtractFieldTestRule
 
 AttributionSource = Literal["native", "ocr", "structured_value_no_citation_text"]
 
@@ -181,10 +182,112 @@ def _thaw_schema(value: tuple[Any, ...]) -> Any:
     return [_thaw_schema(cast(tuple[Any, ...], item)) for item in value]
 
 
+def compare_field_with_rule(
+    rule: ExtractFieldTestRule | None,
+    expected_value: Any,
+    actual_text: Any,
+    *,
+    expected_type: ExpectedType | None = None,
+    source_kind: AttributionSource = "native",
+    allow_diagnostic_equivalences: bool = False,
+) -> ValueComparison:
+    """v0.2 dispatch shim — extract paths only.
+
+    When ``rule.comparator`` is set, dispatches to a per-comparator implementation;
+    otherwise falls through to ``compare_attributed_value`` (today's extract-side
+    behavior). Phase A: only the fall-through branch is wired — Phase B fills in the
+    dispatch table for ``exact``, ``enum``, ``number_with_unit``, ``string_substring``.
+
+    The shim accepts ``rule=None`` so legacy callers that don't have a rule object
+    (record-level metrics, raw value comparison) can opt in incrementally without
+    threading rule context everywhere.
+    """
+    return compare_attributed_value(
+        expected_value,
+        actual_text,
+        expected_type=expected_type,
+        source_kind=source_kind,
+        allow_diagnostic_equivalences=allow_diagnostic_equivalences,
+    )
+
+
+def candidate_values_for_rule(rule: ExtractFieldTestRule | None) -> list[Any]:
+    """v0.2: yield the deduped set of candidate values for a rule (OR-over-evidence).
+
+    When ``rule.evidence`` is set, returns each evidence ``value`` plus
+    ``rule.expected_value`` (deduped, preserving order). Legacy rules return a
+    single-element list with ``expected_value``. Empty rule returns ``[None]`` so
+    null-expected rules still roundtrip through the comparator.
+    """
+    if rule is None:
+        return [None]
+    seen: set[Any] = set()
+    candidates: list[Any] = []
+
+    def _push(value: Any) -> None:
+        try:
+            key = ("hashable", value)
+            hash(key)
+            if key in seen:
+                return
+            seen.add(key)
+        except TypeError:
+            pass
+        candidates.append(value)
+
+    if rule.evidence is not None:
+        for entry in rule.evidence:
+            _push(entry.value)
+    _push(rule.expected_value)
+    return candidates
+
+
+def compare_value_against_rule(
+    rule: ExtractFieldTestRule | None,
+    prediction: Any,
+    *,
+    expected_type: ExpectedType | None = None,
+    source_kind: AttributionSource = "native",
+    allow_diagnostic_equivalences: bool = False,
+) -> ValueComparison:
+    """Best-of comparison across a rule's candidate values (OR-over-evidence).
+
+    For legacy rules with no v0.2 evidence list this collapses to a single
+    ``compare_field_with_rule`` call against ``rule.expected_value`` — fully
+    backward-compatible. For v0.2 rules with multiple evidence entries the result
+    is the highest-scoring (passing > non-passing, then by score) comparison
+    across all candidate values.
+    """
+    candidates = candidate_values_for_rule(rule)
+    best: ValueComparison | None = None
+    for candidate in candidates:
+        comparison = compare_field_with_rule(
+            rule,
+            candidate,
+            prediction,
+            expected_type=expected_type,
+            source_kind=source_kind,
+            allow_diagnostic_equivalences=allow_diagnostic_equivalences,
+        )
+        if best is None:
+            best = comparison
+            continue
+        if (comparison.passed and not best.passed) or (
+            comparison.passed == best.passed and comparison.score > best.score
+        ):
+            best = comparison
+    if best is None:
+        return ValueComparison(passed=False, score=0.0, mode="missing", reason="no_candidates")
+    return best
+
+
 __all__ = [
     "COMPARATOR_VERSION",
     "AttributionSource",
+    "candidate_values_for_rule",
     "compare_attributed_value",
+    "compare_field_with_rule",
+    "compare_value_against_rule",
     "expected_type_for_field_path",
     "infer_expected_type",
 ]

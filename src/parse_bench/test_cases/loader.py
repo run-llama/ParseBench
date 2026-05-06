@@ -227,8 +227,33 @@ def load_test_case(
     group = file_path.parent.name
     test_id = f"{group}/{file_path.stem}"
 
-    # Get test_rules and other fields
-    test_rules = test_config.get("test_rules", [])
+    # v0.2 _field_rules dict shape (one entry per leaf path) → list shape used by
+    # the rest of the loader. Conflict policy: error if both _field_rules and
+    # test_rules are present so the test author chooses one shape per file.
+    field_rules_dict = test_config.get("_field_rules")
+    raw_test_rules = test_config.get("test_rules")
+    if field_rules_dict is not None and raw_test_rules:
+        raise ValueError(f"{test_json_path}: cannot specify both _field_rules and test_rules; choose one shape")
+    if field_rules_dict is not None:
+        if not isinstance(field_rules_dict, dict):
+            raise ValueError(f"Invalid _field_rules in {test_json_path}: must be a dict keyed by field_path")
+        converted: list[dict[str, Any]] = []
+        for field_path, rule_body in field_rules_dict.items():
+            if not isinstance(rule_body, dict):
+                raise ValueError(f"Invalid _field_rules entry for {field_path!r} in {test_json_path}: must be a dict")
+            entry = dict(rule_body)
+            existing_type = entry.get("type")
+            if existing_type not in (None, "extract_field"):
+                raise ValueError(
+                    f"_field_rules[{field_path!r}].type must be 'extract_field' "
+                    f"(got {existing_type!r}) in {test_json_path}"
+                )
+            entry["type"] = "extract_field"
+            entry["field_path"] = field_path
+            converted.append(entry)
+        test_rules = converted
+    else:
+        test_rules = raw_test_rules if raw_test_rules is not None else []
     if not isinstance(test_rules, list):
         raise ValueError(f"Invalid test_rules field in {test_json_path}: must be a list")
     data_schema = test_config.get("data_schema")
@@ -269,6 +294,7 @@ def load_test_case(
             config=test_config.get("config"),
             expected_output=test_config.get("expected_output"),
             test_rules=test_rules,
+            **({"_schema_version": test_config["_schema_version"]} if "_schema_version" in test_config else {}),
         )
 
         extract_field_rules = extract_case.get_extract_field_rules()

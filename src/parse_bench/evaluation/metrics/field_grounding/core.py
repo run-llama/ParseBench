@@ -270,13 +270,20 @@ def field_grounding_localization_passes(
     iou: float,
     max_ioa: float,
     comparison: ValueComparison | None,
+    strict_iou_threshold: float | None = None,
 ) -> bool:
     """Evaluate strict-or-relaxed field localization semantics.
 
     The relaxed branch is reserved for small granularity mismatches: it still
     requires meaningful overlap and an exact typed text/value match.
+
+    ``strict_iou_threshold`` overrides only the strict branch (default 0.5). The
+    relaxed value-conditioned branch (IoU>=0.3 AND IoA>=0.7 AND canonical_exact)
+    is unaffected by the override — it's a fallback escape hatch for granularity
+    mismatches and is intentionally not tunable per rule.
     """
-    if iou >= FIELD_GROUNDING_STRICT_IOU_THRESHOLD:
+    strict = FIELD_GROUNDING_STRICT_IOU_THRESHOLD if strict_iou_threshold is None else strict_iou_threshold
+    if iou >= strict:
         return True
     if field_grounding_has_null_empty_match(comparison):
         return True
@@ -292,12 +299,19 @@ def field_grounding_localization_reason(
     iou: float,
     max_ioa: float,
     comparison: ValueComparison | None,
+    strict_iou_threshold: float | None = None,
 ) -> str:
-    if iou >= FIELD_GROUNDING_STRICT_IOU_THRESHOLD:
+    strict = FIELD_GROUNDING_STRICT_IOU_THRESHOLD if strict_iou_threshold is None else strict_iou_threshold
+    if iou >= strict:
         return "pass"
     if field_grounding_has_null_empty_match(comparison):
         return "pass_null_empty_overlap" if max_ioa > 0.0 else "pass_null_empty_no_support"
-    if field_grounding_localization_passes(iou=iou, max_ioa=max_ioa, comparison=comparison):
+    if field_grounding_localization_passes(
+        iou=iou,
+        max_ioa=max_ioa,
+        comparison=comparison,
+        strict_iou_threshold=strict_iou_threshold,
+    ):
         return "pass_relaxed_iou_canonical_exact"
     return "iou_below_threshold"
 

@@ -220,13 +220,23 @@ def _normalize_citation(
                     metadata=metadata,
                 )
             )
-        return results
+        if results:
+            return results
+        return [
+            _field_citation_cls()(
+                field_path=field_path,
+                page=page,
+                bbox=None,
+                polygon=normalized_polygon,
+                reference_text=reference_text,
+                confidence=confidence,
+                source=source,
+                metadata=metadata,
+            )
+        ]
 
     raw_bbox = _bbox_from_polygon(polygon) if polygon is not None else _extract_bbox(citation_map)
     normalized_bbox = _normalize_bbox(raw_bbox, dimensions)
-    if normalized_bbox is None:
-        return []
-
     normalized_polygon = _normalize_polygon(polygon, dimensions) if polygon is not None else None
     return [
         _field_citation_cls()(
@@ -491,7 +501,7 @@ def _dedupe(citations: list[FieldCitation]) -> list[FieldCitation]:
         key = (
             citation.field_path,
             citation.page,
-            tuple(citation.bbox),
+            tuple(citation.bbox) if citation.bbox is not None else None,
             citation.reference_text,
             citation.source,
         )

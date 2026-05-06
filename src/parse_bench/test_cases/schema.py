@@ -137,6 +137,33 @@ class ExtractFieldBbox(BaseModel):
     )
 
 
+class FieldEvidence(BaseModel):
+    """One accepted location for a field's value (v0.2 evidence list entry).
+
+    A leaf can have multiple evidence entries (the same answer printed in different
+    places, or alternate canonical forms). Pipelines pass M1/M2a/M2b if they match
+    *any* entry. Primitives only — object-typed leaves are decomposed into sub-leaves.
+    """
+
+    page: int = Field(ge=1, description="1-indexed page number")
+    bbox: list[float] | None = Field(
+        default=None,
+        description=("Normalized COCO [x, y, w, h] bbox; None for page-only / parent-level cites."),
+    )
+    quote: str | None = Field(
+        default=None,
+        description="Verbatim text from the parsed PDF; None when page-only.",
+    )
+    value: str | int | float | bool | None = Field(
+        default=None,
+        description="Canonical schema-shaped value at this location (primitives only).",
+    )
+    coarse: bool = Field(
+        default=False,
+        description="True when this is a parent-level cite or page-only evidence.",
+    )
+
+
 class ExtractFieldTestRule(BaseModel):
     """Self-contained extract field test: value + evidence bboxes + verified flag."""
 
@@ -162,6 +189,51 @@ class ExtractFieldTestRule(BaseModel):
         ),
     )
     tags: list[str] = Field(default_factory=list, description="Optional per-rule tags")
+    # --- v0.2 additions (all optional; legacy rules ignore these) ---
+    evidence: list[FieldEvidence] | None = Field(
+        default=None,
+        description=(
+            "v0.2 evidence list: per-location (page, bbox, quote, value, coarse) entries. "
+            "When present, supersedes the legacy bboxes+expected_value pair for matching."
+        ),
+    )
+    comparator: str | None = Field(
+        default=None,
+        description=(
+            "v0.2 per-leaf comparator name (e.g. 'exact', 'enum', 'number_with_unit', "
+            "'string_substring'). Phase A: parsed but not yet dispatched. None = legacy default."
+        ),
+    )
+    structural: str | None = Field(
+        default=None,
+        description=(
+            "v0.2 array-parent structural rule ('ordered', 'set', 'multiset', 'match_by:<key>'). "
+            "Phase A: parsed but not yet dispatched."
+        ),
+    )
+    evidence_required: bool = Field(
+        default=True,
+        description="v0.2: when False, pipeline may pass M1 with no grounding evidence.",
+    )
+    source_policy: Literal["verbatim", "computed", "inferred"] = Field(
+        default="verbatim",
+        description="v0.2: how the value originates in the source (verbatim, computed, inferred).",
+    )
+    max_evidence: int | None = Field(
+        default=None,
+        ge=1,
+        description="v0.2: cap on evidence list length (None = unlimited).",
+    )
+    iou_threshold: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "v0.2: per-rule strict-IoU override for M2b. None = harness default (0.5). "
+            "Replaces the strict 0.5 threshold only; the relaxed value-conditioned branch "
+            "(IoU>=0.3 AND IoA>=0.7 AND canonical_exact) is unaffected."
+        ),
+    )
 
 
 ExtractRuleUnion = ExtractFieldTestRule | dict[str, Any]
@@ -198,6 +270,11 @@ class ExtractTestCase(BaseTestCase):
     test_rules: list[ExtractRuleUnion] | None = Field(
         default=None,
         description="List of rule-based test definitions (from test.json test_rules)",
+    )
+    schema_version: str | None = Field(
+        default=None,
+        alias="_schema_version",
+        description="v0.2 schema version tag (e.g. 'extract_core/v0.2'); informational only.",
     )
 
     @field_validator("test_rules", mode="before")
@@ -365,3 +442,25 @@ class LayoutDetectionTestCase(BaseTestCase):
 
 # Union type for backward compatibility
 TestCase = ExtractTestCase | ParseTestCase | LayoutDetectionTestCase
+
+
+def iter_rule_evidence(rule: ExtractFieldTestRule) -> list[FieldEvidence]:
+    """Normalize legacy bboxes/expected_value or v0.2 evidence list into FieldEvidence entries.
+
+    Single normalization point — every metric path consumes this. When ``rule.evidence`` is
+    set, returns it verbatim. Otherwise synthesizes one entry per legacy ``ExtractFieldBbox``
+    using ``rule.expected_value``, with ``coarse=False``. Returns an empty list when the rule
+    has neither (in which case M1 falls back to comparing ``rule.expected_value`` directly).
+    """
+    if rule.evidence is not None:
+        return list(rule.evidence)
+    return [
+        FieldEvidence(
+            page=bbox.page,
+            bbox=list(bbox.bbox),
+            quote=None,
+            value=rule.expected_value,
+            coarse=False,
+        )
+        for bbox in rule.bboxes
+    ]
