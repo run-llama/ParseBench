@@ -525,6 +525,72 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # PaddleOCR-VL 1.5 (0.9B) vLLM — OCR prompt (general text/structure)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="paddleocr_vl_1_5_vllm",
+            provider_name="paddleocr",
+            product_type=ProductType.PARSE,
+            config={
+                "api_format": "openai",
+                "task": "ocr",
+            },
+        )
+    )
+
+    # PaddleOCR-VL 1.5 (0.9B) vLLM — Table Recognition prompt
+    register_fn(
+        PipelineSpec(
+            pipeline_name="paddleocr_vl_1_5_vllm_table",
+            provider_name="paddleocr",
+            product_type=ProductType.PARSE,
+            config={
+                "api_format": "openai",
+                "task": "table",
+            },
+        )
+    )
+
+    # PaddleOCR-VL 1.5 (0.9B) full pipeline (layout detection + per-region routing)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="paddleocr_vl_1_5_pipeline",
+            provider_name="paddleocr",
+            product_type=ProductType.PARSE,
+            config={
+                "api_format": "simple",
+            },
+        )
+    )
+
+    # =========================================================================
+    # Falcon-OCR (TII, 300M early-fusion VLM with built-in layout-aware OCR)
+    # =========================================================================
+
+    # Layout-aware OCR via model.generate_with_layout (PP-DocLayoutV3 inside).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="falconocr_pipeline",
+            provider_name="falconocr",
+            product_type=ProductType.PARSE,
+            config={
+                "task": "ocr",
+            },
+        )
+    )
+
+    # Plain single-shot OCR (no layout routing) for ablation.
+    register_fn(
+        PipelineSpec(
+            pipeline_name="falconocr_plain",
+            provider_name="falconocr",
+            product_type=ProductType.PARSE,
+            config={
+                "task": "plain",
+            },
+        )
+    )
+
     # =========================================================================
     # Anthropic Claude Vision Parse
     # =========================================================================

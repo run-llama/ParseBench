@@ -354,6 +354,101 @@ class PaddleOCRProvider(Provider):
 
         return re.sub(r"<[^>]+>", _quote_attrs, markdown)
 
+    @staticmethod
+    def _otsl_to_html(text: str) -> str:
+        """Convert PaddleOCR-VL-1.5 OTSL output to HTML <table>.
+
+        PaddleOCR-VL-1.5 with ``Table Recognition:`` prompt emits OTSL tokens:
+
+        - ``<fcel>cell``  full cell with content
+        - ``<ecel>``      empty cell
+        - ``<lcel>``      left-merge extension (colspan continuation)
+        - ``<ucel>``      up-merge extension (rowspan continuation)
+        - ``<xcel>``      diagonal-merge (both row and col extension)
+        - ``<ched>cell``  column header cell
+        - ``<rhed>cell``  row header cell
+        - ``<srow>cell``  section-row cell
+        - ``<nl>``        end of row
+
+        Tokens may be wrapped in ``<otsl>...</otsl>`` or appear bare. Any text
+        before/after a contiguous OTSL block is preserved verbatim. The whole
+        OTSL run is rendered as a single HTML ``<table>``.
+        """
+        if "<fcel>" not in text and "<ecel>" not in text and "<ched>" not in text:
+            return text
+
+        text = re.sub(r"</?otsl[^>]*>", "", text, flags=re.IGNORECASE)
+
+        token_re = re.compile(
+            r"(<fcel>|<ecel>|<lcel>|<ucel>|<xcel>|<ched>|<rhed>|<srow>|<nl>)",
+            re.IGNORECASE,
+        )
+        parts = token_re.split(text)
+
+        out: list[str] = []
+        i = 0
+        n = len(parts)
+        while i < n:
+            part = parts[i]
+            if not token_re.match(part):
+                if part:
+                    out.append(part)
+                i += 1
+                continue
+
+            rows: list[list[tuple[str, str]]] = [[]]
+            while i < n:
+                tok = parts[i]
+                m = token_re.match(tok)
+                if not m:
+                    break
+                kind = tok.lower().strip("<>")
+                i += 1
+                content = parts[i] if i < n and not token_re.match(parts[i]) else ""
+                if content:
+                    i += 1
+                content = content.strip()
+                if kind == "nl":
+                    if rows[-1]:
+                        rows.append([])
+                    continue
+                rows[-1].append((kind, content))
+            if rows and not rows[-1]:
+                rows.pop()
+
+            html: list[str] = ['<table border="1">']
+            for r, row in enumerate(rows):
+                html.append("<tr>")
+                c = 0
+                while c < len(row):
+                    kind, content = row[c]
+                    if kind in ("lcel", "ucel", "xcel"):
+                        c += 1
+                        continue
+                    colspan = 1
+                    j = c + 1
+                    while j < len(row) and row[j][0] == "lcel":
+                        colspan += 1
+                        j += 1
+                    rowspan = 1
+                    rr = r + 1
+                    while rr < len(rows) and c < len(rows[rr]) and rows[rr][c][0] in ("ucel", "xcel"):
+                        rowspan += 1
+                        rr += 1
+                    tag = "th" if kind in ("ched", "rhed") else "td"
+                    attrs = ""
+                    if colspan > 1:
+                        attrs += f' colspan="{colspan}"'
+                    if rowspan > 1:
+                        attrs += f' rowspan="{rowspan}"'
+                    html.append(f"<{tag}{attrs}>{content}</{tag}>")
+                    c = j
+                html.append("</tr>")
+            html.append("</table>")
+            out.append("".join(html))
+
+        return "".join(out)
+
     def normalize(self, raw_result: RawInferenceResult) -> InferenceResult:
         """
         Normalize raw inference result to produce ParseOutput.
@@ -370,8 +465,11 @@ class PaddleOCRProvider(Provider):
         # Extract markdown from raw output
         markdown = raw_result.raw_output.get("markdown", "")
 
-        # Sanitize HTML attributes for XML-based metric parsers (e.g. GriTS)
         if markdown:
+            # PaddleOCR-VL-1.5 "Table Recognition:" returns OTSL tokens; convert
+            # to HTML so GriTS/TEDS can score it. No-op when OTSL tokens absent.
+            markdown = self._otsl_to_html(markdown)
+            # Quote bare HTML attributes for XML-based metric parsers (e.g. GriTS).
             markdown = self._sanitize_html_attributes(markdown)
 
         # Create ParseOutput with document-level markdown

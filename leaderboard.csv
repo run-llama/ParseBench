@@ -29,8 +29,10 @@ Databricks AI Parse,Commercial - IDP,52.22,83.67,0,88.25,55.25,33.91,6.06,,,,,
 Databricks AI Parse (batch),Commercial - IDP,52.2,83.93,0,88.3,55.04,33.74,2.5,,,,,
 Qwen3-VL-8B-Instruct,VLM - Open Weight,61.97,74.61,28.18,87.63,64.23,55.18,,,,,,Qwen/Qwen3-VL-8B-Instruct
 Dots.mocr,VLM - Open Weight,55.79,85.15,0.95,90.03,46.99,55.81,,,,,,rednote-hilab/dots.mocr
+Falcon-OCR,VLM - Open Weight,53.08,74.70,0.82,78.59,47.91,63.37,,,,,,tiiuae/Falcon-OCR
 Docling-models,VLM - Open Weight,50.65,66.41,52.76,66.93,1.03,66.11,,,,,,docling-project/docling-models
 Chandra-ocr-2,VLM - Open Weight,70.1,89.2,65.1,83.7,61.4,51.2,,,,,,datalab-to/chandra-ocr-2
+PaddleOCR-VL-1.5,VLM - Open Weight,65.95,67.38,47.62,82.72,54.27,77.78,,,,,,PaddlePaddle/PaddleOCR-VL-1.5
 Gemma-4-31B-it,VLM - Open Weight,62.4,80.6,15,89.9,69.3,57.4,,,,,,google/gemma-4-31B-it
 Gemma-4-26B-A4B-it,VLM - Open Weight,58.5,70,14.2,83.8,65.1,59.2,,,,,,google/gemma-4-26B-A4B-it
 LightOnOCR-2-1B,VLM - Open Weight,48,75.5,13.5,87.8,63.2,0,,,,,,lightonai/LightOnOCR-2-1B
