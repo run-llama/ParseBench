@@ -17,6 +17,7 @@ _PROVIDER_MODULES = [
     "docling_serve",
     "dots_ocr",
     "extend_parse",
+    "falconocr",
     "gemma4",
     "google",
     "google_docai",
