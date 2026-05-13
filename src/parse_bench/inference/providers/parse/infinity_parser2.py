@@ -66,6 +66,7 @@ class InfinityParser2Provider(Provider):
         - batch_size (int, default=4): Batch size for processing
         - max_new_tokens (int, default=None): Override max tokens for generation
         - temperature (float, default=0.0): Sampling temperature
+        - deep_parsing_mode (bool, default=True): Parse figure content.
     """
 
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
@@ -80,6 +81,7 @@ class InfinityParser2Provider(Provider):
         self._batch_size = self.base_config.get("batch_size", 4)
         self._max_new_tokens = self.base_config.get("max_new_tokens")
         self._temperature = self.base_config.get("temperature", 0.0)
+        self._deep_parsing_mode = self.base_config.get("deep_parsing_mode", True)
 
         try:
             from infinity_parser2 import InfinityParser2
@@ -121,6 +123,9 @@ class InfinityParser2Provider(Provider):
 
             pil_image, page_width, page_height = load_image(file_path)
             result = self._parser.parse(pil_image, **parse_kwargs)
+
+            if self._deep_parsing_mode:
+                result = self._apply_deep_parsing(result, pil_image)
 
             return {
                 "result": result,
@@ -206,7 +211,8 @@ class InfinityParser2Provider(Provider):
             stripped = re.sub(r"^[\s$\(\)\[\]]+|[\s$\(\)\[\]]+$", "", text)
             return f"$${stripped}$$"
         elif label == "Picture":
-            return _convert_nonstandard_table(text)
+            text = _convert_nonstandard_table(text)
+            return text if _is_valid_md_table(text) else ""
         elif label == "Table":
             return _convert_table_header(text)
         else:
@@ -228,6 +234,58 @@ class InfinityParser2Provider(Provider):
             "bbox": layout_seg,
             "layout_segments": [layout_seg],
         }
+
+    def _apply_deep_parsing(
+        self,
+        result: str,
+        pil_image: PILImage.Image,
+    ) -> str:
+        """Apply deep parsing on figure elements, re-parsing cropped figure images as markdown tables.
+
+        Extracts all ``figure`` elements from the parsed JSON, crops each figure region from
+        ``pil_image``, re-parses the cropped images with a custom table-extraction prompt,
+        and overwrites ``elem["text"]`` in place before serializing back to JSON.
+
+        Returns the (possibly modified) JSON string.
+        """
+        try:
+            elements: list[dict] = json.loads(result)
+            if not isinstance(elements, list):
+                return result
+
+            figure_elements = [
+                elem for elem in elements
+                if elem.get("category", "").strip().lower() == "figure"
+            ]
+            if not figure_elements:
+                return result
+
+            pil_figure_images = [
+                pil_image.crop(
+                    (
+                        max(0, int(elem["bbox"][0])),
+                        max(0, int(elem["bbox"][1])),
+                        min(pil_image.width, int(elem["bbox"][2])),
+                        min(pil_image.height, int(elem["bbox"][3])),
+                    )
+                )
+                for elem in figure_elements
+            ]
+
+            deep_parse_kwargs = {
+                "task_type": "custom",
+                "custom_prompt": "please convert the image to a markdown table",
+                "max_new_tokens": 2048,
+            }
+            deep_results = [self._parser.parse(img, **deep_parse_kwargs) for img in pil_figure_images]
+            for elem, deep_result in zip(figure_elements, deep_results):
+                elem["text"] = deep_result
+
+            return json.dumps(elements)
+
+        except Exception:
+            traceback.print_exc()
+            return result
 
     def _normalize(self, raw_result: RawInferenceResult) -> ParseOutput:
         """Normalize JSON layout result into ParseOutput with pages, layout_pages, and markdown."""
@@ -364,6 +422,22 @@ def load_image(file_path: str) -> tuple[PILImage.Image, float, float]:
 # =============================================================================
 # Postprocess for chart2table
 # =============================================================================
+
+def _is_valid_md_table(table_text: str) -> bool:
+    """Check if a markdown table is valid (non-empty)."""
+    if not table_text or not table_text.strip():
+        return False
+
+    if not all(ch in table_text for ch in ["|", "-", "\n"]):
+        return False
+
+    stripped = table_text[table_text.find("|") : table_text.rfind("|") + 1]
+    stripped = re.sub(r"^\s*\|[\s\-:|]+\|\s*$", "", stripped, flags=re.MULTILINE)
+    if not stripped.replace(" ", "").replace("\n", "").replace("|", ""):
+        return False
+
+    return True
+
 
 def _is_nonstandard_table(text: str) -> bool:
     """Check if text is a non-standard markdown table (no leading '|', contains '&' separators)."""
