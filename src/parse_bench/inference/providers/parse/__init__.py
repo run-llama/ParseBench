@@ -21,6 +21,7 @@ _PROVIDER_MODULES = [
     "google",
     "google_docai",
     "granite_vision",
+    "infinity_parser2",
     "landingai",
     "llamaparse",
     "llamaparse_v2_normalization",

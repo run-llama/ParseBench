@@ -313,6 +313,7 @@ class LayoutDetectionModel(StrEnum):
     ANTHROPIC_LAYOUT = "anthropic_layout"
     GEMMA4_LAYOUT = "gemma4_layout"
     DATABRICKS_LAYOUT = "databricks_layout"
+    INFINITY_PARSER2_LAYOUT = "infinity_parser2_layout"
 
 
 LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {

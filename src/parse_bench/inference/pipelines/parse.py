@@ -1624,6 +1624,36 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     # Databricks ai_parse_document
     # =========================================================================
 
+    # Infinity-Parser2-Flash (infly/Infinity-Parser2-Flash, vLLM server)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="infinity_parser2_flash",
+            provider_name="infinity_parser2",
+            product_type=ProductType.PARSE,
+            config={
+                "model_name": "infly/Infinity-Parser2-Flash",
+                "backend": "vllm-server",
+                "task_type": "doc2json",
+                "output_format": "json",
+            },
+        )
+    )
+
+    # Infinity-Parser2-Pro (infly/Infinity-Parser2-Pro, vLLM server)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="infinity_parser2_pro",
+            provider_name="infinity_parser2",
+            product_type=ProductType.PARSE,
+            config={
+                "model_name": "infly/Infinity-Parser2-Pro",
+                "backend": "vllm-server",
+                "task_type": "doc2json",
+                "output_format": "json",
+            },
+        )
+    )
+
     register_fn(
         PipelineSpec(
             pipeline_name="databricks_ai_parse",

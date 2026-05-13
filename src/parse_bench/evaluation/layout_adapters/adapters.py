@@ -2119,6 +2119,102 @@ class Chandra2LayoutAdapter(LayoutAdapter):
         )
 
 
+@register_layout_adapter("infinity_parser2", priority=90)
+class InfinityParser2LayoutAdapter(LayoutAdapter):
+    """Adapter that extracts LayoutOutput from InfinityParser2 ParseOutput.layout_pages.
+
+    Enables cross-evaluation: the ``infinity_parser2`` PARSE pipeline can be
+    evaluated against layout detection datasets using the native bboxes from
+    the model output.
+
+    InfinityParser2 stores bboxes in pixel coordinates (page_width x page_height),
+    unlike Chandra2 which stores them in normalized [0,1] space. The adapter
+    converts pixel bboxes to absolute coordinates before building LayoutOutput.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput):
+            return False
+        if not inference_result.output.layout_pages:
+            return False
+        raw_output = inference_result.raw_output
+        if isinstance(raw_output, dict):
+            config = raw_output.get("_config", {})
+            return (
+                isinstance(config, dict)
+                and config.get("backend") == "vllm-server"
+                and config.get("model_name") == "infly/Infinity-Parser2-Flash"
+            )
+        return False
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            filtered = [p for p in inference_result.output.predictions if p.page == page_filter]
+            return inference_result.output.model_copy(update={"predictions": filtered})
+
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("InfinityParser2LayoutAdapter requires ParseOutput or LayoutOutput")
+
+        layout_pages = inference_result.output.layout_pages
+        if not layout_pages:
+            raise ValueError("InfinityParser2LayoutAdapter requires non-empty layout_pages")
+
+        first_page = layout_pages[0]
+        output_width = int(first_page.width or 1)
+        output_height = int(first_page.height or 1)
+
+        predictions: list[LayoutPrediction] = []
+
+        for lp in layout_pages:
+            page_number = lp.page_number
+            if page_filter is not None and page_number != page_filter:
+                continue
+
+            for item in lp.items:
+                for seg in item.layout_segments:
+                    label = seg.label or item.type or "Text"
+
+                    # InfinityParser2 stores bboxes in pixel coordinates (x, y, w, h).
+                    # seg.x, seg.y are already pixel values — no normalization needed.
+                    x1 = float(seg.x)
+                    y1 = float(seg.y)
+                    x2 = float(seg.x + seg.w)
+                    y2 = float(seg.y + seg.h)
+
+                    content = _build_vendor_content(label, item.value)
+
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[x1, y1, x2, y2],
+                            score=float(seg.confidence or 1.0),
+                            label=label,
+                            page=page_number,
+                            content=content,
+                            provider_metadata={
+                                "order_index": len(predictions),
+                            },
+                        )
+                    )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.INFINITY_PARSER2_LAYOUT,
+            image_width=max(output_width, 1),
+            image_height=max(output_height, 1),
+            predictions=predictions,
+        )
+
+
 @register_layout_adapter("qfocr", priority=90)
 class QfOcrLayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from Qianfan-OCR ParseOutput.layout_pages.

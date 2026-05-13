@@ -43,6 +43,7 @@ runners = [
     "google-genai>=1.0.0",
     "google-cloud-documentai>=2.20.0",
     "httpx>=0.28.0",
+    "infinity-parser2>=0.3.0",
     "landingai-ade>=1.4.0",
     "llama-cloud>=1.4.1",
     "openai>=1.0.0",
