@@ -32,9 +32,10 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | 10 | OpenAI GPT-5.5 (Reasoning Medium) | VLM - Proprietary | 67.76 | 90.05 | 65.53 | 86.81 | 60.12 | 36.28 | 13.09¢ |
 <!-- LEADERBOARD:END -->
 
-Inclusion criteria:
+**Inclusion criteria:**
 1. The model or API needs to be publicly accessible, either via open weights or a self-serve API that any user can sign up for.
-2. We can adjust concurrency based on the provider’s public rate limits or recommended settings, but providers should not require custom framework changes, so the evaluation stays fair across models.
+2. The benchmark run needs to finish within a reasonable time (roughly single-digit hours).
+3. We can adjust concurrency based on the provider's recommended settings, but providers should not require custom framework changes, so the evaluation stays fair across models.
 
 ## Quick Start
 
