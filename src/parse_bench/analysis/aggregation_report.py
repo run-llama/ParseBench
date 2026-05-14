@@ -38,6 +38,7 @@ _DEFAULT_METRICS: dict[str, str] = {
     "layout": "layout_element_rule_pass_rate",
     "text_content": "content_faithfulness",
     "text_formatting": "semantic_formatting",
+    "form": "rule_form_field_pass_rate",
 }
 
 

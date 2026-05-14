@@ -454,6 +454,9 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
         ChartDataPointRule,
         RotateCheckRule,
     )
+    from parse_bench.evaluation.metrics.parse.rules_form import (
+        FormFieldRule,
+    )
     from parse_bench.evaluation.metrics.parse.rules_formatting import (
         _FORMATTING_TEST_TYPES,
         CodeBlockRule,
@@ -580,6 +583,9 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
         return ChartDataArrayLabelsRule(typed_rule)
     elif rule_type == TestType.CHART_DATA_ARRAY_DATA.value:
         return ChartDataArrayDataRule(typed_rule)
+    # Form rules
+    elif rule_type == TestType.FORM_FIELD.value:
+        return FormFieldRule(typed_rule)
     # Formatting rules (bold, italic, underline, strikeout, mark, sup, sub)
     elif rule_type in _FORMATTING_TEST_TYPES:
         if rule_type == TestType.MARK_COLOR.value:

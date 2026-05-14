@@ -60,6 +60,11 @@ from parse_bench.evaluation.metrics.parse.rules_chart import (  # noqa: F401
     numeric_similarity,
 )
 
+# Form rules
+from parse_bench.evaluation.metrics.parse.rules_form import (  # noqa: F401
+    FormFieldRule,
+)
+
 # Formatting rules
 from parse_bench.evaluation.metrics.parse.rules_formatting import (  # noqa: F401
     _FORMATTING_TEST_TYPES,

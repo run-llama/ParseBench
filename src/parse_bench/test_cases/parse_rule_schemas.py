@@ -468,6 +468,25 @@ class ParseRotateCheckRule(ParseRuleBase):
     value: int | float | str | None = None
 
 
+class ParseFormFieldRule(ParseRuleBase):
+    """Schema for `form_field` rules.
+
+    Locates a labeled field in the parsed markdown/HTML and checks its value.
+    Used for benchmarking form (key-value, checkbox, signature) extraction.
+
+    `value` may be a list of strings to declare acceptable alternatives for
+    genuinely ambiguous fields (e.g. illegible handwriting). The evaluator
+    passes if the parsed value matches *any* alternative. Use sparingly —
+    most rules should be a single string. List form is only for value_type
+    "text" and "signature".
+    """
+
+    type: Literal[TestType.FORM_FIELD.value]
+    label: str = ""
+    value: str | bool | list[str] = ""
+    value_type: Literal["text", "checkbox", "signature"] = "text"
+
+
 type ParseRule = (
     ParsePresenceRule
     | ParseUnexpectedSentenceRule
@@ -518,6 +537,7 @@ type ParseRule = (
     | ParsePageSectionRule
     | ParseBagOfDigitPercentRule
     | ParseRotateCheckRule
+    | ParseFormFieldRule
 )
 
 type ParseRuleInput = ParseRule | dict[str, Any]
@@ -587,6 +607,7 @@ _RULE_TYPE_TO_MODEL: dict[str, type[ParseRule]] = {
     TestType.IS_FOOTER.value: ParsePageSectionRule,
     TestType.BAG_OF_DIGIT_PERCENT.value: ParseBagOfDigitPercentRule,
     TestType.ROTATE_CHECK.value: ParseRotateCheckRule,
+    TestType.FORM_FIELD.value: ParseFormFieldRule,
 }
 
 

@@ -83,3 +83,5 @@ class TestType(StrEnum):
     BAG_OF_DIGIT_PERCENT = "bag_of_digit_percent"
     # Rotation check
     ROTATE_CHECK = "rotate_check"
+    # Form field (key/value, checkbox, signature) extraction
+    FORM_FIELD = "form_field"
