@@ -258,7 +258,8 @@ METRIC_DEFINITIONS: dict[str, MetricInfo] = {
         "Form Field",
         "Pass rate for form field rules (key-value, checkbox, signature). "
         "A rule passes when the labeled field is located in the parsed output "
-        "and the extracted value matches the expected value.",
+        "and the extracted value matches the expected value (or any acceptable "
+        "alternative when value is a list; signature rules pass on presence).",
     ),
     "order": MetricInfo(
         "Order",

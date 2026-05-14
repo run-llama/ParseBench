@@ -3,7 +3,7 @@
 This module re-exports all rule classes and helpers from the split submodules
 for backward compatibility. New code should import directly from the
 specific submodule (rules_base, rules_text, rules_bag, rules_formatting,
-rules_table, rules_chart).
+rules_table, rules_chart, rules_form).
 """
 
 # Base class, helpers, and factory
