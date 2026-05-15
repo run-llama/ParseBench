@@ -2,6 +2,7 @@
 
 from datetime import datetime
 import json
+import logging
 from pathlib import Path
 import re
 import traceback
@@ -14,6 +15,7 @@ from parse_bench.inference.providers.base import (
     Provider,
     ProviderConfigError,
     ProviderPermanentError,
+    ProviderTransientError,
 )
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import ParseLayoutPageIR, ParseOutput, PageIR
@@ -24,6 +26,8 @@ from parse_bench.schemas.pipeline_io import (
     RawInferenceResult,
 )
 from parse_bench.schemas.product import ProductType
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL_NAME = "infly/Infinity-Parser2-Flash"
 
@@ -37,7 +41,7 @@ INFINITY_CATEGORY_MAP: dict[str, str] = {
     "formula": "Formula",
     "figure_caption": "Caption",
     "table_caption": "Caption",
-    "formula_caption": "Text",
+    "formula_caption": "Caption",
     "figure_footnote": "Footnote",
     "table_footnote": "Footnote",
     "page_footnote": "Footnote",
@@ -118,7 +122,7 @@ class InfinityParser2Provider(Provider):
             if self._max_new_tokens is not None:
                 parse_kwargs["max_new_tokens"] = self._max_new_tokens
 
-            if self._temperature != 0.0:
+            if "temperature" in self.base_config:
                 parse_kwargs["temperature"] = self._temperature
 
             pil_image, page_width, page_height = load_image(file_path)
@@ -145,7 +149,7 @@ class InfinityParser2Provider(Provider):
             error_str = str(e).lower()
             transient_keywords = ["timeout", "network", "connection", "cuda", "out of memory", "oom"]
             if any(keyword in error_str for keyword in transient_keywords):
-                raise ProviderConfigError(f"Error during parsing (GPU/memory): {e}") from e
+                raise ProviderTransientError(f"Error during parsing (GPU/memory): {e}") from e
             raise ProviderPermanentError(f"Error parsing document: {e}") from e
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
@@ -176,7 +180,7 @@ class InfinityParser2Provider(Provider):
                 latency_in_ms=latency_ms,
             )
 
-        except (ProviderPermanentError, ProviderConfigError):
+        except (ProviderPermanentError, ProviderTransientError, ProviderConfigError):
             raise
         except Exception as e:
             raise ProviderPermanentError(f"Unexpected error during inference: {e}") from e
@@ -212,7 +216,7 @@ class InfinityParser2Provider(Provider):
             return f"$${stripped}$$"
         elif label == "Picture":
             text = _convert_nonstandard_table(text)
-            return text if _is_valid_md_table(text) else ""
+            return text
         elif label == "Table":
             return _convert_table_header(text)
         else:
@@ -284,7 +288,7 @@ class InfinityParser2Provider(Provider):
             return json.dumps(elements)
 
         except Exception:
-            traceback.print_exc()
+            logger.exception("Deep parsing pass failed; returning shallow parse result")
             return result
 
     def _normalize(self, raw_result: RawInferenceResult) -> ParseOutput:
@@ -315,7 +319,11 @@ class InfinityParser2Provider(Provider):
         if not pages_dict:
             pages_dict = {1: []}
 
-        assert len(pages_dict) == 1, "Infinity-Parser2 should only return one page"
+        if len(pages_dict) != 1:
+            raise ProviderPermanentError(
+                f"Infinity-Parser2 provider only supports single-page documents; "
+                f"got {len(pages_dict)} pages for example {raw_result.request.example_id}"
+            )
 
         # Get layout pages and markdown
         pages: list[PageIR] = []
@@ -551,7 +559,7 @@ def _is_gender_cell(text: str) -> bool:
 def _is_pure_text_cell(text: str) -> bool:
     """Return True if text contains no digits at all."""
     text = text.strip()
-    return bool(text) and any(c.lower() >= 'a' and c.lower() <= 'z' for c in text)
+    return bool(text) and any(c.isalpha() for c in text)
 
 
 def _is_pure_number_cell(text: str) -> bool:
@@ -565,9 +573,7 @@ def _is_pure_number_cell(text: str) -> bool:
         return False
     # Allow: digits, comma, dot, minus, plus, $, %, parentheses
     allowed = set("0123456789,.-+()$% ")
-    if all(c in allowed for c in text):
-        return True
-    return False
+    return all(c in allowed for c in text)
 
 
 def _determine_header_row_count(rows: list) -> int:

@@ -2141,11 +2141,10 @@ class InfinityParser2LayoutAdapter(LayoutAdapter):
         raw_output = inference_result.raw_output
         if isinstance(raw_output, dict):
             config = raw_output.get("_config", {})
-            return (
-                isinstance(config, dict)
-                and config.get("backend") == "vllm-server"
-                and config.get("model_name") == "infly/Infinity-Parser2-Flash"
-            )
+            if not isinstance(config, dict) or config.get("backend") != "vllm-server":
+                return False
+            model_name = config.get("model_name") or ""
+            return isinstance(model_name, str) and model_name.startswith("infly/Infinity-Parser2")
         return False
 
     def to_layout_output(

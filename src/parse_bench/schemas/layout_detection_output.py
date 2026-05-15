@@ -429,6 +429,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
         "name": "Databricks ai_parse_document Layout",
         "hf_url": "https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_parse_document",
     },
+    LayoutDetectionModel.INFINITY_PARSER2_LAYOUT: {
+        "name": "Infinity-Parser2 Layout",
+        "hf_url": "https://huggingface.co/collections/infly/infinity-parser2",
+    },
 }
 
 
