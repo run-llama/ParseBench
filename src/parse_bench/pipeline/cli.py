@@ -106,6 +106,11 @@ class PipelineCLI:
             # Default input_dir based on --test (./data/test vs ./data) so
             # the test subset doesn't silently get masked by an existing full
             # dataset at ./data, and so the two coexist without overlay.
+            # When the user passes --input_dir explicitly we treat that as a
+            # custom dataset and skip the public-dataset readiness check /
+            # auto-download — otherwise running on a custom dataset would
+            # silently scribble HuggingFace files into the user's directory.
+            input_dir_explicit = input_dir is not None
             if input_dir is None:
                 input_dir = default_data_dir(test=test)
 
@@ -113,8 +118,8 @@ class PipelineCLI:
             output_base = Path(output_dir) if output_dir else Path("./output")
             pipeline_output_dir = output_base / pipeline
 
-            # Auto-download dataset if input_dir doesn't exist or is incomplete
-            if not is_dataset_ready(input_path):
+            # Auto-download dataset only when using the default location.
+            if not input_dir_explicit and not is_dataset_ready(input_path):
                 label = "test dataset" if test else "dataset"
                 print(f"{label.capitalize()} not found at {input_path}, downloading from HuggingFace...")
                 try:
