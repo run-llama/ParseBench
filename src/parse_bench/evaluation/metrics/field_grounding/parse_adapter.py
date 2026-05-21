@@ -6,7 +6,6 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from parse_bench.evaluation.layout_adapters import create_layout_adapter_for_result
 from parse_bench.evaluation.metrics.field_grounding.core import (
     FIELD_GROUNDING_CANONICAL_EXACT_SCORE_THRESHOLD,
     FIELD_GROUNDING_RELAXED_IOU_THRESHOLD,
@@ -315,6 +314,8 @@ def _build_support_sets(inference_result: InferenceResult) -> list[list[_Support
 
 def _adapter_units(inference_result: InferenceResult) -> tuple[list[_SupportUnit], list[_SupportUnit]]:
     try:
+        from parse_bench.evaluation.layout_adapters import create_layout_adapter_for_result
+
         adapter = create_layout_adapter_for_result(inference_result)
         to_granular_pages = getattr(adapter, "to_granular_pages", None)
         if not callable(to_granular_pages):
