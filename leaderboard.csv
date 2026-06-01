@@ -9,6 +9,7 @@ Google Gemini 3 Flash (Thinking Minimal),VLM - Proprietary,71.04,89.85,64.83,86.
 Google Gemini 3 Flash (Thinking High),VLM - Proprietary,75.05,91.50,64.79,90.87,68.31,59.77,2.41,2.38,2.29,2.25,2.70,
 Anthropic Opus 4.6,VLM - Proprietary,54.07,86.52,13.49,89.70,64.19,16.47,5.78,4.02,8.16,5.19,6.40,
 Anthropic Opus 4.7,VLM - Proprietary,63.34,87.17,55.84,90.26,69.42,13.99,7.14,5.69,8.63,6.07,8.17,
+Anthropic Opus 4.8,VLM - Proprietary,63.70,89.65,49.75,89.02,71.38,18.69,7.30,5.82,8.78,6.24,8.36,
 Google Gemini 3.1 Pro,VLM - Proprietary,69.14,91.00,41.13,90.16,52.43,70.99,8.49,6.69,9.69,7.73,10.54,
 Google Gemini 3.1 Flash Lite,VLM - Proprietary,58.32,85.48,9.92,89.46,58.38,48.38,0.29,0.19,0.37,0.27,0.31,
 OpenAI GPT-5.4 (Reasoning None),VLM - Proprietary,62.23,83.89,65.22,85.57,59.52,16.95,2.90,2.55,4.04,2.13,3.00,

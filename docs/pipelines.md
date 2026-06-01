@@ -64,6 +64,7 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | `anthropic_opus_4_6_parse` | Claude Opus 4.6, image mode | `ANTHROPIC_API_KEY` |
 | `anthropic_opus_4_6_parse_file` | Claude Opus 4.6, PDF file mode | `ANTHROPIC_API_KEY` |
 | **`anthropic_opus_4_6_parse_with_layout_file`** | Claude Opus 4.6, parse + layout, file mode (In paper: *Anthropic Opus 4.6*) | `ANTHROPIC_API_KEY` |
+| **`anthropic_opus_4_8_parse_with_layout_file`** | Claude Opus 4.8, parse + layout, file mode (In paper: *Anthropic Opus 4.8*) | `ANTHROPIC_API_KEY` |
 
 ### Google Gemini
 

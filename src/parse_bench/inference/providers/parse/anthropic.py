@@ -77,6 +77,7 @@ _ANTHROPIC_PRICING_PER_M: dict[str, tuple[float, float]] = {
     "claude-haiku-3": (0.25, 1.25),
     "claude-sonnet-4": (3.00, 15.00),
     "claude-sonnet-3": (3.00, 15.00),
+    "claude-opus-4-8": (5.00, 25.00),
     "claude-opus-4-7": (5.00, 25.00),
     "claude-opus-4-6": (5.00, 25.00),
     "claude-opus-4-5": (5.00, 25.00),
@@ -122,7 +123,7 @@ class AnthropicProvider(Provider):
         self._thinking = self.base_config.get("thinking")  # e.g. {"type": "enabled", "budget_tokens": 32768}
         self._effort = self.base_config.get("effort")  # e.g. "high", "xhigh" — for Opus 4.7+
         # Opus 4.7+ rejects temperature/top_p/top_k at non-default values (400 error)
-        self._supports_temperature = not self._model.startswith("claude-opus-4-7")
+        self._supports_temperature = not self._model.startswith(("claude-opus-4-7", "claude-opus-4-8"))
 
         if self._mode not in ("image", "file", "parse_with_layout", "parse_with_layout_file"):
             raise ProviderConfigError(
