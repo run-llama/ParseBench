@@ -1687,6 +1687,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # Surya OCR 2 (datalab-to/surya-ocr-2, 650M VLM)
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="surya2_sdk",
+            provider_name="surya2",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",  # Set via SURYA2_SERVER_URL or override
+            },
+        )
+    )
+
+    # =========================================================================
     # Databricks ai_parse_document
     # =========================================================================
 
