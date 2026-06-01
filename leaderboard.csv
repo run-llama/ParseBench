@@ -37,6 +37,7 @@ Falcon-OCR,VLM - Open Weight,53.08,74.70,0.82,78.59,47.91,63.37,,,,,,tiiuae/Falc
 Docling-models,VLM - Open Weight,50.65,66.41,52.76,66.93,1.03,66.11,,,,,,docling-project/docling-models
 Chandra-ocr-2,VLM - Open Weight,70.1,89.2,65.1,83.7,61.4,51.2,,,,,,datalab-to/chandra-ocr-2
 PaddleOCR-VL-1.5,VLM - Open Weight,65.95,67.38,47.62,82.72,54.27,77.78,,,,,,PaddlePaddle/PaddleOCR-VL-1.5
+Surya OCR 2,VLM - Open Weight,64.83,82.68,21.95,86.57,61.36,71.59,,,,,,datalab-to/surya-ocr-2
 Gemma-4-31B-it,VLM - Open Weight,62.4,80.6,15,89.9,69.3,57.4,,,,,,google/gemma-4-31B-it
 Gemma-4-26B-A4B-it,VLM - Open Weight,58.5,70,14.2,83.8,65.1,59.2,,,,,,google/gemma-4-26B-A4B-it
 LightOnOCR-2-1B,VLM - Open Weight,48,75.5,13.5,87.8,63.2,0,,,,,,lightonai/LightOnOCR-2-1B

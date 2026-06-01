@@ -229,6 +229,12 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 | **`docling_parse`** | Docling HTTP endpoint (In paper: *Docling*) | `DOCLING_PARSE_ENDPOINT_URL`, `DOCLING_PARSE_API_KEY` (optional) |
 | `docling_serve` | Docling Serve HTTP endpoint | `DOCLING_SERVE_ENDPOINT_URL`, `DOCLING_SERVE_API_KEY` (optional) |
 
+### Surya OCR 2
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `surya2_sdk` | Surya OCR 2 SDK server (full-page OCR + layout) | `SURYA2_SERVER_URL` |
+
 ---
 
 ## Local Pipelines (No API key needed)

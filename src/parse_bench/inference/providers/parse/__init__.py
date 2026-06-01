@@ -34,6 +34,7 @@ _PROVIDER_MODULES = [
     "pypdf",
     "qwen3_5",
     "reducto",
+    "surya2",
     "tesseract",
     "textract",
     "unstructured",
