@@ -563,6 +563,46 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # PaddleOCR-VL 1.6 (0.9B) vLLM — OCR prompt (general text/structure)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="paddleocr_vl_1_6_vllm",
+            provider_name="paddleocr",
+            product_type=ProductType.PARSE,
+            config={
+                "api_format": "openai",
+                "task": "ocr",
+                "served_model_name": "PaddleOCR-VL-1.6-0.9B",
+            },
+        )
+    )
+
+    # PaddleOCR-VL 1.6 (0.9B) vLLM — Table Recognition prompt
+    register_fn(
+        PipelineSpec(
+            pipeline_name="paddleocr_vl_1_6_vllm_table",
+            provider_name="paddleocr",
+            product_type=ProductType.PARSE,
+            config={
+                "api_format": "openai",
+                "task": "table",
+                "served_model_name": "PaddleOCR-VL-1.6-0.9B",
+            },
+        )
+    )
+
+    # PaddleOCR-VL 1.6 (0.9B) full pipeline (layout detection + per-region routing)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="paddleocr_vl_1_6_pipeline",
+            provider_name="paddleocr",
+            product_type=ProductType.PARSE,
+            config={
+                "api_format": "simple",
+            },
+        )
+    )
+
     # =========================================================================
     # Falcon-OCR (TII, 300M early-fusion VLM with built-in layout-aware OCR)
     # =========================================================================

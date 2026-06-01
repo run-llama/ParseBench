@@ -34,6 +34,7 @@ Dots.mocr,VLM - Open Weight,55.79,85.15,0.95,90.03,46.99,55.81,,,,,,rednote-hila
 Falcon-OCR,VLM - Open Weight,53.08,74.70,0.82,78.59,47.91,63.37,,,,,,tiiuae/Falcon-OCR
 Docling-models,VLM - Open Weight,50.65,66.41,52.76,66.93,1.03,66.11,,,,,,docling-project/docling-models
 Chandra-ocr-2,VLM - Open Weight,70.1,89.2,65.1,83.7,61.4,51.2,,,,,,datalab-to/chandra-ocr-2
+PaddleOCR-VL-1.6,VLM - Open Weight,67.43,67.77,54.24,82.71,54.64,77.8,,,,,,PaddlePaddle/PaddleOCR-VL-1.6
 PaddleOCR-VL-1.5,VLM - Open Weight,65.95,67.38,47.62,82.72,54.27,77.78,,,,,,PaddlePaddle/PaddleOCR-VL-1.5
 Gemma-4-31B-it,VLM - Open Weight,62.4,80.6,15,89.9,69.3,57.4,,,,,,google/gemma-4-31B-it
 Gemma-4-26B-A4B-it,VLM - Open Weight,58.5,70,14.2,83.8,65.1,59.2,,,,,,google/gemma-4-26B-A4B-it

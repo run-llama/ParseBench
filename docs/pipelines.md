@@ -210,6 +210,9 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 |---|---|---|
 | `paddleocr_vl_vllm` | OpenAI-compatible vLLM API | `PADDLEOCR_SERVER_URL` |
 | `paddleocr_vl_pipeline` | Full pipeline (layout + chart routing) | `PADDLEOCR_SERVER_URL` |
+| `paddleocr_vl_1_6_vllm` | PaddleOCR-VL-1.6, OCR prompt | `PADDLEOCR_SERVER_URL` |
+| `paddleocr_vl_1_6_vllm_table` | PaddleOCR-VL-1.6, table recognition prompt | `PADDLEOCR_SERVER_URL` |
+| `paddleocr_vl_1_6_pipeline` | PaddleOCR-VL-1.6, full pipeline (layout + routing) | `PADDLEOCR_SERVER_URL` |
 
 ### dots.ocr
 
