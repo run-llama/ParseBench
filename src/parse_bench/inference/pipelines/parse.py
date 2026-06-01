@@ -1347,6 +1347,70 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # Gemini 3.5 Flash (GA) - Parse with Layout
+    # =========================================================================
+
+    # Gemini 3.5 Flash - Parse with Layout (default thinking)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="google_gemini_3_5_flash_parse_with_layout",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-3.5-flash",
+                "dpi": 150,
+                "max_tokens": 32768,
+                "mode": "parse_with_layout",
+            },
+        )
+    )
+
+    # Gemini 3.5 Flash - Parse with Layout - Thinking Minimal
+    register_fn(
+        PipelineSpec(
+            pipeline_name="google_gemini_3_5_flash_no_thinking_parse_with_layout",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-3.5-flash",
+                "dpi": 150,
+                "max_tokens": 32768,
+                "mode": "parse_with_layout",
+                "thinking_level": "minimal",
+            },
+        )
+    )
+
+    # Gemini 3.5 Flash - Parse with Layout File (default thinking)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="google_gemini_3_5_flash_parse_with_layout_file",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-3.5-flash",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+            },
+        )
+    )
+
+    # Gemini 3.5 Flash - Parse with Layout File - Thinking Minimal
+    register_fn(
+        PipelineSpec(
+            pipeline_name="google_gemini_3_5_flash_no_thinking_parse_with_layout_file",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-3.5-flash",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+                "thinking_level": "minimal",
+            },
+        )
+    )
+
+    # =========================================================================
     # Gemini - Agentic Vision
     # =========================================================================
 

@@ -86,6 +86,10 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | `google_gemini_3_1_flash_lite_thinking_high_parse` | Gemini 3.1 Flash Lite, high thinking | `GOOGLE_GEMINI_API_KEY` |
 | `google_gemini_3_1_pro_parse` | Gemini 3.1 Pro, default thinking | `GOOGLE_GEMINI_API_KEY` |
 | **`google_gemini_3_1_pro_parse_with_layout_file`** | Gemini 3.1 Pro, parse + layout, file mode (In paper: *Google Gemini 3.1 Pro*) | `GOOGLE_GEMINI_API_KEY` |
+| `google_gemini_3_5_flash_parse_with_layout` | Gemini 3.5 Flash, default thinking + layout | `GOOGLE_GEMINI_API_KEY` |
+| `google_gemini_3_5_flash_no_thinking_parse_with_layout` | Gemini 3.5 Flash, minimal thinking + layout | `GOOGLE_GEMINI_API_KEY` |
+| **`google_gemini_3_5_flash_parse_with_layout_file`** | Gemini 3.5 Flash, default thinking + layout, file mode (In paper: *Google Gemini 3.5 Flash (Thinking Medium)*) | `GOOGLE_GEMINI_API_KEY` |
+| **`google_gemini_3_5_flash_no_thinking_parse_with_layout_file`** | Gemini 3.5 Flash, minimal thinking + layout, file mode (In paper: *Google Gemini 3.5 Flash (Thinking Minimal)*) | `GOOGLE_GEMINI_API_KEY` |
 
 ### Azure Document Intelligence
 
