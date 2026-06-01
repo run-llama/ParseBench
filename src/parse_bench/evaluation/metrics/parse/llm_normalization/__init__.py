@@ -19,13 +19,9 @@ from parse_bench.evaluation.metrics.parse.llm_normalization.config import (
     NormalizationMode,
     get_normalization_mode,
 )
-from parse_bench.evaluation.metrics.parse.llm_normalization.strategy_judge import (
-    JudgeNormalizer,
-)
 
 __all__ = [
     "BaseNormalizer",
-    "JudgeNormalizer",
     "JudgmentResult",
     "LabelMatch",
     "NormalizationMode",
@@ -48,6 +44,7 @@ def get_normalizer(
         mode = get_normalization_mode()
 
     if mode == NormalizationMode.JUDGE:
+        from parse_bench.evaluation.metrics.parse.llm_normalization.strategy_judge import JudgeNormalizer
         return JudgeNormalizer()
 
     return None

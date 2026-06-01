@@ -21,11 +21,6 @@ from parse_bench.inference.layout_extraction import (
     extract_all_layouts_from_llamaparse_output,
 )
 from parse_bench.inference.providers.layoutdet.adapters import ChunkrLayoutDetLabelAdapter
-from parse_bench.inference.providers.parse.llamaparse_v2_normalization import (
-    build_pages_from_cli2_raw_payload,
-    build_pages_from_sdk_response_payload,
-    layout_pages_to_legacy_pages_payload,
-)
 from parse_bench.layout_label_mapping import (
     UnknownRawLayoutLabelError,
 )
@@ -2315,6 +2310,12 @@ def _infer_page_number_from_example_id(example_id: str) -> int | None:
 
 
 def _resolve_llamaparse_pages(inference_result: InferenceResult) -> list[dict[str, Any]]:
+    from parse_bench.inference.providers.parse.llamaparse_v2_normalization import (
+        build_pages_from_cli2_raw_payload,
+        build_pages_from_sdk_response_payload,
+        layout_pages_to_legacy_pages_payload,
+    )
+
     raw_output = inference_result.raw_output
     if isinstance(raw_output, dict):
         raw_pages = raw_output.get("pages")
