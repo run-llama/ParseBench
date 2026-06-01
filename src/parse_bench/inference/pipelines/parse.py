@@ -102,14 +102,14 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
-            pipeline_name="extend_parse_beta",
+            pipeline_name="extend_parse_2",
             provider_name="extend_parse",
             product_type=ProductType.PARSE,
             config={
                 "target": "markdown",
                 "chunking_strategy": "page",
                 "engine": "parse_performance",
-                "engineVersion": "2.0.0-beta",
+                "engineVersion": "2.0.0",
                 "block_options": {
                     "tables": {"target_format": "html"},
                     "figures": {

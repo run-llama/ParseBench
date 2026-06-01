@@ -143,7 +143,7 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | Pipeline | Description | Env Var |
 |---|---|---|
 | **`extend_parse`** | Default (In paper: *Extend*) | `EXTEND_API_KEY` |
-| `extend_parse_beta` | Beta engine (v2.0.0-beta) | `EXTEND_API_KEY` |
+| `extend_parse_2` | 2.0 engine (v2.0.0, GA) | `EXTEND_API_KEY` |
 | `extend_parse_document` | Document scope | `EXTEND_API_KEY` |
 | `extend_parse_section` | Section scope | `EXTEND_API_KEY` |
 
