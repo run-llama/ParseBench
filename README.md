@@ -27,9 +27,9 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | 5 | Reducto (Agentic) | Commercial - Startup APIs | 72.97 | 80.42 | 73.4 | 86.37 | 57.6 | 67.07 | 4.76¢ |
 | 6 | LlamaParse Cost Effective | LlamaParse | 71.89 | 73.16 | 66.66 | 88.02 | 73.04 | 58.56 | 0.38¢ |
 | 7 | Google Gemini 3 Flash (Thinking Minimal) | VLM - Proprietary | 71.04 | 89.85 | 64.83 | 86.19 | 58.35 | 55.97 | 0.65¢ |
-| 8 | Chandra-ocr-2 | VLM - Open Weight | 70.1 | 89.2 | 65.1 | 83.7 | 61.4 | 51.2 | — |
-| 9 | Google Gemini 3.1 Pro | VLM - Proprietary | 69.14 | 91.00 | 41.13 | 90.16 | 52.43 | 70.99 | 8.49¢ |
-| 10 | Reducto | Commercial - Startup APIs | 67.83 | 70.33 | 56.99 | 86.37 | 56.75 | 68.71 | 2.38¢ |
+| 8 | Anthropic Fable 5 | VLM - Proprietary | 70.78 | 89.79 | 52.21 | 90.02 | 72.62 | 49.24 | 15.60¢ |
+| 9 | Chandra-ocr-2 | VLM - Open Weight | 70.1 | 89.2 | 65.1 | 83.7 | 61.4 | 51.2 | — |
+| 10 | Google Gemini 3.5 Flash (Thinking Medium) | VLM - Proprietary | 69.92 | 91.12 | 44.01 | 90.19 | 59.14 | 65.14 | 4.28¢ |
 <!-- LEADERBOARD:END -->
 
 **Inclusion criteria:**
