@@ -99,6 +99,11 @@ class RuleBasedMetric(Metric):
                     "passed": False,
                     "score": 0.0,
                     "explanation": "No markdown content provided",
+                    # rotate_check entries need expected_angle so the per-angle
+                    # breakdown includes blank-output docs too.
+                    **(
+                        {"expected_angle": rule_data.get("value")} if get_rule_type(rule_data) == "rotate_check" else {}
+                    ),
                 }
                 for rule_data in rules_to_run
             ]
