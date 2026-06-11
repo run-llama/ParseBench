@@ -5,8 +5,12 @@ import re
 import time
 from typing import Any, Literal
 
-from google import genai
-from google.genai import types
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    genai = None  # type: ignore
+    types = None  # type: ignore
 
 try:
     from openai import OpenAI
@@ -160,6 +164,10 @@ class QALLMService:
                 )
             self.client = OpenAI(api_key=api_key)
         elif provider == "google":
+            if genai is None:
+                raise ImportError(
+                    "google-genai package is required for Google provider. Install it with: pip install google-genai"
+                )
             if api_key is None:
                 api_key = os.getenv("GOOGLE_GENAI_API_KEY")
             if not api_key:
