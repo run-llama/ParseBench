@@ -1795,6 +1795,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
+            pipeline_name="kdl_frontier_nano",
+            provider_name="kdl_frontier_nano",
+            product_type=ProductType.PARSE,
+            config={
+                "endpoint_url": "",  # via KDL_NANO_ENDPOINT_URL
+                "model": "",         # via KDL_NANO_MODEL (default kdl-frontier-parser-nano)
+                "dpi": 144,
+                "timeout": 900,
+            },
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
             pipeline_name="mineru25_vllm",
             provider_name="mineru25",
             product_type=ProductType.PARSE,

@@ -23,6 +23,7 @@ _PROVIDER_MODULES = [
     "google_docai",
     "granite_vision",
     "infinity_parser2",
+    "kdl_frontier_nano",
     "landingai",
     "llamaparse",
     "llamaparse_v2_normalization",

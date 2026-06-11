@@ -12,6 +12,7 @@ dependencies = [
     "fuzzysearch>=0.7.3",
     "huggingface-hub>=0.20.0",
     "lxml>=5.0.0",
+    "markdown>=3.0",
     "markdown2>=2.4.0",
     "numpy>=1.24.0",
     "pandas>=2.0.0",
