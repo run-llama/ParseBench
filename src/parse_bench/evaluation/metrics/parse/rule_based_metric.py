@@ -69,13 +69,6 @@ class RuleBasedMetric(Metric):
                 metadata={"note": "No test rules provided"},
             )
 
-        if not actual:
-            return MetricValue(
-                metric_name=self.name,
-                value=0.0,
-                metadata={"note": "No markdown content provided"},
-            )
-
         # Filter rules by page if page is specified
         rules_to_run = expected
         if page is not None:
@@ -87,6 +80,43 @@ class RuleBasedMetric(Metric):
                 metric_name=self.name,
                 value=1.0,  # No rules for this page means pass
                 metadata={"note": f"No test rules for page {page}"},
+            )
+
+        if not actual:
+            # Blank output fails every rule. Emit full per-rule metadata so the
+            # judge metric and per-type pass rates include this doc (otherwise
+            # blank-output docs silently drop out of the aggregate averages,
+            # inflating scores for tools that fail to parse hard documents).
+            rule_results = [
+                {
+                    "type": get_rule_type(rule_data),
+                    "id": rule_data.id if isinstance(rule_data, ParseRuleBase) else get_rule_id(rule_data),
+                    "page": get_rule_page(rule_data),
+                    "tags": rule_data.tags if isinstance(rule_data, ParseRuleBase) else [],
+                    "layout_id": get_rule_layout_id(rule_data),
+                    "layout_ids": get_rule_layout_ids(rule_data),
+                    "layout_bindings": get_rule_layout_bindings(rule_data),
+                    "passed": False,
+                    "score": 0.0,
+                    "explanation": "No markdown content provided",
+                    # rotate_check entries need expected_angle so the per-angle
+                    # breakdown includes blank-output docs too.
+                    **(
+                        {"expected_angle": rule_data.get("value")} if get_rule_type(rule_data) == "rotate_check" else {}
+                    ),
+                }
+                for rule_data in rules_to_run
+            ]
+            return MetricValue(
+                metric_name=self.name,
+                value=0.0,
+                metadata={
+                    "note": "No markdown content provided",
+                    "passed": 0,
+                    "total": len(rules_to_run),
+                    "ambiguous_anchor_failures": 0,
+                    "rule_results": rule_results,
+                },
             )
 
         # Pre-normalize content ONCE for all rules (major performance optimization)

@@ -25,11 +25,11 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | 3 | Infinity-Parser2-Pro | VLM - Open Weight | 74.28 | 86.4 | 61.3 | 89.7 | 59.1 | 74.9 | — |
 | 4 | Infinity-Parser2-Flash | VLM - Open Weight | 73.25 | 82.88 | 55.56 | 89.52 | 57.7 | 80.61 | — |
 | 5 | Reducto (Agentic) | Commercial - Startup APIs | 72.97 | 80.42 | 73.4 | 86.37 | 57.6 | 67.07 | 4.76¢ |
-| 6 | LlamaParse Cost Effective | LlamaParse | 71.89 | 73.16 | 66.66 | 88.02 | 73.04 | 58.56 | 0.38¢ |
-| 7 | Google Gemini 3 Flash (Thinking Minimal) | VLM - Proprietary | 71.04 | 89.85 | 64.83 | 86.19 | 58.35 | 55.97 | 0.65¢ |
-| 8 | Chandra-ocr-2 | VLM - Open Weight | 70.1 | 89.2 | 65.1 | 83.7 | 61.4 | 51.2 | — |
-| 9 | Google Gemini 3.1 Pro | VLM - Proprietary | 69.14 | 91.00 | 41.13 | 90.16 | 52.43 | 70.99 | 8.49¢ |
-| 10 | Reducto | Commercial - Startup APIs | 67.83 | 70.33 | 56.99 | 86.37 | 56.75 | 68.71 | 2.38¢ |
+| 6 | MinerU2.5-Pro-2605-1.2B | VLM - Open Weight | 72.78 | 77.59 | 61.64 | 87.88 | 57.49 | 79.30 | — |
+| 7 | LlamaParse Cost Effective | LlamaParse | 71.89 | 73.16 | 66.66 | 88.02 | 73.04 | 58.56 | 0.38¢ |
+| 8 | Google Gemini 3 Flash (Thinking Minimal) | VLM - Proprietary | 71.04 | 89.85 | 64.83 | 86.19 | 58.35 | 55.97 | 0.65¢ |
+| 9 | Anthropic Fable 5 | VLM - Proprietary | 70.78 | 89.79 | 52.21 | 90.02 | 72.62 | 49.24 | 15.60¢ |
+| 10 | Chandra-ocr-2 | VLM - Open Weight | 70.1 | 89.2 | 65.1 | 83.7 | 61.4 | 51.2 | — |
 <!-- LEADERBOARD:END -->
 
 **Inclusion criteria:**

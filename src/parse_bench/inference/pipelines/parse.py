@@ -1757,6 +1757,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Anthropic Fable 5 - Parse with Layout File
+    register_fn(
+        PipelineSpec(
+            pipeline_name="anthropic_fable_5_parse_with_layout_file",
+            provider_name="anthropic",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "claude-fable-5",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+            },
+        )
+    )
+
     # Anthropic Haiku - Parse with Layout File - Thinking
     register_fn(
         PipelineSpec(
@@ -1814,6 +1828,24 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             product_type=ProductType.PARSE,
             config={
                 "server_url": "",  # Set via MINERU25_SERVER_URL or override
+            },
+        )
+    )
+
+    # =========================================================================
+    # MinerU 2.5 Pro 2605 (opendatalab/MinerU2.5-Pro-2605-1.2B)
+    # Same 1.2B Qwen2-VL arch as mineru25, newer checkpoint with improved
+    # layout detection + chart/image analysis (server runs the official
+    # image_analysis client flag the old deployment was missing).
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="mineru2605pro_vllm",
+            provider_name="mineru2605pro",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",  # Set via MINERU2605PRO_SERVER_URL or override
             },
         )
     )

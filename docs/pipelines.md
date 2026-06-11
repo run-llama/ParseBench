@@ -65,6 +65,7 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | `anthropic_opus_4_6_parse_file` | Claude Opus 4.6, PDF file mode | `ANTHROPIC_API_KEY` |
 | **`anthropic_opus_4_6_parse_with_layout_file`** | Claude Opus 4.6, parse + layout, file mode (In paper: *Anthropic Opus 4.6*) | `ANTHROPIC_API_KEY` |
 | **`anthropic_opus_4_8_parse_with_layout_file`** | Claude Opus 4.8, parse + layout, file mode (In paper: *Anthropic Opus 4.8*) | `ANTHROPIC_API_KEY` |
+| `anthropic_fable_5_parse_with_layout_file` | Claude Fable 5, parse + layout, file mode | `ANTHROPIC_API_KEY` |
 
 ### Google Gemini
 
@@ -232,6 +233,13 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 |---|---|---|
 | **`docling_parse`** | Docling HTTP endpoint (In paper: *Docling*) | `DOCLING_PARSE_ENDPOINT_URL`, `DOCLING_PARSE_API_KEY` (optional) |
 | `docling_serve` | Docling Serve HTTP endpoint | `DOCLING_SERVE_ENDPOINT_URL`, `DOCLING_SERVE_API_KEY` (optional) |
+
+### MinerU 2.5
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `mineru25_vllm` | MinerU2.5-2509-1.2B vLLM server (two-step layout + recognition) | `MINERU25_SERVER_URL` |
+| `mineru2605pro_vllm` | MinerU2.5-Pro-2605-1.2B vLLM server (adds chart/image analysis) | `MINERU2605PRO_SERVER_URL` |
 
 ### Surya OCR 2
 
