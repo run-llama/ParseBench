@@ -233,6 +233,13 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 | **`docling_parse`** | Docling HTTP endpoint (In paper: *Docling*) | `DOCLING_PARSE_ENDPOINT_URL`, `DOCLING_PARSE_API_KEY` (optional) |
 | `docling_serve` | Docling Serve HTTP endpoint | `DOCLING_SERVE_ENDPOINT_URL`, `DOCLING_SERVE_API_KEY` (optional) |
 
+### MinerU 2.5
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `mineru25_vllm` | MinerU2.5-2509-1.2B vLLM server (two-step layout + recognition) | `MINERU25_SERVER_URL` |
+| `mineru2605pro_vllm` | MinerU2.5-Pro-2605-1.2B vLLM server (adds chart/image analysis) | `MINERU2605PRO_SERVER_URL` |
+
 ### Surya OCR 2
 
 | Pipeline | Description | Env Var |

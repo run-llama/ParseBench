@@ -1805,6 +1805,24 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # MinerU 2.5 Pro 2605 (opendatalab/MinerU2.5-Pro-2605-1.2B)
+    # Same 1.2B Qwen2-VL arch as mineru25, newer checkpoint with improved
+    # layout detection + chart/image analysis (server runs the official
+    # image_analysis client flag the old deployment was missing).
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="mineru2605pro_vllm",
+            provider_name="mineru2605pro",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",  # Set via MINERU2605PRO_SERVER_URL or override
+            },
+        )
+    )
+
+    # =========================================================================
     # Surya OCR 2 (datalab-to/surya-ocr-2, 650M VLM)
     # =========================================================================
 
