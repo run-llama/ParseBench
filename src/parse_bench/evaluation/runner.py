@@ -15,6 +15,7 @@ from concurrent.futures import (
 from concurrent.futures import (
     TimeoutError as FuturesTimeoutError,
 )
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -37,7 +38,7 @@ from parse_bench.evaluation.metric_aggregation import add_precision_recall_f1_ag
 from parse_bench.evaluation.stats import build_operational_stats
 from parse_bench.schemas.evaluation import EvaluationResult, EvaluationSummary
 from parse_bench.schemas.layout_detection_output import LayoutOutput
-from parse_bench.schemas.pipeline_io import InferenceResult
+from parse_bench.schemas.pipeline_io import InferenceResult, InferenceRequest
 from parse_bench.schemas.product import ProductType
 from parse_bench.test_cases import load_test_cases
 from parse_bench.test_cases.parse_rule_schemas import get_rule_type
@@ -724,6 +725,55 @@ class EvaluationRunner:
                             )
                         continue
                     non_qa_evaluations.append((inference_result, test_case, evaluator, False))  # False = not cross-eval
+
+        # Score test cases with no inference result as blank output (0.0).
+        # Without this, tools that fail to parse hard documents have those
+        # docs silently dropped from the aggregate averages, inflating their
+        # scores relative to tools that produce output for every document.
+        if test_cases_dict:
+            from parse_bench.schemas.parse_output import ParseOutput
+            
+            covered_ids = {tc.test_id for _, tc, _, _ in non_qa_evaluations}
+            covered_ids.update(tc.test_id.split("#q")[0] for _, tc, _ in qa_evaluation_tasks)
+            parse_evaluator = self._evaluators.get(ProductType.PARSE.value)
+            synthesized = 0
+            for test_id, test_case in test_cases_dict.items():
+                if test_id in covered_ids:
+                    continue
+                # Only plain parse test cases; QA / layout / extract cases
+                # have evaluator-specific requirements a blank can't satisfy.
+                if not isinstance(test_case, ParseTestCase) or test_case.qa_config is not None:
+                    continue
+                if not parse_evaluator:
+                    continue
+                now = datetime.now()
+                blank_result = InferenceResult(
+                    request=InferenceRequest(
+                        example_id=test_id,
+                        source_file_path=str(getattr(test_case, "file_path", "") or ""),
+                        product_type=ProductType.PARSE,
+                    ),
+                    pipeline_name=pipeline_name or self.output_dir.name,
+                    product_type=ProductType.PARSE,
+                    raw_output={"note": "no inference result; scored as blank output"},
+                    output=ParseOutput(
+                        example_id=test_id,
+                        pipeline_name=pipeline_name or self.output_dir.name,
+                        markdown="",
+                    ),
+                    started_at=now,
+                    completed_at=now,
+                    latency_in_ms=0,
+                )
+                if not parse_evaluator.can_evaluate(blank_result, test_case):
+                    continue
+                non_qa_evaluations.append((blank_result, test_case, parse_evaluator, False))
+                synthesized += 1
+            if synthesized:
+                print(
+                    f"⚠️  {synthesized} test case(s) had no inference result; scoring them as blank output (0.0)",
+                    flush=True,
+                )
 
         # Count QA test cases for progress indication
         qa_test_cases = len(qa_evaluation_tasks)
