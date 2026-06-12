@@ -21,15 +21,15 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
 | 1 | LlamaParse Agentic | LlamaParse | 84.88 | 90.74 | 78.11 | 89.68 | 85.24 | 80.62 | 1.25¢ |
-| 2 | Google Gemini 3 Flash (Thinking High) | VLM - Proprietary | 75.05 | 91.50 | 64.79 | 90.87 | 68.31 | 59.77 | 2.41¢ |
-| 3 | Infinity-Parser2-Pro | VLM - Open Weight | 74.28 | 86.4 | 61.3 | 89.7 | 59.1 | 74.9 | — |
-| 4 | Infinity-Parser2-Flash | VLM - Open Weight | 73.25 | 82.88 | 55.56 | 89.52 | 57.7 | 80.61 | — |
-| 5 | Reducto (Agentic) | Commercial - Startup APIs | 72.97 | 80.42 | 73.4 | 86.37 | 57.6 | 67.07 | 4.76¢ |
-| 6 | MinerU2.5-Pro-2605-1.2B | VLM - Open Weight | 72.78 | 77.59 | 61.64 | 87.88 | 57.49 | 79.30 | — |
-| 7 | LlamaParse Cost Effective | LlamaParse | 71.89 | 73.16 | 66.66 | 88.02 | 73.04 | 58.56 | 0.38¢ |
-| 8 | Google Gemini 3 Flash (Thinking Minimal) | VLM - Proprietary | 71.04 | 89.85 | 64.83 | 86.19 | 58.35 | 55.97 | 0.65¢ |
-| 9 | Anthropic Fable 5 | VLM - Proprietary | 70.78 | 89.79 | 52.21 | 90.02 | 72.62 | 49.24 | 15.60¢ |
-| 10 | Chandra-ocr-2 | VLM - Open Weight | 70.1 | 89.2 | 65.1 | 83.7 | 61.4 | 51.2 | — |
+| 2 | KDL-Frontier-Parser-nano | VLM - Open Weight | 76.36 | 85.56 | 63.41 | 87.19 | 66.81 | 78.84 | — |
+| 3 | Google Gemini 3 Flash (Thinking High) | VLM - Proprietary | 75.05 | 91.50 | 64.79 | 90.87 | 68.31 | 59.77 | 2.41¢ |
+| 4 | Infinity-Parser2-Pro | VLM - Open Weight | 74.28 | 86.4 | 61.3 | 89.7 | 59.1 | 74.9 | — |
+| 5 | Infinity-Parser2-Flash | VLM - Open Weight | 73.25 | 82.88 | 55.56 | 89.52 | 57.7 | 80.61 | — |
+| 6 | Reducto (Agentic) | Commercial - Startup APIs | 72.97 | 80.42 | 73.4 | 86.37 | 57.6 | 67.07 | 4.76¢ |
+| 7 | MinerU2.5-Pro-2605-1.2B | VLM - Open Weight | 72.78 | 77.59 | 61.64 | 87.88 | 57.49 | 79.30 | — |
+| 8 | LlamaParse Cost Effective | LlamaParse | 71.89 | 73.16 | 66.66 | 88.02 | 73.04 | 58.56 | 0.38¢ |
+| 9 | Google Gemini 3 Flash (Thinking Minimal) | VLM - Proprietary | 71.04 | 89.85 | 64.83 | 86.19 | 58.35 | 55.97 | 0.65¢ |
+| 10 | Anthropic Fable 5 | VLM - Proprietary | 70.78 | 89.79 | 52.21 | 90.02 | 72.62 | 49.24 | 15.60¢ |
 <!-- LEADERBOARD:END -->
 
 **Inclusion criteria:**

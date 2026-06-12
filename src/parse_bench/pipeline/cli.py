@@ -53,7 +53,7 @@ class PipelineCLI:
         file: str | Path | None = None,
         output_dir: str | Path | None = None,
         max_concurrent: int = 20,
-        force: bool = False,
+        force: bool = True,
         verbose: bool = False,
         group: str | None = None,
         tags: str | tuple[str, ...] | list[str] | None = None,
@@ -72,7 +72,7 @@ class PipelineCLI:
             file: Single file to run (PDF/image). Will use its .test.json if present.
             output_dir: Directory to save results (default: ./output)
             max_concurrent: Maximum concurrent inference requests (default: 20)
-            force: Force regeneration even if results already exist (default: False)
+            force: Force regeneration even if results already exist (default: True — re-runs always reparse; pass --force=False to reuse cached results)
             verbose: Enable verbose output (default: False)
             group: Optional group name to filter test cases (e.g., 'chart')
             tags: Tags for this run - comma-separated string or list

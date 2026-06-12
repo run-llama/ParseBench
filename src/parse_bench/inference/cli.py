@@ -101,7 +101,7 @@ class InferenceCLI:
         max_concurrent: int = 20,
         save_raw: bool = True,
         save_normalized: bool = True,
-        force: bool = False,
+        force: bool = True,
         verbose: bool = False,
         no_rich: bool = False,
         group: str | None = None,
@@ -125,7 +125,7 @@ class InferenceCLI:
             max_concurrent: Maximum concurrent inference requests (default: 20)
             save_raw: Save raw inference results (default: True)
             save_normalized: Save normalized inference results (default: True)
-            force: Force regeneration even if results already exist (default: False)
+            force: Force regeneration even if results already exist (default: True — re-runs always reparse; pass --force=False to reuse cached results)
             verbose: Enable verbose output (default: False)
             no_rich: Disable Rich output for CI environments (default: False)
             group: Optional group name to filter test cases (e.g., 'arxiv_math')

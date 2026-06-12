@@ -72,8 +72,16 @@ def _is_infra_failure(result: EvaluationResult) -> bool:
     summary, but they must not zero-pad the provider's scores in
     ``_aggregate_metrics`` — an evaluator bug or transient harness error
     should not move the leaderboard.
+
+    Exception: a worker error whose cause is that the provider's output could
+    not be adapted to a ``LayoutOutput`` (raised in the layout adapters /
+    layout-detection evaluator) is a *provider* failure, not a harness one —
+    the provider simply produced nothing the layout task can score. It must
+    count as a genuine 0, so it is explicitly excluded from the infra set.
     """
     if not result.error:
+        return False
+    if "not LayoutOutput" in result.error:
         return False
     return result.error.startswith(("Worker error:", "Evaluation error:", "Task execution error:"))
 
@@ -803,12 +811,20 @@ class EvaluationRunner:
                 if isinstance(test_case, LayoutDetectionTestCase):
                     if not test_case.get_layout_annotations():
                         continue
+                    # Tag this synthetic 0 as PARSE, not LAYOUT_DETECTION: the
+                    # layout group scores cross-eval'd parse output, so its
+                    # metrics (rule_pass_rate, etc.) are emitted under the PARSE
+                    # product type. Per-product-type padding only zero-pads a
+                    # metric with failures of a product type that produced it,
+                    # so a LAYOUT_DETECTION-tagged failure here would never reach
+                    # the parse metrics and the provider's no-output pages would
+                    # silently drop out of the denominator (inflating the score).
                     evaluation_results.append(
                         EvaluationResult(
                             test_id=test_id,
                             example_id=test_id,
                             pipeline_name=pipeline_name or self.output_dir.name,
-                            product_type=ProductType.LAYOUT_DETECTION.value,
+                            product_type=ProductType.PARSE.value,
                             success=False,
                             metrics=[],
                             error="No usable inference output for this example",

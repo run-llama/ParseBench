@@ -459,6 +459,42 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
+            pipeline_name="pymupdf4llm_markdown",
+            provider_name="pymupdf4llm",
+            product_type=ProductType.PARSE,
+            config={},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="markitdown",
+            provider_name="markitdown",
+            product_type=ProductType.PARSE,
+            config={},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="opendataloader_markdown",
+            provider_name="opendataloader",
+            product_type=ProductType.PARSE,
+            config={"format": "markdown", "table_method": "cluster"},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="pdf_inspector",
+            provider_name="pdf_inspector",
+            product_type=ProductType.PARSE,
+            config={},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
             pipeline_name="tesseract_eng",
             provider_name="tesseract",
             product_type=ProductType.PARSE,

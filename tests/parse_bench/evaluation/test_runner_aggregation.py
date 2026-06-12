@@ -243,6 +243,24 @@ def test_infra_failures_do_not_pad() -> None:
     assert aggregate["min_rule_pass_rate"] == 0.6
 
 
+def test_unadaptable_layout_output_pads_as_genuine_failure() -> None:
+    runner = EvaluationRunner(output_dir=Path("/tmp/unused"))
+    results = [
+        _success("a", [MetricValue(metric_name="rule_pass_rate", value=0.8)]),
+        _success("b", [MetricValue(metric_name="rule_pass_rate", value=0.6)]),
+        # Provider produced output that can't be adapted to a LayoutOutput.
+        # Surfaces as a "Worker error:" but is a provider failure, not a
+        # harness crash, so it must count as a 0 in the denominator.
+        _failure("c", error="Worker error: Inference output is not LayoutOutput and no provider adapter matched."),
+    ]
+
+    aggregate = runner._aggregate_metrics(results)
+
+    # (0.8 + 0.6 + 0) / 3
+    assert aggregate["avg_rule_pass_rate"] == pytest.approx(0.4667, abs=1e-3)
+    assert aggregate["min_rule_pass_rate"] == 0.0
+
+
 def test_diagnostic_count_metrics_are_not_padded() -> None:
     runner = EvaluationRunner(output_dir=Path("/tmp/unused"))
     # Count/lower-is-better values that happen to all fall in [0, 1]: a
@@ -362,7 +380,9 @@ def test_missing_layout_output_is_synthesized_as_zero(tmp_path: Path, monkeypatc
     assert len(summary.per_example_results) == 1
     synthesized = summary.per_example_results[0]
     assert synthesized.success is False
-    assert synthesized.product_type == "layout_detection"
+    # Tagged PARSE so the synthetic 0 lands in the padding scope of the
+    # cross-eval parse metrics the layout group actually reports.
+    assert synthesized.product_type == "parse"
     assert synthesized.error == "No usable inference output for this example"
 
 

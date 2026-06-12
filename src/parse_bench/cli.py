@@ -77,7 +77,7 @@ class BenchCLI:
         file: str | Path | None = None,
         output_dir: str | Path | None = None,
         max_concurrent: int = 20,
-        force: bool = False,
+        force: bool = True,
         verbose: bool = False,
         group: str | None = None,
         tags: str | tuple[str, ...] | list[str] | None = None,
@@ -93,7 +93,7 @@ class BenchCLI:
             file: Single file to run (PDF/image)
             output_dir: Directory to save results (default: ./output)
             max_concurrent: Maximum concurrent inference requests (default: 20)
-            force: Force regeneration even if results exist (default: False)
+            force: Force regeneration even if results exist (default: True — re-runs always reparse; pass --force=False to reuse cached results)
             verbose: Enable verbose output (default: False)
             group: Filter by category (e.g., 'chart', 'table')
             tags: Tags for this run
