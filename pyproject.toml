@@ -106,6 +106,7 @@ module = [
     "markdown2",
     "apted",
     "apted.*",
+    "fitz",
     "pandas",
     "fuzzysearch",
     "scipy.*",
