@@ -428,6 +428,30 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
+            pipeline_name="liteparse_markdown",
+            provider_name="liteparse",
+            product_type=ProductType.PARSE,
+            config={
+                "output_format": "markdown",
+                "ocr_enabled": False,
+            },
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="liteparse_text",
+            provider_name="liteparse",
+            product_type=ProductType.PARSE,
+            config={
+                "output_format": "text",
+                "ocr_enabled": False,
+            },
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
             pipeline_name="pypdf_baseline",
             provider_name="pypdf",
             product_type=ProductType.PARSE,

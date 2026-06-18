@@ -25,6 +25,7 @@ _PROVIDER_MODULES = [
     "infinity_parser2",
     "kdl_frontier_nano",
     "landingai",
+    "liteparse",
     "markitdown",
     "opendataloader",
     "pdf_inspector",
