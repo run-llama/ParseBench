@@ -215,6 +215,10 @@ Each pipeline calls a specific parsing tool's API. You only need the API key for
 # Only add the keys you need. For example, to evaluate LlamaParse:
 LLAMA_CLOUD_API_KEY=...
 
+# Optional: point LlamaParse at a custom API base URL,
+# e.g. http://localhost:8000. Takes precedence over staging/EU/prod selection.
+LLAMA_CLOUD_BASE_URL=...
+
 # To evaluate OpenAI-based pipelines:
 OPENAI_API_KEY=...
 

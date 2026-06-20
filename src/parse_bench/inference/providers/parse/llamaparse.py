@@ -58,7 +58,7 @@ class LlamaParseProvider(Provider):
     }
 
     # Parameters that are handled by the provider and should not be forwarded to the SDK
-    _PROVIDER_ONLY_PARAMS = {"use_staging", "use_europe", "api_key"}
+    _PROVIDER_ONLY_PARAMS = {"use_staging", "use_europe", "api_key", "base_url"}
 
     def __init__(
         self,
@@ -71,6 +71,10 @@ class LlamaParseProvider(Provider):
         :param provider_name: Name of the provider
         :param base_config: Optional configuration. Provider-specific parameters:
             - `api_key`: LlamaCloud API key (defaults to LLAMA_CLOUD_API_KEY env var)
+            - `base_url`: Override the LlamaParse API base URL (defaults to
+              LLAMA_CLOUD_BASE_URL env var). When set, it takes precedence over
+              use_staging/use_europe and the default prod URL. Useful for
+              custom deployments, e.g. http://localhost:8000.
             - `use_staging`: Use staging environment (default: False)
             - `use_europe`: Use European Union (EU) region (default: False)
               Note: use_staging and use_europe cannot both be True
@@ -99,7 +103,17 @@ class LlamaParseProvider(Provider):
                 "use_staging and use_europe cannot both be True. Please choose one environment: staging or EU region."
             )
 
-        if use_staging:
+        # An explicit base URL override wins over staging/EU/prod selection.
+        # Precedence: base_config["base_url"] -> LLAMA_CLOUD_BASE_URL env var.
+        explicit_base_url = self.base_config.get("base_url") or os.getenv("LLAMA_CLOUD_BASE_URL")
+
+        if explicit_base_url:
+            # Custom deployment target. Such a target may accept any or
+            # an empty key, so don't hard-fail when no API key is provided; fall
+            # back to an empty string so the SDK client can still initialize.
+            self._api_key = self.base_config.get("api_key") or os.getenv("LLAMA_CLOUD_API_KEY") or ""
+            self._base_url = explicit_base_url
+        elif use_staging:
             staging_key = self.base_config.get("api_key") or os.getenv("LLAMA_CLOUD_STAGING_API_KEY")
             if not staging_key:
                 raise ProviderConfigError(
