@@ -34,6 +34,7 @@ _PROVIDER_MODULES = [
     "llamaparse_v2_normalization",
     "mineru25",
     "mineru2605pro",
+    "mistral_ocr",
     "openai",
     "paddleocr",
     "pulse",

@@ -1989,3 +1989,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             },
         )
     )
+
+    # =========================================================================
+    # Mistral OCR Pipelines
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="mistral_ocr_4",
+            provider_name="mistral_ocr",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "mistral-ocr-4-0",
+                "include_blocks": True,
+                "max_pages": 50,
+            },
+        )
+    )
