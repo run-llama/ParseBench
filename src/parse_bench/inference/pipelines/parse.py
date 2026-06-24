@@ -2019,3 +2019,26 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             },
         )
     )
+
+    # Annotation ("Document AI") mode: same /v1/ocr endpoint with
+    # ``bbox_annotation_format`` so each figure's data is transcribed into the
+    # markdown (charts -> data tables). Billed at $5/1000 annotated pages.
+    # Annotation runs a vision pass per figure, so it is heavier and hits 429s
+    # more readily than plain OCR — give it a larger Retry-After backoff budget
+    # (the provider already honors the server's Retry-After header).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="mistral_ocr_4_annotation",
+            provider_name="mistral_ocr",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "mistral-ocr-4-0",
+                "include_blocks": True,
+                "bbox_annotation": True,
+                "max_pages": 50,
+                "rate_limit_retries": 8,
+                "rate_limit_base_wait": 2.0,
+                "rate_limit_max_wait": 30.0,
+            },
+        )
+    )

@@ -20,9 +20,21 @@ The API returns one object per page with:
 tables to HTML ``<table>`` so GriTS/TEDS can score them) and, when blocks are
 present, builds ``layout_pages`` with each block's bbox normalized to ``[0,1]``
 xywh and its ``type`` mapped to a Canonical17 label for layout evaluation.
+
+Annotation ("Document AI") mode
+-------------------------------
+When ``bbox_annotation=True`` (the ``mistral_ocr_4_annotation`` pipeline), the
+request also carries a ``bbox_annotation_format`` JSON schema. Mistral then runs
+a vision model over every extracted figure bbox and returns an ``image_annotation``
+per image. ``normalize()`` splices each figure's transcribed ``data_markdown``
+(e.g. a chart's underlying data table) back into the page markdown in place of the
+opaque ``![img-N.jpeg](img-N.jpeg)`` placeholder, so chart/plot data reaches the
+scorer. This mode is billed at the higher "annotated pages" rate ($5/1000 vs
+$4/1000 for plain OCR). See ``_FIGURE_ANNOTATION_SCHEMA`` / ``_inject_image_annotations``.
 """
 
 import base64
+import json
 import os
 import re
 import time
@@ -159,6 +171,87 @@ MISTRAL_LABEL_MAP: dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
+# Figure annotation ("Document AI" mode)
+# ---------------------------------------------------------------------------
+#
+# In annotation mode the provider sends this schema as ``bbox_annotation_format``
+# with the OCR request. Mistral runs a vision model over every extracted figure
+# bbox and returns, per image, an ``image_annotation`` JSON string with these
+# fields. ``data_markdown`` is the lever for the charts benchmark: standard OCR
+# emits charts as opaque ``![img-N.jpeg](img-N.jpeg)`` placeholders (no data),
+# whereas annotation transcribes a chart/plot's underlying numbers into a markdown
+# table. The schema instructs the model to return an *empty* ``data_markdown`` for
+# figures without extractable data (photos, logos, decorative icons) so those keep
+# their original placeholder and we never inject prose the source doesn't contain.
+_FIGURE_ANNOTATION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "title": "FigureData",
+    "properties": {
+        "figure_type": {
+            "type": "string",
+            "title": "figure_type",
+            "description": (
+                "Kind of figure: one of bar_chart, line_chart, pie_chart, "
+                "scatter_plot, area_chart, table, diagram, map, photo, logo, icon, other."
+            ),
+        },
+        "data_markdown": {
+            "type": "string",
+            "title": "data_markdown",
+            "description": (
+                "If the figure is a chart, plot, graph, or data table, transcribe ALL "
+                "of its underlying data as one or more GitHub-flavored markdown tables: "
+                "include axis titles, every category/x label, every series name, and "
+                "every numeric value (with units or % signs) exactly as shown. Be "
+                "exhaustive and precise. If the figure carries no extractable tabular "
+                "data (a photo, logo, decorative icon, or pure illustration), return an "
+                "empty string."
+            ),
+        },
+        "caption": {
+            "type": "string",
+            "title": "caption",
+            "description": "A concise one-sentence caption describing what the figure shows.",
+        },
+    },
+    "required": ["figure_type", "data_markdown", "caption"],
+    "additionalProperties": False,
+}
+
+
+def _inject_image_annotations(markdown: str, images: list[dict[str, Any]]) -> str:
+    """Splice transcribed figure data into the page markdown.
+
+    For each extracted image carrying a non-empty ``data_markdown`` annotation (a
+    markdown transcription of a chart/plot/table's underlying data), replace the bare
+    ``![alt](image_id)`` placeholder in ``markdown`` with that transcription. Figures
+    whose annotation has an empty ``data_markdown`` (photos, logos, decorative icons)
+    keep their original placeholder, so this never injects descriptive prose the
+    source document doesn't contain. A no-op when no image carries an annotation
+    (standard OCR mode), so the markdown is byte-identical to the non-annotated path.
+    """
+    for img in images:
+        ann_raw = img.get("image_annotation")
+        img_id = img.get("id")
+        if not ann_raw or not img_id:
+            continue
+        try:
+            ann = json.loads(ann_raw) if isinstance(ann_raw, str) else ann_raw
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(ann, dict):
+            continue
+        data_md = str(ann.get("data_markdown") or "").strip()
+        if not data_md:
+            continue
+        placeholder = re.compile(r"!\[[^\]]*\]\(" + re.escape(str(img_id)) + r"\)")
+        # Double backslashes so re.sub treats data_md as a literal replacement
+        # (no ``\1`` / ``\g<...>`` backreference interpretation).
+        markdown = placeholder.sub(data_md.replace("\\", "\\\\"), markdown)
+    return markdown
+
+
+# ---------------------------------------------------------------------------
 # Layout pages from blocks
 # ---------------------------------------------------------------------------
 
@@ -243,14 +336,20 @@ class MistralOCRProvider(Provider):
         OCR model id (default ``"mistral-ocr-4-0"``).
     include_blocks : bool
         Request paragraph-level layout blocks (default ``True``; OCR 4+ only).
+    bbox_annotation : bool
+        Enable "Document AI" annotation mode (default ``False``): transcribe each
+        figure's data into the markdown via ``bbox_annotation_format``. Billed at
+        the higher annotated-pages rate.
     max_pages : int
         Cap on pages sent to the API for very long documents (default 50).
     timeout : int
         HTTP request timeout in seconds (default 300).
     """
 
-    # OCR 4.0 standard list price: $4 / 1000 pages.
+    # OCR 4.0 list prices. Plain OCR is $4 / 1000 pages; annotation ("Document AI")
+    # mode is billed at $5 / 1000 annotated pages.
     COST_PER_PAGE_USD = 0.004
+    COST_PER_PAGE_ANNOTATED_USD = 0.005
 
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         super().__init__(provider_name, base_config)
@@ -266,6 +365,13 @@ class MistralOCRProvider(Provider):
         self._include_blocks: bool = self.base_config.get("include_blocks", True)
         self._max_pages: int = self.base_config.get("max_pages", 50)
         self._timeout: int = self.base_config.get("timeout", 300)
+        # Annotation ("Document AI") mode: request per-figure data transcription so
+        # charts/plots reach the scorer as data tables instead of opaque image
+        # placeholders. Billed at the higher annotated-pages rate ($5 vs $4 /1000).
+        self._bbox_annotation: bool = self.base_config.get("bbox_annotation", False)
+        self._cost_per_page: float = (
+            self.COST_PER_PAGE_ANNOTATED_USD if self._bbox_annotation else self.COST_PER_PAGE_USD
+        )
         # Internal backoff for 429 rate limits and 5xx, honoring the server's
         # Retry-After header. Mistral OCR rate-limits aggressively; retrying in
         # the provider (instead of letting docs exhaust the runner's budget)
@@ -301,6 +407,18 @@ class MistralOCRProvider(Provider):
             "include_blocks": self._include_blocks,
             "include_image_base64": False,
         }
+        # Annotation mode: ask Mistral to transcribe each extracted figure into a
+        # structured ``image_annotation`` (``_inject_image_annotations`` splices the
+        # chart data back into the markdown in ``normalize``).
+        if self._bbox_annotation:
+            payload["bbox_annotation_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "schema": _FIGURE_ANNOTATION_SCHEMA,
+                    "name": "figure_data",
+                    "strict": True,
+                },
+            }
         # Cap pages for very long docs (the smoke/benchmark docs are short, so
         # this is a no-op there). Only send an explicit page list when the doc
         # exceeds the cap to avoid an out-of-range page error.
@@ -362,12 +480,13 @@ class MistralOCRProvider(Provider):
         # Cost tracking.
         usage = raw_output.get("usage_info") or {}
         pages_processed = usage.get("pages_processed") or len(raw_output.get("pages", [])) or num_pages
-        cost_usd = pages_processed * self.COST_PER_PAGE_USD
+        cost_usd = pages_processed * self._cost_per_page
         raw_output["cost_usd"] = cost_usd
-        raw_output["cost_per_page_usd"] = self.COST_PER_PAGE_USD
+        raw_output["cost_per_page_usd"] = self._cost_per_page
         raw_output["_config"] = {
             "model": self._model,
             "include_blocks": self._include_blocks,
+            "bbox_annotation": self._bbox_annotation,
             "max_pages": self._max_pages,
             "total_pages": num_pages,
         }
@@ -391,7 +510,16 @@ class MistralOCRProvider(Provider):
             raise ProviderPermanentError(f"MistralOCRProvider only supports PARSE, got {raw_result.product_type}")
 
         pages = raw_result.raw_output.get("pages") or []
-        page_markdowns = [str(p.get("markdown", "") or "") for p in pages]
+        page_markdowns: list[str] = []
+        for p in pages:
+            page_md = str(p.get("markdown", "") or "")
+            # Annotation mode: splice each figure's transcribed data table into the
+            # markdown in place of its image placeholder. No-op for standard OCR
+            # (images carry no ``image_annotation``), so output stays identical.
+            images = p.get("images") or []
+            if images:
+                page_md = _inject_image_annotations(page_md, images)
+            page_markdowns.append(page_md)
         markdown = "\n\n".join(page_markdowns).strip()
         markdown = _convert_pipe_tables_to_html(markdown)
 
