@@ -45,6 +45,7 @@ _PROVIDER_MODULES = [
     "surya2",
     "tesseract",
     "textract",
+    "unlimitedocr",
     "unstructured",
 ]
 

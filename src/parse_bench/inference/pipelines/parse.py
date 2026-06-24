@@ -1088,6 +1088,19 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # Unlimited-OCR (baidu/Unlimited-OCR, DeepSeek-OCR successor with grounding)
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="unlimitedocr",
+            provider_name="unlimitedocr",
+            product_type=ProductType.PARSE,
+            config={},
+        )
+    )
+
+    # =========================================================================
     # Qwen3.5-4B vLLM
     # =========================================================================
 
