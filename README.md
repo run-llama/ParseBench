@@ -20,7 +20,7 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 
 | Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
-| 1 | LlamaParse Agentic | LlamaParse | 83.89 | 86.08 | 81.46 | 90.53 | 83.11 | 78.28 | 1.25¢ |
+| 1 | LlamaParse Agentic (6/24) | LlamaParse | 83.89 | 86.08 | 81.46 | 90.53 | 83.11 | 78.28 | 1.25¢ |
 | 2 | KDL-Frontier-Parser-nano | VLM - Open Weight | 76.36 | 85.56 | 63.41 | 87.19 | 66.81 | 78.84 | — |
 | 3 | Google Gemini 3 Flash (Thinking High) | VLM - Proprietary | 75.05 | 91.50 | 64.79 | 90.87 | 68.31 | 59.77 | 2.41¢ |
 | 4 | Infinity-Parser2-Pro | VLM - Open Weight | 74.28 | 86.4 | 61.3 | 89.7 | 59.1 | 74.9 | — |

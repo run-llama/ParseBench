@@ -1,6 +1,6 @@
 Provider,Category,Overall,Tables,Charts,Content_Faithfulness,Semantic_Formatting,Visual_Grounding,Cost_Per_Page,Cost_Charts,Cost_Tables,Cost_Text,Cost_Layout,HF_Model_ID
-LlamaParse Cost Effective,LlamaParse,69.63,81.59,40.57,90.17,65.2,70.61,0.375,,,,,
-LlamaParse Agentic,LlamaParse,83.89,86.08,81.46,90.53,83.11,78.28,1.25,,,,,
+LlamaParse Cost Effective (6/24),LlamaParse,69.63,81.59,40.57,90.17,65.2,70.61,0.375,,,,,
+LlamaParse Agentic (6/24),LlamaParse,83.89,86.08,81.46,90.53,83.11,78.28,1.25,,,,,
 OpenAI GPT-5 Mini (Reasoning Minimal),VLM - Proprietary,46.83,69.82,30.13,82.30,45.77,6.15,0.88,0.70,1.22,0.67,0.91,
 OpenAI GPT-5 Mini (Reasoning Medium),VLM - Proprietary,51.52,74.60,38.96,85.68,45.35,13.03,3.05,2.93,3.43,2.67,3.15,
 Anthropic Haiku 4.5 (Disable Thinking),VLM - Proprietary,45.17,77.21,13.77,78.74,49.39,6.72,1.64,0.97,2.46,1.53,1.60,
