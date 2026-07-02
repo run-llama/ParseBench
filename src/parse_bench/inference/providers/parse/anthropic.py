@@ -3,7 +3,7 @@
 import base64
 import io
 import os
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +73,9 @@ USER_PROMPT = (
 _ANTHROPIC_PRICING_PER_M: dict[str, tuple[float, float]] = {
     # model-prefix: (input_per_M, output_per_M)
     "claude-fable-5": (10.00, 50.00),
+    # Sonnet 5 has introductory pricing through 2026-08-31; handled in
+    # _get_pricing so benchmark costs switch to standard pricing on time.
+    "claude-sonnet-5": (3.00, 15.00),
     "claude-haiku-4-5": (1.00, 5.00),
     "claude-haiku-3-5": (0.80, 4.00),
     "claude-haiku-3": (0.25, 1.25),
@@ -153,6 +156,9 @@ class AnthropicProvider(Provider):
         Uses longest-prefix matching to avoid ambiguity when one model
         prefix is a substring of another.
         """
+        if self._model.startswith("claude-sonnet-5") and date.today() <= date(2026, 8, 31):
+            return (2.00, 10.00)
+
         matches = [(p, r) for p, r in _ANTHROPIC_PRICING_PER_M.items() if self._model.startswith(p)]
         return max(matches, key=lambda x: len(x[0]))[1] if matches else (0.0, 0.0)
 
