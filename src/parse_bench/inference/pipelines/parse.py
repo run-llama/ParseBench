@@ -303,6 +303,22 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # Cognita (self-hosted document parsing server)
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="cognita",
+            provider_name="cognita",
+            product_type=ProductType.PARSE,
+            config={
+                "base_url": "",  # Defaults to COGNITA_BASE_URL env var, then https://cognita.rahulrawat.in
+                "timeout": 120,
+            },
+        )
+    )
+
+    # =========================================================================
     # Landing AI Pipelines
     # =========================================================================
 

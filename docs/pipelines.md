@@ -228,6 +228,19 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 | `dots_ocr_1_0_parse` | dots.ocr 1.0 | `DOTS_OCR_ENDPOINT_URL` |
 | **`dots_ocr_1_5_parse`** | dots.ocr 1.5, layout+text prompt (In paper: *Dots OCR 1.5*) | `DOTS_OCR_ENDPOINT_URL` |
 
+### Cognita
+
+Cognita is a pure-code, zero-ML document parsing engine with deterministic
+output. A hosted instance runs at [cognita.rahulrawat.in](https://cognita.rahulrawat.in)
+(the root URL serves a browser test console where an API key can be requested);
+the pipeline points there by default and `COGNITA_BASE_URL` overrides it for
+your own deployment.
+
+| Pipeline | Description | Env Vars |
+|---|---|---|
+| `cognita` | Cognita parsing server (`POST /v1/parse`) | `COGNITA_API_KEY`, `COGNITA_BASE_URL` (optional override) |
+
+
 ### Docling
 
 | Pipeline | Description | Env Vars |

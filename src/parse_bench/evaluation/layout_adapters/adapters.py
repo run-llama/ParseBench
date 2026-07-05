@@ -1272,6 +1272,99 @@ class ReductoLayoutAdapter(LayoutAdapter):
         )
 
 
+@register_layout_adapter("cognita", priority=90)
+class CognitaLayoutAdapter(LayoutAdapter):
+    """Adapter that extracts LayoutOutput from Cognita ParseOutput.layout_pages.
+
+    Enables cross-evaluation: the ``cognita`` PARSE pipeline can be evaluated
+    against layout detection datasets using the IR block bboxes from the
+    Cognita server response.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput):
+            return False
+        if not inference_result.output.layout_pages:
+            return False
+        # Identify Cognita by its parse response shape: an IR document with
+        # source_format alongside document-level markdown.
+        raw_output = inference_result.raw_output
+        if isinstance(raw_output, dict):
+            document = raw_output.get("document")
+            return isinstance(document, dict) and "source_format" in document
+        return False
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        # Handle synthetic LayoutOutput results (e.g. from cross-eval runner)
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            filtered = [p for p in inference_result.output.predictions if p.page == page_filter]
+            return inference_result.output.model_copy(update={"predictions": filtered})
+
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("CognitaLayoutAdapter requires ParseOutput or LayoutOutput")
+
+        layout_pages = inference_result.output.layout_pages
+        if not layout_pages:
+            raise ValueError("CognitaLayoutAdapter requires non-empty layout_pages")
+
+        first_page = layout_pages[0]
+        output_width = int(first_page.width or 1)
+        output_height = int(first_page.height or 1)
+
+        predictions: list[LayoutPrediction] = []
+
+        for lp in layout_pages:
+            page_number = lp.page_number
+            if page_filter is not None and page_number != page_filter:
+                continue
+
+            page_w = float(lp.width or output_width)
+            page_h = float(lp.height or output_height)
+
+            for item in lp.items:
+                for seg in item.layout_segments:
+                    label = seg.label or item.type or "Text"
+
+                    # Convert normalized [0,1] xywh → pixel xyxy
+                    x1 = seg.x * page_w
+                    y1 = seg.y * page_h
+                    x2 = (seg.x + seg.w) * page_w
+                    y2 = (seg.y + seg.h) * page_h
+
+                    content = _build_vendor_content(label, item.value)
+
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[x1, y1, x2, y2],
+                            score=float(seg.confidence or 1.0),
+                            label=label,
+                            page=page_number,
+                            content=content,
+                            provider_metadata={
+                                "order_index": len(predictions),
+                            },
+                        )
+                    )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.COGNITA_LAYOUT,
+            image_width=max(output_width, 1),
+            image_height=max(output_height, 1),
+            predictions=predictions,
+        )
+
+
 @register_layout_adapter("pulse", priority=90)
 class PulseLayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from Pulse ParseOutput.layout_pages.
@@ -2763,9 +2856,7 @@ class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
                     x1, y1 = seg.x * S, seg.y * S
                     x2, y2 = (seg.x + seg.w) * S, (seg.y + seg.h) * S
                     text = item.md or item.value or ""
-                    content = _build_docling_parse_content(
-                        "table" if str(label).lower() == "table" else "text", text
-                    )
+                    content = _build_docling_parse_content("table" if str(label).lower() == "table" else "text", text)
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
