@@ -127,8 +127,8 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 
 | Pipeline | Description | Env Var |
 |---|---|---|
-| `pulse` | Default with HTML table output | `PULSE_API_KEY` |
-| `pulse_ultra_2` | `pulse-ultra-2` VLM tier (10 credits/page) | `PULSE_API_KEY` |
+| `pulse` | Default with HTML table output, no refinement | `PULSE_API_KEY` |
+| `pulse_ultra_2` | `pulse-ultra-2` VLM tier, no refinement | `PULSE_API_KEY` |
 
 ### Chunkr
 
