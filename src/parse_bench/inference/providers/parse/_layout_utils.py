@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from typing import Any
 
@@ -147,6 +148,19 @@ def split_pdf_to_pages(pdf_path: str) -> list[tuple[bytes, int, int]]:
     return results
 
 
+def _is_valid_bbox(bbox: Any) -> bool:
+    """True when *bbox* is a list of four finite numeric (non-bool) elements.
+
+    Models occasionally emit null, string, or NaN/Infinity entries (json.loads
+    accepts the latter), which would raise or clamp to garbage downstream.
+    """
+    return (
+        isinstance(bbox, list)
+        and len(bbox) == 4
+        and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in bbox)
+    )
+
+
 def parse_layout_blocks(content: str) -> list[dict[str, Any]]:
     """Parse <div data-bbox="..." data-label="...">content</div> blocks.
 
@@ -186,10 +200,13 @@ def parse_layout_blocks(content: str) -> list[dict[str, Any]]:
         seen_positions.add(pos)
         try:
             bbox = json.loads(bbox_str)
-            if isinstance(bbox, list) and len(bbox) == 4:
-                blocks.append({"bbox": bbox, "label": label, "text": text.strip()})
         except json.JSONDecodeError:
             logger.warning(f"Failed to parse bbox: {bbox_str}")
+            continue
+        if _is_valid_bbox(bbox):
+            blocks.append({"bbox": bbox, "label": label, "text": text.strip()})
+        else:
+            logger.warning(f"Skipping block with malformed bbox: {bbox_str}")
 
     return blocks
 
@@ -238,10 +255,21 @@ def build_layout_pages(
         label_raw = item.get("label", "text")
         text = item.get("text", "")
 
-        if len(bbox) != 4:
+        # Re-validate: items may come from raw outputs persisted before
+        # parse_layout_blocks filtered malformed bboxes (renormalization).
+        if not _is_valid_bbox(bbox):
+            logger.warning(f"Skipping layout item with malformed bbox: {bbox!r}")
             continue
 
         x1, y1, x2, y2 = bbox
+
+        # Clamp to the prompt's [0, 1000] range (as the qwen3vl layout
+        # provider does) so an out-of-range coordinate cannot produce a
+        # segment outside the unit square.
+        clamped = [max(0, min(1000, v)) for v in (x1, y1, x2, y2)]
+        if clamped != [x1, y1, x2, y2]:
+            logger.warning(f"Clamped out-of-range bbox {bbox!r} to the 0-1000 range")
+        x1, y1, x2, y2 = clamped
 
         # Convert from 0-1000 [x1,y1,x2,y2] to normalized [0,1] COCO [x,y,w,h]
         nx = x1 / 1000.0
