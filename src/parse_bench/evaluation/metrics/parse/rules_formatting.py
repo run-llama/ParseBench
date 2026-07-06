@@ -841,6 +841,7 @@ class TitleHierarchyPercentRule(ParseTestRule):
             for i in range(len(child_titles_in_order) - 1):
                 edges.append((child_titles_in_order[i], child_titles_in_order[i + 1], False))
 
+        root_titles_in_order: list[str] = []
         for root_raw, root_children in hierarchy.items():
             if not isinstance(root_raw, str):
                 continue
@@ -848,7 +849,19 @@ class TitleHierarchyPercentRule(ParseTestRule):
             if not normalized_root:
                 continue
             titles.add(normalized_root)
+            # First occurrence only: distinct keys can normalize to the same
+            # title ("**Intro**" and "Intro"), and a duplicate would create a
+            # self-edge or contradictory order edges that no document can
+            # satisfy.
+            if normalized_root not in root_titles_in_order:
+                root_titles_in_order.append(normalized_root)
             walk_children(normalized_root, root_children)
+
+        # Preserve top-level sibling ordering, mirroring the child-sibling
+        # edges above — without these, a multi-root hierarchy scores full
+        # marks regardless of the order the roots appear in.
+        for i in range(len(root_titles_in_order) - 1):
+            edges.append((root_titles_in_order[i], root_titles_in_order[i + 1], False))
 
         return titles, edges
 
