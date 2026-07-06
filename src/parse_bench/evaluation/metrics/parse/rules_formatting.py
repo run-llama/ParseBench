@@ -101,8 +101,11 @@ def _strip_other_formatting(text: str, keep_kind: str) -> str:
             continue
         for pattern, repl in replacements:
             result = pattern.sub(repl, result)
-    # Collapse whitespace and fix stray spaces before punctuation
-    result = re.sub(r"\s+", " ", result)
+    # Collapse whitespace (preserving line structure — the heading arm of
+    # the bold patterns is line-anchored) and fix stray spaces before
+    # punctuation
+    result = re.sub(r"[^\S\n]+", " ", result)
+    result = re.sub(r" ?\n ?", "\n", result)
     result = re.sub(r" ([,;:!?.\)\]\}])", r"\1", result)
     return result
 
@@ -172,21 +175,32 @@ class FormattingRule(ParseTestRule):
 
         The query may be a substring of the bold span (e.g. query
         ``Population`` matches ``**Population:**``).
+
+        The ``**`` delimiters follow CommonMark flanking (an opener is not
+        followed by whitespace, a closer is not preceded by it) and the
+        ``<b>`` filler cannot cross a closing tag — otherwise the closer of
+        one span pairs with the opener of the next and the unformatted text
+        between two bold spans (``**Name:** John **Age:**``) tests as bold.
+        The heading arm's fillers stay on the heading's own line for the
+        same reason. (The whitespace joiners inside a multi-word query can
+        still cross these boundaries; only the fillers are constrained.)
         """
         # Tempered greedy token: match any char that doesn't start a new **
         _not_bold_close = r"(?:(?!\*\*).)*?"
+        # Same idea for the HTML arm: don't cross a closing </b>
+        _not_b_close_tag = r"(?:(?!</b>).)*?"
         return [
             re.compile(
-                r"\*\*" + _not_bold_close + escaped_query + _not_bold_close + r"\*\*",
+                r"\*\*(?!\s)" + _not_bold_close + escaped_query + _not_bold_close + r"(?<!\s)\*\*",
                 re.IGNORECASE | re.DOTALL,
             ),
             re.compile(
-                r"<b>.*?" + escaped_query + r".*?</b>",
+                r"<b>" + _not_b_close_tag + escaped_query + _not_b_close_tag + r"</b>",
                 re.IGNORECASE | re.DOTALL,
             ),
             re.compile(
-                r"^\s*#{1,6}\s+.*?" + escaped_query + r".*?\s*(?:#+\s*)?$",
-                re.IGNORECASE | re.MULTILINE | re.DOTALL,
+                r"^[ \t]*#{1,6}[ \t]+[^\n]*?" + escaped_query + r"[^\n]*?[ \t]*(?:#+[ \t]*)?$",
+                re.IGNORECASE | re.MULTILINE,
             ),
         ]
 
@@ -201,6 +215,10 @@ class FormattingRule(ParseTestRule):
         _not_italic_close_star = r"(?:(?!\*(?!\*)).)*?"
         # Same idea for _
         _not_italic_close_under = r"(?:(?!_(?!_)).)*?"
+        # And for the HTML arms: the fillers must not cross a closing tag,
+        # or adjacent spans (<i>A</i> x <i>B</i>) merge into one match.
+        _not_i_close_tag = r"(?:(?!</i>).)*?"
+        _not_em_close_tag = r"(?:(?!</em>).)*?"
         return [
             # *text* but NOT **text** – use negative lookbehind/lookahead
             re.compile(
@@ -212,11 +230,11 @@ class FormattingRule(ParseTestRule):
                 re.IGNORECASE | re.DOTALL,
             ),
             re.compile(
-                r"<i>.*?" + escaped_query + r".*?</i>",
+                r"<i>" + _not_i_close_tag + escaped_query + _not_i_close_tag + r"</i>",
                 re.IGNORECASE | re.DOTALL,
             ),
             re.compile(
-                r"<em>.*?" + escaped_query + r".*?</em>",
+                r"<em>" + _not_em_close_tag + escaped_query + _not_em_close_tag + r"</em>",
                 re.IGNORECASE | re.DOTALL,
             ),
         ]
