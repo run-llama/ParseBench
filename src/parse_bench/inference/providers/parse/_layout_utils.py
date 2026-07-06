@@ -194,8 +194,48 @@ def parse_layout_blocks(content: str) -> list[dict[str, Any]]:
     return blocks
 
 
+# A markdown ATX heading marker: optional indent, 1-6 hashes, then whitespace.
+# The trailing whitespace is required (as in CommonMark), so literal text like
+# "#1 Best Seller" is not mistaken for a marker.
+_LEADING_HEADING_MARKER = re.compile(r"^[ \t]*(#{1,6})[ \t]+")
+
+
+def _strip_heading_marker(text: str) -> str:
+    """Strip a leading markdown heading marker, if any, from item text."""
+    match = _LEADING_HEADING_MARKER.match(text)
+    if not match:
+        return text
+    bare = text[match.end() :].strip()
+    return bare if bare else text
+
+
+def _strip_outer_formula_delimiters(text: str) -> str:
+    """Strip one outer pair of ``$$``/``$`` delimiters when unambiguous.
+
+    Only strips when the interior contains no further ``$``, so multi-formula
+    items (``$a$ + $b$``) and text with interior dollar signs pass through
+    verbatim rather than being corrupted.
+    """
+    stripped = text.strip()
+    for delim in ("$$", "$"):
+        if len(stripped) > 2 * len(delim) and stripped.startswith(delim) and stripped.endswith(delim):
+            interior = stripped[len(delim) : -len(delim)]
+            if "$" not in interior and interior.strip():
+                return interior.strip()
+    return text
+
+
 def items_to_markdown(items: list[dict[str, Any]]) -> str:
-    """Assemble clean markdown from parsed layout items."""
+    """Assemble clean markdown from parsed layout items.
+
+    The layout prompt asks for clean markdown inside each div, so models
+    frequently emit heading markers (``# Heading``) and formula delimiters
+    (``$$...$$``) in the item text already. Any existing markers are stripped
+    before the label-derived ones are applied, so they don't double up
+    (``# # Heading``, nested ``$$`` blocks) — doubled markers defeat the
+    heading/formula detection in downstream scoring. Title still always
+    renders as H1 and Section-header as H2.
+    """
     parts: list[str] = []
     for item in items:
         label = item.get("label", "").lower()
@@ -203,11 +243,11 @@ def items_to_markdown(items: list[dict[str, Any]]) -> str:
         if not text:
             continue
         if label == "title":
-            parts.append(f"# {text}")
+            parts.append(f"# {_strip_heading_marker(text)}")
         elif label in ("section-header", "section_header"):
-            parts.append(f"## {text}")
+            parts.append(f"## {_strip_heading_marker(text)}")
         elif label == "formula":
-            parts.append(f"$$\n{text}\n$$")
+            parts.append(f"$$\n{_strip_outer_formula_delimiters(text)}\n$$")
         else:
             parts.append(text)
     return "\n\n".join(parts)
