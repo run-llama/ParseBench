@@ -65,8 +65,11 @@ _STRIP_PATTERNS: dict[str, list[tuple[re.Pattern, str]]] = {
         (re.compile(r"</?b>", re.IGNORECASE), ""),
     ],
     "italic": [
-        (re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)"), r"\1"),
-        (re.compile(r"(?<!_)_(?!_)(.+?)(?<!_)_(?!_)"), r"\1"),
+        # Flanking-aware (see _build_italic_patterns): a ``*`` followed by
+        # whitespace or an ``_`` inside a word is not an emphasis delimiter,
+        # so list bullets and snake_case survive the strip.
+        (re.compile(r"(?<!\*)\*(?![*\s])(.+?)(?<!\s)\*(?!\*)"), r"\1"),
+        (re.compile(r"(?<!\w)_(?!_)(.+?)(?<!_)_(?!\w)"), r"\1"),
         (re.compile(r"</?(?:i|em)>", re.IGNORECASE), ""),
     ],
     "underline": [
@@ -196,19 +199,36 @@ class FormattingRule(ParseTestRule):
 
         The query may be a substring of the italic span (e.g. query
         ``Grazing Line`` matches ``*Grazing Line, Macquarie Marshes, NSW*``).
+
+        The markdown delimiters follow CommonMark's flanking rules: a ``*``
+        followed by whitespace (a list bullet, ``5 * 3``) cannot open
+        emphasis and one preceded by whitespace cannot close it; an ``_``
+        with word characters on both sides (``snake_case``) is not a
+        delimiter at all. Without these rules, bulleted lists and
+        identifier-heavy text score as one giant italic span.
         """
         # Tempered greedy token: any char that isn't a lone * (i.e. not * unless followed by *)
         _not_italic_close_star = r"(?:(?!\*(?!\*)).)*?"
-        # Same idea for _
-        _not_italic_close_under = r"(?:(?!_(?!_)).)*?"
+        # Same idea for _, except an intraword ``_`` (snake_case) is not a
+        # delimiter, so the span content may cross it.
+        _not_italic_close_under = r"(?:(?!_(?!_)).|(?<=\w)_(?!_)(?=\w))*?"
         return [
-            # *text* but NOT **text** – use negative lookbehind/lookahead
+            # *text* but NOT **text** – use negative lookbehind/lookahead.
+            # An opening ``*`` must not be followed by whitespace and a
+            # closing one must not be preceded by it (CommonMark flanking).
             re.compile(
-                r"(?<!\*)\*(?!\*)" + _not_italic_close_star + escaped_query + _not_italic_close_star + r"\*(?!\*)",
+                r"(?<!\*)\*(?![*\s])"
+                + _not_italic_close_star
+                + escaped_query
+                + _not_italic_close_star
+                + r"(?<!\s)\*(?!\*)",
                 re.IGNORECASE | re.DOTALL,
             ),
+            # _text_ but NOT __text__ and NOT intraword (snake_case): an
+            # opening ``_`` must not be preceded by a word char, a closing
+            # one must not be followed by one.
             re.compile(
-                r"(?<!_)_(?!_)" + _not_italic_close_under + escaped_query + _not_italic_close_under + r"_(?!_)",
+                r"(?<!\w)_(?!_)" + _not_italic_close_under + escaped_query + _not_italic_close_under + r"(?<!_)_(?!\w)",
                 re.IGNORECASE | re.DOTALL,
             ),
             re.compile(
