@@ -31,7 +31,14 @@ from parse_bench.test_cases.parse_rule_schemas import (
 # Matches optional inline formatting tokens that may appear between words
 # in raw markdown: strikethrough (~~), bold (**), italic (* or _), and
 # any HTML open/close/self-closing tags (<b>, </b>, <mark>, <sup>, etc.).
-_INLINE_MARKUP_OPT = r"(?:\*{1,2}|~~|__?|</?\w+(?:\s[^>]*)?>)*"
+#
+# The ``*`` and ``_`` alternatives are lookahead-disambiguated (``\*\*`` vs
+# ``\*(?!\*)``) instead of ``\*{1,2}``/``__?`` so each position has exactly
+# one tokenization. The ambiguous form has the classic ``(a|aa)*`` shape,
+# which backtracks exponentially when the following context fails to match -
+# a rule whose text spans a long ``_``/``*`` run (fill-in blanks, horizontal
+# rules) hangs until the per-rule timeout fires and the rule scores 0.
+_INLINE_MARKUP_OPT = r"(?:\*\*|\*(?!\*)|~~|__|_(?!_)|</?\w+(?:\s[^>]*)?>)*"
 
 # Markdown allows backslash-escaping of ASCII punctuation characters.
 # Model output often contains these (e.g. ``\~``, ``\*``) which prevent
