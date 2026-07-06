@@ -55,6 +55,7 @@ runners = [
     "pytesseract>=0.3.10",
     "reductoai>=0.13.0",
     "unstructured-client>=0.26.0",
+    "warp-ingest[ocr]>=2.0.1",
 ]
 dev = [
     "pytest>=8.0.0",

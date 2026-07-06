@@ -501,6 +501,15 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
+            pipeline_name="warp_ingest",
+            provider_name="warp_ingest",
+            product_type=ProductType.PARSE,
+            config={},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
             pipeline_name="opendataloader_markdown",
             provider_name="opendataloader",
             product_type=ProductType.PARSE,
