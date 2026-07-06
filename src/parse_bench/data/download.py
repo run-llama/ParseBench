@@ -7,9 +7,10 @@ Structure after download:
     ├── chart.jsonl
     ├── layout.jsonl
     ├── table.jsonl
-    ├── text.jsonl
+    ├── text_content.jsonl
+    ├── text_formatting.jsonl
     ├── expected_markdown.json
-    └── pdfs/{chart,layout,table,text}/*.pdf
+    └── docs/{chart,layout,table,text}/*.pdf
 """
 
 from __future__ import annotations

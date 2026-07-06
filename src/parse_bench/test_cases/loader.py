@@ -53,9 +53,9 @@ def _load_jsonl_dataset(root_dir: Path) -> list[TestCase]:
 
     Expected layout:
       <root>/
-        {category}.jsonl       # e.g., table.jsonl, chart.jsonl, text.jsonl, layout.jsonl
+        {category}.jsonl       # e.g., table.jsonl, chart.jsonl, text_content.jsonl
         expected_markdown.json  # optional: {pdf_path: markdown_string}
-        pdfs/{category}/*.pdf
+        docs/{category}/*.pdf
 
     Each JSONL line has: pdf, page, category, id, type, verified, rule (JSON string or dict)
     """
@@ -368,7 +368,7 @@ def load_test_cases(
     <root>/
       {category}.jsonl
       expected_markdown.json
-      pdfs/{category}/*.pdf
+      docs/{category}/*.pdf
 
     :param root_dir: Root directory containing test case groups
     :param require_test_json: If True, skip files without test.json. If False,
