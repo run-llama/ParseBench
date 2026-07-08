@@ -3,7 +3,7 @@
 import base64
 import io
 import os
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -72,11 +72,16 @@ USER_PROMPT = (
 # Source: https://platform.claude.com/docs/en/about-claude/pricing (2026-03-25)
 _ANTHROPIC_PRICING_PER_M: dict[str, tuple[float, float]] = {
     # model-prefix: (input_per_M, output_per_M)
+    "claude-fable-5": (10.00, 50.00),
+    # Sonnet 5 has introductory pricing through 2026-08-31; handled in
+    # _get_pricing so benchmark costs switch to standard pricing on time.
+    "claude-sonnet-5": (3.00, 15.00),
     "claude-haiku-4-5": (1.00, 5.00),
     "claude-haiku-3-5": (0.80, 4.00),
     "claude-haiku-3": (0.25, 1.25),
     "claude-sonnet-4": (3.00, 15.00),
     "claude-sonnet-3": (3.00, 15.00),
+    "claude-opus-4-8": (5.00, 25.00),
     "claude-opus-4-7": (5.00, 25.00),
     "claude-opus-4-6": (5.00, 25.00),
     "claude-opus-4-5": (5.00, 25.00),
@@ -121,8 +126,10 @@ class AnthropicProvider(Provider):
         self._mode = self.base_config.get("mode", "image")  # "image", "file", or "parse_with_layout"
         self._thinking = self.base_config.get("thinking")  # e.g. {"type": "enabled", "budget_tokens": 32768}
         self._effort = self.base_config.get("effort")  # e.g. "high", "xhigh" — for Opus 4.7+
-        # Opus 4.7+ rejects temperature/top_p/top_k at non-default values (400 error)
-        self._supports_temperature = not self._model.startswith("claude-opus-4-7")
+        # Opus 4.7+ and Fable 5 reject temperature/top_p/top_k at non-default values (400 error)
+        self._supports_temperature = not self._model.startswith(
+            ("claude-opus-4-7", "claude-opus-4-8", "claude-fable-5")
+        )
 
         if self._mode not in ("image", "file", "parse_with_layout", "parse_with_layout_file"):
             raise ProviderConfigError(
@@ -149,6 +156,9 @@ class AnthropicProvider(Provider):
         Uses longest-prefix matching to avoid ambiguity when one model
         prefix is a substring of another.
         """
+        if self._model.startswith("claude-sonnet-5") and date.today() <= date(2026, 8, 31):
+            return (2.00, 10.00)
+
         matches = [(p, r) for p, r in _ANTHROPIC_PRICING_PER_M.items() if self._model.startswith(p)]
         return max(matches, key=lambda x: len(x[0]))[1] if matches else (0.0, 0.0)
 

@@ -907,6 +907,22 @@ class TitleHierarchyPercentRule(ParseTestRule):
         return False, f"Title hierarchy score={score:.3f}; {preview}", score
 
 
+_PAGE_SECTION_DASH_CHARS = "-\u2010\u2011\u2012\u2013\u2014\u2015\u2212"
+_PAGE_SECTION_DASH_PATTERN = f"[{re.escape(_PAGE_SECTION_DASH_CHARS)}]"
+
+
+def _build_page_section_query_pattern(text: str) -> str:
+    parts: list[str] = []
+    for char in text:
+        if char in _PAGE_SECTION_DASH_CHARS:
+            parts.append(_PAGE_SECTION_DASH_PATTERN)
+        elif char == " ":
+            parts.append(r"\s+")
+        else:
+            parts.append(re.escape(char))
+    return "".join(parts)
+
+
 class PageSectionRule(ParseTestRule):
     """Test rule to verify that text appears in page header/footer sections.
 
@@ -935,9 +951,7 @@ class PageSectionRule(ParseTestRule):
 
     def run(self, md_content: str, normalized_content: str | None = None) -> tuple[bool, str]:
         """Check if the target text appears inside the expected page section."""
-        escaped = re.escape(self.text)
-        # Allow flexible whitespace between words
-        flexible = re.sub(r"\\ ", r"\\s+", escaped)
+        flexible = _build_page_section_query_pattern(self.text)
 
         # Primary path: evaluate against structured per-page sections.
         structured_sections = self._get_structured_page_sections()

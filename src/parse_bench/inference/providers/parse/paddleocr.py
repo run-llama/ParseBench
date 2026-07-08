@@ -86,6 +86,10 @@ class PaddleOCRProvider(Provider):
         self._timeout = self.base_config.get("timeout", 600)
         self._dpi = self.base_config.get("dpi", 150)
 
+        # Model name sent to the vLLM server. Defaults to the 1.5 model; override
+        # via the ``served_model_name`` key for other releases (e.g. PaddleOCR-VL-1.6-0.9B).
+        self._served_model_name = self.base_config.get("served_model_name", SERVED_MODEL_NAME)
+
     def _pdf_to_image(self, pdf_path: Path) -> bytes:
         """
         Convert a PDF to a PNG image (first page only).
@@ -141,7 +145,7 @@ class PaddleOCRProvider(Provider):
         api_url = f"{self._server_url.rstrip('/')}/v1/chat/completions"  # type: ignore[union-attr]
 
         payload = {
-            "model": SERVED_MODEL_NAME,
+            "model": self._served_model_name,
             "messages": [
                 {
                     "role": "user",

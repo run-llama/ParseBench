@@ -102,14 +102,14 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
-            pipeline_name="extend_parse_beta",
+            pipeline_name="extend_parse_2",
             provider_name="extend_parse",
             product_type=ProductType.PARSE,
             config={
                 "target": "markdown",
                 "chunking_strategy": "page",
                 "engine": "parse_performance",
-                "engineVersion": "2.0.0-beta",
+                "engineVersion": "2.0.0",
                 "block_options": {
                     "tables": {"target_format": "html"},
                     "figures": {
@@ -428,6 +428,30 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
+            pipeline_name="liteparse_markdown",
+            provider_name="liteparse",
+            product_type=ProductType.PARSE,
+            config={
+                "output_format": "markdown",
+                "ocr_enabled": False,
+            },
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="liteparse_text",
+            provider_name="liteparse",
+            product_type=ProductType.PARSE,
+            config={
+                "output_format": "text",
+                "ocr_enabled": False,
+            },
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
             pipeline_name="pypdf_baseline",
             provider_name="pypdf",
             product_type=ProductType.PARSE,
@@ -454,6 +478,42 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             config={
                 "text_format": "html",
             },
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="pymupdf4llm_markdown",
+            provider_name="pymupdf4llm",
+            product_type=ProductType.PARSE,
+            config={},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="markitdown",
+            provider_name="markitdown",
+            product_type=ProductType.PARSE,
+            config={},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="opendataloader_markdown",
+            provider_name="opendataloader",
+            product_type=ProductType.PARSE,
+            config={"format": "markdown", "table_method": "cluster"},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="pdf_inspector",
+            provider_name="pdf_inspector",
+            product_type=ProductType.PARSE,
+            config={},
         )
     )
 
@@ -555,6 +615,46 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     register_fn(
         PipelineSpec(
             pipeline_name="paddleocr_vl_1_5_pipeline",
+            provider_name="paddleocr",
+            product_type=ProductType.PARSE,
+            config={
+                "api_format": "simple",
+            },
+        )
+    )
+
+    # PaddleOCR-VL 1.6 (0.9B) vLLM — OCR prompt (general text/structure)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="paddleocr_vl_1_6_vllm",
+            provider_name="paddleocr",
+            product_type=ProductType.PARSE,
+            config={
+                "api_format": "openai",
+                "task": "ocr",
+                "served_model_name": "PaddleOCR-VL-1.6-0.9B",
+            },
+        )
+    )
+
+    # PaddleOCR-VL 1.6 (0.9B) vLLM — Table Recognition prompt
+    register_fn(
+        PipelineSpec(
+            pipeline_name="paddleocr_vl_1_6_vllm_table",
+            provider_name="paddleocr",
+            product_type=ProductType.PARSE,
+            config={
+                "api_format": "openai",
+                "task": "table",
+                "served_model_name": "PaddleOCR-VL-1.6-0.9B",
+            },
+        )
+    )
+
+    # PaddleOCR-VL 1.6 (0.9B) full pipeline (layout detection + per-region routing)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="paddleocr_vl_1_6_pipeline",
             provider_name="paddleocr",
             product_type=ProductType.PARSE,
             config={
@@ -988,6 +1088,19 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # Unlimited-OCR (baidu/Unlimited-OCR, DeepSeek-OCR successor with grounding)
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="unlimitedocr",
+            provider_name="unlimitedocr",
+            product_type=ProductType.PARSE,
+            config={},
+        )
+    )
+
+    # =========================================================================
     # Qwen3.5-4B vLLM
     # =========================================================================
 
@@ -1347,6 +1460,70 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # Gemini 3.5 Flash (GA) - Parse with Layout
+    # =========================================================================
+
+    # Gemini 3.5 Flash - Parse with Layout (default thinking)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="google_gemini_3_5_flash_parse_with_layout",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-3.5-flash",
+                "dpi": 150,
+                "max_tokens": 32768,
+                "mode": "parse_with_layout",
+            },
+        )
+    )
+
+    # Gemini 3.5 Flash - Parse with Layout - Thinking Minimal
+    register_fn(
+        PipelineSpec(
+            pipeline_name="google_gemini_3_5_flash_no_thinking_parse_with_layout",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-3.5-flash",
+                "dpi": 150,
+                "max_tokens": 32768,
+                "mode": "parse_with_layout",
+                "thinking_level": "minimal",
+            },
+        )
+    )
+
+    # Gemini 3.5 Flash - Parse with Layout File (default thinking)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="google_gemini_3_5_flash_parse_with_layout_file",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-3.5-flash",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+            },
+        )
+    )
+
+    # Gemini 3.5 Flash - Parse with Layout File - Thinking Minimal
+    register_fn(
+        PipelineSpec(
+            pipeline_name="google_gemini_3_5_flash_no_thinking_parse_with_layout_file",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-3.5-flash",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+                "thinking_level": "minimal",
+            },
+        )
+    )
+
+    # =========================================================================
     # Gemini - Agentic Vision
     # =========================================================================
 
@@ -1639,6 +1816,49 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Anthropic Opus 4.8 - Parse with Layout File
+    register_fn(
+        PipelineSpec(
+            pipeline_name="anthropic_opus_4_8_parse_with_layout_file",
+            provider_name="anthropic",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "claude-opus-4-8",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+            },
+        )
+    )
+
+    # Anthropic Sonnet 5 - Parse with Layout File - Adaptive Thinking
+    register_fn(
+        PipelineSpec(
+            pipeline_name="anthropic_sonnet_5_parse_with_layout_file",
+            provider_name="anthropic",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "claude-sonnet-5",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+                "thinking": {"type": "adaptive"},
+            },
+        )
+    )
+
+    # Anthropic Fable 5 - Parse with Layout File
+    register_fn(
+        PipelineSpec(
+            pipeline_name="anthropic_fable_5_parse_with_layout_file",
+            provider_name="anthropic",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "claude-fable-5",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+            },
+        )
+    )
+
     # Anthropic Haiku - Parse with Layout File - Thinking
     register_fn(
         PipelineSpec(
@@ -1677,11 +1897,58 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
+            pipeline_name="kdl_frontier_nano",
+            provider_name="kdl_frontier_nano",
+            product_type=ProductType.PARSE,
+            config={
+                "endpoint_url": "",  # via KDL_NANO_ENDPOINT_URL
+                "model": "",         # via KDL_NANO_MODEL (default kdl-frontier-parser-nano)
+                "dpi": 144,
+                "timeout": 900,
+            },
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
             pipeline_name="mineru25_vllm",
             provider_name="mineru25",
             product_type=ProductType.PARSE,
             config={
                 "server_url": "",  # Set via MINERU25_SERVER_URL or override
+            },
+        )
+    )
+
+    # =========================================================================
+    # MinerU 2.5 Pro 2605 (opendatalab/MinerU2.5-Pro-2605-1.2B)
+    # Same 1.2B Qwen2-VL arch as mineru25, newer checkpoint with improved
+    # layout detection + chart/image analysis (server runs the official
+    # image_analysis client flag the old deployment was missing).
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="mineru2605pro_vllm",
+            provider_name="mineru2605pro",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",  # Set via MINERU2605PRO_SERVER_URL or override
+            },
+        )
+    )
+
+    # =========================================================================
+    # Surya OCR 2 (datalab-to/surya-ocr-2, 650M VLM)
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="surya2_sdk",
+            provider_name="surya2",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",  # Set via SURYA2_SERVER_URL or override
             },
         )
     )
@@ -1731,9 +1998,11 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
-    # Batched variant: same provider, batch_size > 1 coalesces multiple
-    # requests into a single SQL statement to amortize warehouse/AI-function
-    # warm-up overhead. Model DBUs are unchanged (per-page billing).
+    # Batched variant: Databricks' recommended operating mode — submit the
+    # whole dataset as ONE SQL statement so warehouse spin-up/idle is paid
+    # once instead of per micro-batch. Model DBUs are unchanged (per-page
+    # billing). Run with max_concurrent >= dataset size so every request is
+    # queued before the debounce window flushes.
     register_fn(
         PipelineSpec(
             pipeline_name="databricks_ai_parse_batch",
@@ -1741,8 +2010,50 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             product_type=ProductType.PARSE,
             config={
                 "version": "2.0",
-                "batch_size": 20,
-                "batch_wait_seconds": 10,
+                "batch_size": 1000,
+                "batch_wait_seconds": 120,
+                "timeout": 7200,
+                "per_request_timeout": 9000,
+            },
+        )
+    )
+
+    # =========================================================================
+    # Mistral OCR Pipelines
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="mistral_ocr_4",
+            provider_name="mistral_ocr",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "mistral-ocr-4-0",
+                "include_blocks": True,
+                "max_pages": 50,
+            },
+        )
+    )
+
+    # Annotation ("Document AI") mode: same /v1/ocr endpoint with
+    # ``bbox_annotation_format`` so each figure's data is transcribed into the
+    # markdown (charts -> data tables). Billed at $5/1000 annotated pages.
+    # Annotation runs a vision pass per figure, so it is heavier and hits 429s
+    # more readily than plain OCR — give it a larger Retry-After backoff budget
+    # (the provider already honors the server's Retry-After header).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="mistral_ocr_4_annotation",
+            provider_name="mistral_ocr",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "mistral-ocr-4-0",
+                "include_blocks": True,
+                "bbox_annotation": True,
+                "max_pages": 50,
+                "rate_limit_retries": 8,
+                "rate_limit_base_wait": 2.0,
+                "rate_limit_max_wait": 30.0,
             },
         )
     )

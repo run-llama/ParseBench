@@ -64,6 +64,9 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | `anthropic_opus_4_6_parse` | Claude Opus 4.6, image mode | `ANTHROPIC_API_KEY` |
 | `anthropic_opus_4_6_parse_file` | Claude Opus 4.6, PDF file mode | `ANTHROPIC_API_KEY` |
 | **`anthropic_opus_4_6_parse_with_layout_file`** | Claude Opus 4.6, parse + layout, file mode (In paper: *Anthropic Opus 4.6*) | `ANTHROPIC_API_KEY` |
+| **`anthropic_opus_4_8_parse_with_layout_file`** | Claude Opus 4.8, parse + layout, file mode (In paper: *Anthropic Opus 4.8*) | `ANTHROPIC_API_KEY` |
+| `anthropic_sonnet_5_parse_with_layout_file` | Claude Sonnet 5, adaptive thinking + layout, file mode | `ANTHROPIC_API_KEY` |
+| `anthropic_fable_5_parse_with_layout_file` | Claude Fable 5, parse + layout, file mode | `ANTHROPIC_API_KEY` |
 
 ### Google Gemini
 
@@ -86,6 +89,10 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | `google_gemini_3_1_flash_lite_thinking_high_parse` | Gemini 3.1 Flash Lite, high thinking | `GOOGLE_GEMINI_API_KEY` |
 | `google_gemini_3_1_pro_parse` | Gemini 3.1 Pro, default thinking | `GOOGLE_GEMINI_API_KEY` |
 | **`google_gemini_3_1_pro_parse_with_layout_file`** | Gemini 3.1 Pro, parse + layout, file mode (In paper: *Google Gemini 3.1 Pro*) | `GOOGLE_GEMINI_API_KEY` |
+| `google_gemini_3_5_flash_parse_with_layout` | Gemini 3.5 Flash, default thinking + layout | `GOOGLE_GEMINI_API_KEY` |
+| `google_gemini_3_5_flash_no_thinking_parse_with_layout` | Gemini 3.5 Flash, minimal thinking + layout | `GOOGLE_GEMINI_API_KEY` |
+| **`google_gemini_3_5_flash_parse_with_layout_file`** | Gemini 3.5 Flash, default thinking + layout, file mode (In paper: *Google Gemini 3.5 Flash (Thinking Medium)*) | `GOOGLE_GEMINI_API_KEY` |
+| **`google_gemini_3_5_flash_no_thinking_parse_with_layout_file`** | Gemini 3.5 Flash, minimal thinking + layout, file mode (In paper: *Google Gemini 3.5 Flash (Thinking Minimal)*) | `GOOGLE_GEMINI_API_KEY` |
 
 ### Azure Document Intelligence
 
@@ -143,7 +150,7 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | Pipeline | Description | Env Var |
 |---|---|---|
 | **`extend_parse`** | Default (In paper: *Extend*) | `EXTEND_API_KEY` |
-| `extend_parse_beta` | Beta engine (v2.0.0-beta) | `EXTEND_API_KEY` |
+| `extend_parse_2` | 2.0 engine (v2.0.0, GA) | `EXTEND_API_KEY` |
 | `extend_parse_document` | Document scope | `EXTEND_API_KEY` |
 | `extend_parse_section` | Section scope | `EXTEND_API_KEY` |
 
@@ -210,6 +217,9 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 |---|---|---|
 | `paddleocr_vl_vllm` | OpenAI-compatible vLLM API | `PADDLEOCR_SERVER_URL` |
 | `paddleocr_vl_pipeline` | Full pipeline (layout + chart routing) | `PADDLEOCR_SERVER_URL` |
+| `paddleocr_vl_1_6_vllm` | PaddleOCR-VL-1.6, OCR prompt | `PADDLEOCR_SERVER_URL` |
+| `paddleocr_vl_1_6_vllm_table` | PaddleOCR-VL-1.6, table recognition prompt | `PADDLEOCR_SERVER_URL` |
+| `paddleocr_vl_1_6_pipeline` | PaddleOCR-VL-1.6, full pipeline (layout + routing) | `PADDLEOCR_SERVER_URL` |
 
 ### dots.ocr
 
@@ -224,6 +234,19 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 |---|---|---|
 | **`docling_parse`** | Docling HTTP endpoint (In paper: *Docling*) | `DOCLING_PARSE_ENDPOINT_URL`, `DOCLING_PARSE_API_KEY` (optional) |
 | `docling_serve` | Docling Serve HTTP endpoint | `DOCLING_SERVE_ENDPOINT_URL`, `DOCLING_SERVE_API_KEY` (optional) |
+
+### MinerU 2.5
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `mineru25_vllm` | MinerU2.5-2509-1.2B vLLM server (two-step layout + recognition) | `MINERU25_SERVER_URL` |
+| `mineru2605pro_vllm` | MinerU2.5-Pro-2605-1.2B vLLM server (adds chart/image analysis) | `MINERU2605PRO_SERVER_URL` |
+
+### Surya OCR 2
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `surya2_sdk` | Surya OCR 2 SDK server (full-page OCR + layout) | `SURYA2_SERVER_URL` |
 
 ---
 

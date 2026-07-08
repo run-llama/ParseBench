@@ -304,6 +304,7 @@ class LayoutDetectionModel(StrEnum):
     UNSTRUCTURED_LAYOUT = "unstructured_layout"
     DEEPSEEK_OCR2_LAYOUT = "deepseek_ocr2_layout"
     MINERU25_LAYOUT = "mineru25_layout"
+    KDL_FRONTIER_NANO_LAYOUT = "kdl_frontier_nano_layout"
     CHANDRA2_LAYOUT = "chandra2_layout"
     QFOCR_LAYOUT = "qfocr_layout"
     DATALAB_LAYOUT = "datalab_layout"

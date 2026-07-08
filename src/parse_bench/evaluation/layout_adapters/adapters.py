@@ -21,11 +21,6 @@ from parse_bench.inference.layout_extraction import (
     extract_all_layouts_from_llamaparse_output,
 )
 from parse_bench.inference.providers.layoutdet.adapters import ChunkrLayoutDetLabelAdapter
-from parse_bench.inference.providers.parse.llamaparse_v2_normalization import (
-    build_pages_from_cli2_raw_payload,
-    build_pages_from_sdk_response_payload,
-    layout_pages_to_legacy_pages_payload,
-)
 from parse_bench.layout_label_mapping import (
     UnknownRawLayoutLabelError,
 )
@@ -2315,6 +2310,12 @@ def _infer_page_number_from_example_id(example_id: str) -> int | None:
 
 
 def _resolve_llamaparse_pages(inference_result: InferenceResult) -> list[dict[str, Any]]:
+    from parse_bench.inference.providers.parse.llamaparse_v2_normalization import (
+        build_pages_from_cli2_raw_payload,
+        build_pages_from_sdk_response_payload,
+        layout_pages_to_legacy_pages_payload,
+    )
+
     raw_output = inference_result.raw_output
     if isinstance(raw_output, dict):
         raw_pages = raw_output.get("pages")
@@ -2711,5 +2712,77 @@ class DatabricksAiParseLayoutAdapter(LayoutAdapter):
             model=LayoutDetectionModel.DATABRICKS_LAYOUT,
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
+            predictions=predictions,
+        )
+
+
+@register_layout_adapter("kdl_frontier_nano", priority=90)
+class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
+    """Extract LayoutOutput from the kdl_frontier_nano provider's
+    ParseOutput.layout_pages.
+
+    The provider emits per-region elements with normalized [0,1] bboxes (no
+    page pixel dims). Coordinates are scaled to a consistent SCALE so the
+    layout metric's normalize_bbox_xyxy(image_width/height) recovers the
+    original [0,1] space.
+    """
+
+    _SCALE = 1000
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        out = inference_result.output
+        return isinstance(out, ParseOutput) and bool(out.layout_pages)
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            filtered = [p for p in inference_result.output.predictions if p.page == page_filter]
+            return inference_result.output.model_copy(update={"predictions": filtered})
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("KdlFrontierNanoLayoutAdapter requires ParseOutput or LayoutOutput")
+
+        S = self._SCALE
+        predictions: list[LayoutPrediction] = []
+        for lp in inference_result.output.layout_pages:
+            if page_filter is not None and lp.page_number != page_filter:
+                continue
+            for item in lp.items:
+                segs = item.layout_segments or ([item.bbox] if item.bbox else [])
+                for seg in segs:
+                    if seg is None:
+                        continue
+                    label = seg.label or item.type or "Text"
+                    label = {"Chart": "Picture", "Flowchart": "Picture"}.get(str(label), str(label))
+                    x1, y1 = seg.x * S, seg.y * S
+                    x2, y2 = (seg.x + seg.w) * S, (seg.y + seg.h) * S
+                    text = item.md or item.value or ""
+                    content = _build_docling_parse_content(
+                        "table" if str(label).lower() == "table" else "text", text
+                    )
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[x1, y1, x2, y2],
+                            score=1.0,
+                            label=str(label),
+                            page=lp.page_number,
+                            content=content,
+                            provider_metadata={"order_index": len(predictions)},
+                        )
+                    )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.KDL_FRONTIER_NANO_LAYOUT,
+            image_width=S,
+            image_height=S,
             predictions=predictions,
         )

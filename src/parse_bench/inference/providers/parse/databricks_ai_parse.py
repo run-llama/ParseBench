@@ -99,9 +99,18 @@ DATABRICKS_LABEL_MAP: dict[str, str] = {
     "footnote": "Footnote",
 }
 
-# The response pixel coordinates are unitless relative to the rendered page.
-# We expose a virtual page dimension so normalized bboxes survive eval.
+# ai_parse_document returns element bboxes in absolute pixel coordinates of
+# the page it rendered internally. For PDFs that render happens at 200 DPI
+# (v2 default), so true page dims in that space are points * 200/72; image
+# inputs keep their native pixel dims. Normalizing by anything else (e.g. the
+# max element extent on the page) shifts and stretches every box.
+AI_PARSE_RENDER_DPI = 200.0
+
+# Fallback page dimension when the source file can't be read at normalize
+# time (bboxes then stay normalized by element extent — degraded but usable).
 _VIRTUAL_PAGE_DIM = 1000.0
+
+_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp"}
 
 _TERMINAL_STATES = {"SUCCEEDED", "FAILED", "CANCELED", "CLOSED"}
 _TRANSIENT_HTTP = {408, 429, 500, 502, 503, 504}
@@ -529,7 +538,7 @@ class DatabricksAiParseProvider(Provider):
             example_id=raw_result.request.example_id,
             pipeline_name=raw_result.pipeline_name,
             pages=[],
-            layout_pages=_build_layout_pages(elements),
+            layout_pages=_build_layout_pages(document, raw_result.request.source_file_path),
             markdown=_render_markdown(elements),
         )
 
@@ -581,9 +590,45 @@ def _render_markdown(elements: list[dict[str, Any]]) -> str:
     return "\n\n".join(parts)
 
 
-def _build_layout_pages(elements: list[dict[str, Any]]) -> list[ParseLayoutPageIR]:
-    """Group elements by page and convert bboxes to LayoutSegmentIR."""
+def _rendered_page_dims(source_file_path: str) -> list[tuple[float, float]] | None:
+    """Per-page (width, height) of ai_parse's internally rendered pages, in
+    the same pixel space as the returned bbox coordinates.
+
+    Image inputs are processed at native pixel dims; PDFs are rendered at
+    ``AI_PARSE_RENDER_DPI``, so true dims are page points * DPI/72. Returns
+    None when the source file is missing or unreadable (e.g. renormalizing
+    on a machine without the dataset) so callers can fall back gracefully.
+    """
+    path = Path(source_file_path)
+    if not path.is_file():
+        return None
+    try:
+        if path.suffix.lower() in _IMAGE_SUFFIXES:
+            from PIL import Image
+
+            with Image.open(path) as im:
+                return [(float(im.width), float(im.height))]
+
+        import fitz  # PyMuPDF
+
+        scale = AI_PARSE_RENDER_DPI / 72.0
+        with fitz.open(path) as doc:
+            return [(page.rect.width * scale, page.rect.height * scale) for page in doc]
+    except Exception:  # noqa: BLE001 — never fail normalization over page dims
+        return None
+
+
+def _build_layout_pages(document: dict[str, Any], source_file_path: str) -> list[ParseLayoutPageIR]:
+    """Group elements by page and convert bboxes to normalized LayoutSegmentIR.
+
+    Coordinates are normalized into [0,1] by the true rendered page
+    dimensions (see ``_rendered_page_dims``). When dims can't be derived the
+    page falls back to normalizing by the max element extent, which keeps
+    boxes on-page but loses absolute position and aspect ratio.
+    """
     from collections import defaultdict
+
+    elements: list[dict[str, Any]] = document.get("elements") or []
 
     by_page: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for el in elements:
@@ -596,7 +641,13 @@ def _build_layout_pages(elements: list[dict[str, Any]]) -> list[ParseLayoutPageI
             except (TypeError, ValueError):
                 continue
 
-    # Compute per-page max extents to normalize pixel coords into [0,1].
+    # ai_parse page ids are 0-indexed; derive the base from document.pages
+    # (rather than assuming) so 1-indexed responses would still map cleanly.
+    declared_ids = [p.get("id") for p in document.get("pages") or [] if isinstance(p.get("id"), int)]
+    id_base = min(declared_ids) if declared_ids else 0
+
+    rendered_dims = _rendered_page_dims(source_file_path)
+
     layout_pages: list[ParseLayoutPageIR] = []
     for page_id in sorted(by_page.keys()):
         entries = by_page[page_id]
@@ -607,6 +658,19 @@ def _build_layout_pages(elements: list[dict[str, Any]]) -> list[ParseLayoutPageI
             if len(coord) >= 4:
                 max_x = max(max_x, float(coord[2]))
                 max_y = max(max_y, float(coord[3]))
+
+        page_index = page_id - id_base
+        dims = rendered_dims[page_index] if rendered_dims is not None and 0 <= page_index < len(rendered_dims) else None
+        if dims is not None:
+            # If an element extends past the computed page edge the render-DPI
+            # assumption is off for this file; widen the denominator so boxes
+            # stay in [0,1] instead of drifting off-page.
+            denom_x = max(dims[0], max_x)
+            denom_y = max(dims[1], max_y)
+            page_w, page_h = dims
+        else:
+            denom_x, denom_y = max_x, max_y
+            page_w = page_h = _VIRTUAL_PAGE_DIM
 
         items: list[LayoutItemIR] = []
         for entry in entries:
@@ -623,10 +687,10 @@ def _build_layout_pages(elements: list[dict[str, Any]]) -> list[ParseLayoutPageI
                 continue
 
             seg = LayoutSegmentIR(
-                x=x1 / max_x,
-                y=y1 / max_y,
-                w=w / max_x,
-                h=h / max_y,
+                x=x1 / denom_x,
+                y=y1 / denom_y,
+                w=w / denom_x,
+                h=h / denom_y,
                 confidence=float(el.get("confidence")) if el.get("confidence") is not None else None,
                 label=canonical,
             )
@@ -648,12 +712,11 @@ def _build_layout_pages(elements: list[dict[str, Any]]) -> list[ParseLayoutPageI
                 )
             )
 
-        # ParseLayoutPageIR requires page_number >= 1; shift 0-indexed ids.
         layout_pages.append(
             ParseLayoutPageIR(
-                page_number=max(page_id, 1),
-                width=_VIRTUAL_PAGE_DIM,
-                height=_VIRTUAL_PAGE_DIM,
+                page_number=max(page_index + 1, 1),
+                width=page_w,
+                height=page_h,
                 items=items,
             )
         )

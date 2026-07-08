@@ -32,6 +32,8 @@ from parse_bench.schemas.pipeline_io import (
 )
 from parse_bench.schemas.product import ProductType
 
+IMAGE_SOURCE_SUFFIXES = {".png", ".jpg", ".jpeg", ".jfif"}
+
 # Datalab JSON block_type -> Canonical17 label
 DATALAB_LABEL_MAP: dict[str, str] = {
     "Text": "Text",
@@ -137,6 +139,30 @@ def _build_layout_pages(json_data: dict[str, Any]) -> list[ParseLayoutPageIR]:
     return layout_pages
 
 
+def _is_pdf_file(file_path: str | Path) -> bool:
+    try:
+        with Path(file_path).open("rb") as f:
+            return f.read(4) == b"%PDF"
+    except OSError:
+        return False
+
+
+def _get_source_page_count(source_path: str | Path) -> int | None:
+    path = Path(source_path)
+    if _is_pdf_file(path):
+        try:
+            return len(PdfReader(path).pages)
+        except Exception:
+            return None
+
+    if path.suffix.lower() in IMAGE_SOURCE_SUFFIXES:
+        return 1
+
+    # Datalab supports non-PDF document inputs too. Prefer the API-reported
+    # page_count when available.
+    return None
+
+
 @register_provider("datalab")
 class DatalabProvider(Provider):
     """
@@ -146,7 +172,11 @@ class DatalabProvider(Provider):
     Uses the /api/v1/convert endpoint via datalab-python-sdk.
     """
 
-    COST_PER_PAGE_USD = 0.01  # $0.01 per page
+    COST_PER_PAGE_USD_BY_MODE = {
+        "fast": 0.004,
+        "balanced": 0.004,
+        "accurate": 0.01,
+    }
 
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         """
@@ -177,21 +207,24 @@ class DatalabProvider(Provider):
         self._output_format = self.base_config.get("output_format", "html")
         self._max_pages = self.base_config.get("max_pages", 25)
         self._mode = self.base_config.get("mode", "balanced")
+        if self._mode not in self.COST_PER_PAGE_USD_BY_MODE:
+            raise ProviderConfigError(
+                f"Unsupported Datalab parse mode: {self._mode!r}. "
+                f"Expected one of {sorted(self.COST_PER_PAGE_USD_BY_MODE)}."
+            )
         self._skip_cache = self.base_config.get("skip_cache", self.base_config.get("invalidate_cache", False))
         self._extras = self.base_config.get("extras", None)
 
-    async def _parse_pdf_async(self, pdf_path: str) -> dict[str, Any]:
+    async def _parse_file_async(self, source_path: str) -> dict[str, Any]:
         """
-        Parse a PDF using Datalab API (async).
+        Parse a document or image using Datalab API (async).
 
-        :param pdf_path: Path to the PDF file
+        :param source_path: Path to the source file
         :return: Raw API response as dictionary
         :raises ProviderError: For any API errors
         """
         try:
-            # Read PDF to get page count
-            reader = PdfReader(pdf_path)
-            num_pages = len(reader.pages)
+            num_pages = _get_source_page_count(source_path)
 
             # Create convert options
             options = ConvertOptions(
@@ -203,9 +236,9 @@ class DatalabProvider(Provider):
             if self._extras and hasattr(options, "extras"):
                 options.extras = self._extras
 
-            # Parse the PDF asynchronously
+            # Parse the source file asynchronously
             async with AsyncDatalabClient(api_key=self._api_key) as client:
-                result = await client.convert(pdf_path, options=options)
+                result = await client.convert(source_path, options=options)
 
             # Use dataclasses.asdict() for clean serialization
             raw_response = dataclasses.asdict(result)
@@ -219,8 +252,8 @@ class DatalabProvider(Provider):
             }
 
             # Cost tracking
-            page_count = raw_response.get("page_count") or num_pages
-            cost_usd = page_count * self.COST_PER_PAGE_USD
+            page_count = raw_response.get("page_count") or num_pages or 1
+            cost_usd = page_count * self.COST_PER_PAGE_USD_BY_MODE[self._mode]
             raw_response["cost_usd"] = cost_usd
             raw_response["cost_per_page_usd"] = cost_usd / max(page_count, 1)
 
@@ -254,13 +287,13 @@ class DatalabProvider(Provider):
         started_at = datetime.now()
 
         # Check if file exists
-        pdf_path = Path(request.source_file_path)
-        if not pdf_path.exists():
-            raise ProviderPermanentError(f"PDF file not found: {pdf_path}")
+        source_path = Path(request.source_file_path)
+        if not source_path.exists():
+            raise ProviderPermanentError(f"Source file not found: {source_path}")
 
         try:
             # Run async parsing
-            raw_output = asyncio.run(self._parse_pdf_async(str(pdf_path)))
+            raw_output = asyncio.run(self._parse_file_async(str(source_path)))
 
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
