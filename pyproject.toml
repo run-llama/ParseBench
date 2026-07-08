@@ -55,10 +55,14 @@ runners = [
     "reductoai>=0.13.0",
     "unstructured-client>=0.26.0",
 ]
+fast = [
+    "numba>=0.59.0",
+]
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.14.5",
     "mypy>=1.18.2",
+    "numba>=0.59.0",
 ]
 
 [project.scripts]
