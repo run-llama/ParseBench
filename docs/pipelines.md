@@ -168,6 +168,14 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | `unstructured_fast` | Fast strategy | `UNSTRUCTURED_API_KEY` |
 | `unstructured_hi_res` | Hi-res strategy | `UNSTRUCTURED_API_KEY` |
 
+### OpenInnovation Parser (oi-parser)
+
+Hosted document-parsing API. Sign up at [oi-parser.ai](https://oi-parser.ai/) to get an API key.
+
+| Pipeline | Description | Env Vars |
+|---|---|---|
+| **`oi_parser`** | oi-parser hosted `/v1/extract` API | `OI_PARSER_API_KEY`, `OI_PARSER_BASE_URL` (optional) |
+
 ---
 
 ## Self-hosted Model Pipelines

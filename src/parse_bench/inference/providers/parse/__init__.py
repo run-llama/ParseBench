@@ -48,6 +48,7 @@ _PROVIDER_MODULES = [
     "unlimitedocr",
     "unstructured",
     "warp_ingest",
+    "oi_parser",
 ]
 
 for _mod in _PROVIDER_MODULES:

@@ -109,6 +109,30 @@ class DoclingParseLabelMapper(LayoutLabelMapper):
         return canonical
 
 
+@register_layout_label_mapper("oi_parser", "model:oi_parser_layout", priority=90)
+class OIParserLabelMapper(LayoutLabelMapper):
+    """Mapper for oi-parser layout labels.
+
+    oi-parser emits Canonical17 labels in lowercase-hyphenated form (e.g.
+    ``page-header``); normalize the casing back to the Canonical17 enum values.
+    """
+
+    # Canonical17 values keyed by their lowercased form for case-insensitive lookup.
+    _BY_LOWER: dict[str, CanonicalLabel] = {label.value.lower(): label for label in CanonicalLabel}
+
+    def to_canonical(
+        self,
+        label: str,
+        prediction: LayoutPrediction,
+        context: MappingContext,
+    ) -> CanonicalLabel:
+        del prediction, context
+        canonical = self._BY_LOWER.get(label.strip().lower())
+        if canonical is None:
+            raise UnknownRawLayoutLabelError(f"Unknown oi-parser layout label '{label}'")
+        return canonical
+
+
 @register_layout_label_mapper(
     "model:yolo_doclaynet",
     "model:docling_layout_old",
