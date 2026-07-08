@@ -45,6 +45,10 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 # Install
 uv sync --extra runners
 
+# Optional: add the `fast` extra for a JIT-accelerated TEDS table metric (numba).
+# Scores are identical to the default path — just faster on large tables.
+uv sync --extra runners --extra fast
+
 # Quick test run (small dataset, 3 files per category — good for trying things out)
 uv run parse-bench run llamaparse_agentic --test
 
@@ -230,6 +234,12 @@ GOOGLE_API_KEY=...
 ```
 
 ParseBench does **not** use LLM-as-a-judge — all evaluation is deterministic and rule-based. API keys are only used to call the parsing tool being evaluated.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PARSEBENCH_FAST_TEDS` | `1` | Fast Zhang-Shasha TEDS table metric (uses the `numba` JIT when the [`fast` extra](#quick-start) is installed, otherwise an exact pure-Python fallback). Set to `0` to force the original APTED implementation — scores are identical either way, so this is only needed for debugging or benchmarking. |
 
 ### CLI Reference
 
