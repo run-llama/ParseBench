@@ -35,8 +35,8 @@ from parse_bench.evaluation.metrics.parse.grits_metric import (
 )
 from parse_bench.evaluation.metrics.parse.teds_metric import (
     ALL_TEDS_VARIANTS,
-    VARIANT_CONFIGS,
     TEDS,
+    VARIANT_CONFIGS,
 )
 
 TOL = 1e-9
@@ -240,7 +240,6 @@ def test_lcs_memo_matches_reference_on_random_strings() -> None:
 
 def test_grits_con_parity_memoized_vs_reference() -> None:
     """GriTS-Con computed with the memoized primitive equals the reference."""
-    rng = random.Random(2024)
     for _name, gt, pred in CRAFTED_PAIRS:
         gt_cells = html_to_cells(gt)
         pred_cells = html_to_cells(pred)

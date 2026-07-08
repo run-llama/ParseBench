@@ -94,6 +94,9 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "src/parse_bench/analysis/detailed_report.py" = ["E501", "E402"]
 "src/parse_bench/analysis/comparison_report.py" = ["E501"]
+# Benchmark closures are invoked within the same loop iteration, so the
+# late-binding B023 warning is a false positive here.
+"scripts/bench_table_metrics.py" = ["B023"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["parse_bench"]

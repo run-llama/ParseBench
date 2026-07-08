@@ -340,6 +340,8 @@ class TEDS:
         for variant in self.variants:
             tree_pred = self._load_html_tree(pred_table)
             tree_true = self._load_html_tree(true_table)
+            # n_nodes > 0 (checked above) guarantees both trees are non-None.
+            assert tree_pred is not None and tree_true is not None
             config = VARIANT_CONFIGS[variant]()
             distance = _edit_distance(tree_pred, tree_true, config)
             scores[variant] = max(0.0, 1.0 - (float(distance) / n_nodes))

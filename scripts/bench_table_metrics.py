@@ -32,8 +32,8 @@ from parse_bench.evaluation.metrics.parse.grits_metric import (
 )
 from parse_bench.evaluation.metrics.parse.teds_metric import (
     ALL_TEDS_VARIANTS,
-    VARIANT_CONFIGS,
     TEDS,
+    VARIANT_CONFIGS,
 )
 
 
@@ -122,9 +122,8 @@ def bench_grits(sizes: list[tuple[int, int]]) -> None:
 
         ref_score, memo_score = run_ref(), run_memo()
         r_ms, m_ms = _time(run_ref), _time(run_memo)
-        print(
-            f"{rows}x{cols:>5} | {r_ms:10.2f} | {m_ms:10.2f} | {r_ms / m_ms:7.1f}x | {abs(ref_score - memo_score):12.2e}"
-        )
+        delta = abs(ref_score - memo_score)
+        print(f"{rows}x{cols:>5} | {r_ms:10.2f} | {m_ms:10.2f} | {r_ms / m_ms:7.1f}x | {delta:12.2e}")
 
 
 if __name__ == "__main__":

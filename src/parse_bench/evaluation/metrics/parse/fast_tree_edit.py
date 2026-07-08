@@ -90,7 +90,7 @@ except Exception as _e:  # pragma: no cover - depends on the environment
 # --------------------------------------------------------------------------- #
 # Postorder indexing of a TableTree (the layout Zhang-Shasha needs).
 # --------------------------------------------------------------------------- #
-def _build_postorder(root: "TableTree") -> dict[str, Any]:
+def _build_postorder(root: TableTree) -> dict[str, Any]:
     """Index ``root``'s nodes in postorder (1-based) with the two arrays
     Zhang-Shasha needs: ``l[i]`` = the postorder id of node ``i``'s leftmost
     leaf descendant, and ``keyroots`` = the nodes that start a distinct
@@ -136,7 +136,7 @@ def _build_postorder(root: "TableTree") -> dict[str, Any]:
     return {"n": n, "nodes": nodes, "l": leftmost, "keyroots": keyroots}
 
 
-def _cost_matrix(a: dict[str, Any], b: dict[str, Any], config: "Config") -> Any:
+def _cost_matrix(a: dict[str, Any], b: dict[str, Any], config: Config) -> Any:
     """Substitution-cost matrix ``C[i][j] = config.rename(a_i, b_j)`` (1-based).
 
     Each entry is computed exactly once here; APTED would recompute the same
@@ -145,6 +145,7 @@ def _cost_matrix(a: dict[str, Any], b: dict[str, Any], config: "Config") -> Any:
     """
     n1, n2 = a["n"], b["n"]
     nodes_a, nodes_b = a["nodes"], b["nodes"]
+    c: Any  # numpy array on the numba path, list-of-lists on the fallback path
     if _HAVE_NUMBA:
         c = _np.zeros((n1 + 1, n2 + 1), dtype=_np.float64)
     else:
@@ -236,10 +237,10 @@ def _zss_dp_python(a: dict[str, Any], b: dict[str, Any], c: list[list[float]]) -
                         if sub < val:
                             val = sub
                         fd[x][y] = val
-    return treedist[n1][n2]
+    return float(treedist[n1][n2])
 
 
-def tree_edit_distance(tree1: "TableTree", tree2: "TableTree", config: "Config") -> float:
+def tree_edit_distance(tree1: TableTree, tree2: TableTree, config: Config) -> float:
     """Exact ordered tree-edit distance between two ``TableTree`` forests.
 
     Equivalent to ``APTED(tree1, tree2, config).compute_edit_distance()`` for
