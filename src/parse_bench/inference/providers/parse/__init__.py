@@ -47,6 +47,7 @@ _PROVIDER_MODULES = [
     "textract",
     "unlimitedocr",
     "unstructured",
+    "oi_parser",
 ]
 
 for _mod in _PROVIDER_MODULES:

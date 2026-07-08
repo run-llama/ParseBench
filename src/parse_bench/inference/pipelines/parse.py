@@ -2057,3 +2057,18 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             },
         )
     )
+
+    # =========================================================================
+    # OpenInnovation Parser (oi-parser)
+    # =========================================================================
+    register_fn(
+        PipelineSpec(
+            pipeline_name="oi_parser",
+            provider_name="oi_parser",
+            product_type=ProductType.PARSE,
+            # Endpoint resolves in the provider: OI_PARSER_BASE_URL env → the provider's
+            # default public endpoint. Left unset here so the env override is honored
+            # (matches the LlamaParse configurable-base-URL convention).
+            config={},
+        )
+    )

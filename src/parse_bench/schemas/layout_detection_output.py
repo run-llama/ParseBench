@@ -315,6 +315,7 @@ class LayoutDetectionModel(StrEnum):
     GEMMA4_LAYOUT = "gemma4_layout"
     DATABRICKS_LAYOUT = "databricks_layout"
     INFINITY_PARSER2_LAYOUT = "infinity_parser2_layout"
+    OI_PARSER_LAYOUT = "oi_parser_layout"
 
 
 LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
@@ -365,6 +366,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.DOTS_OCR: {
         "name": "dots.ocr",
         "hf_url": "https://huggingface.co/rednote-hilab/dots.ocr",
+    },
+    LayoutDetectionModel.OI_PARSER_LAYOUT: {
+        "name": "oi-parser",
+        "hf_url": "https://oi-parser.ai/",
     },
     LayoutDetectionModel.PULSE_LAYOUT: {
         "name": "Pulse Layout",
