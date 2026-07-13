@@ -77,6 +77,9 @@ _OPENAI_PRICING_PER_M: dict[str, tuple[float, float]] = {
     "gpt-5.4": (2.50, 15.00),
     "gpt-5.4-nano": (0.20, 1.25),
     "gpt-5.5": (5.00, 30.00),
+    "gpt-5.6-sol": (5.00, 30.00),
+    "gpt-5.6-terra": (2.50, 15.00),
+    "gpt-5.6-luna": (1.00, 6.00),
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
     "gpt-4.1-mini": (0.40, 1.60),
@@ -473,6 +476,14 @@ class OpenAIProvider(Provider):
                 raise ProviderTransientError(f"Transient error calling OpenAI API: {e}") from e
             if any(kw in error_str for kw in ["rate_limit", "rate limit", "429"]):
                 raise ProviderTransientError(f"Rate limited: {e}") from e
+            # GPT-5.6 intermittently returns a 401 "insufficient permissions"
+            # that clears on retry; treat it as transient so the runner retries.
+            is_gpt56_401_blip = (
+                self._model.startswith("gpt-5.6-")
+                and "insufficient permissions for this operation" in error_str
+            )
+            if is_gpt56_401_blip:
+                raise ProviderTransientError(f"Transient OpenAI 401 (retryable): {e}") from e
             raise ProviderPermanentError(f"Error calling OpenAI API: {e}") from e
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
