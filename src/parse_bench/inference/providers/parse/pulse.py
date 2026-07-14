@@ -38,6 +38,8 @@ from parse_bench.schemas.pipeline_io import (
 from parse_bench.schemas.product import ProductType
 
 _DEFAULT_API_BASE_URL = "https://api.runpulse.com"
+_DEFAULT_REQUEST_TIMEOUT_SECONDS = 600.0
+_DEFAULT_JOB_TIMEOUT_SECONDS = 4 * 60 * 60.0
 
 # Evaluation consumes these coordinates consistently with the virtual page frame.
 _VIRTUAL_PAGE_DIM = 1000.0
@@ -78,6 +80,8 @@ _PULSE_BBOX_ORDERED_KEYS = {"ordered_elements"}
 @register_provider("pulse")
 class PulseProvider(Provider):
     """Provider for Pulse document extraction via REST."""
+
+    CREDIT_RATE_USD = 0.015
 
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         super().__init__(provider_name, base_config)
@@ -159,6 +163,29 @@ class PulseProvider(Provider):
         self._async_extract: bool = bool(self.base_config.get("async_extract", self.base_config.get("async", False)))
         self._async_tables: bool = bool(self.base_config.get("async_tables", False))
         self._force_url: bool = bool(self.base_config.get("force_url", False))
+        self._request_timeout: float = float(
+            self.base_config.get(
+                "request_timeout",
+                os.getenv("PULSE_REQUEST_TIMEOUT", _DEFAULT_REQUEST_TIMEOUT_SECONDS),
+            )
+        )
+        self._job_timeout: float = float(
+            self.base_config.get(
+                "job_timeout",
+                os.getenv("PULSE_JOB_TIMEOUT", _DEFAULT_JOB_TIMEOUT_SECONDS),
+            )
+        )
+
+        self._markdown_source = str(self.base_config.get("markdown_source", "html")).lower()
+        if self._markdown_source not in {"html", "markdown"}:
+            raise ProviderConfigError("markdown_source must be either 'html' or 'markdown'")
+
+        self._credits_per_page: float | None = None
+        raw_credits_per_page = self.base_config.get("credits_per_page")
+        if raw_credits_per_page is not None:
+            self._credits_per_page = float(raw_credits_per_page)
+            if self._credits_per_page < 0:
+                raise ProviderConfigError("credits_per_page must be non-negative")
 
     # --------------------------------------------------------------------- #
     # HTTP call
@@ -217,7 +244,7 @@ class PulseProvider(Provider):
     def _resolve_large_result(self, raw: dict[str, Any], context: str) -> dict[str, Any]:
         if not raw.get("is_url") or not raw.get("url"):
             return raw
-        url_resp = requests.get(raw["url"])
+        url_resp = requests.get(raw["url"], timeout=self._request_timeout)
         self._classify_bad_response(url_resp, f"{context} large-result fetch")
         try:
             url_result = url_resp.json()
@@ -228,11 +255,14 @@ class PulseProvider(Provider):
         return url_result
 
     def _poll_job(self, job_id: str, context: str) -> dict[str, Any]:
-        while True:
+        deadline = time.monotonic() + max(self._job_timeout, self._poll_interval)
+        last_state: dict[str, Any] | None = None
+        while time.monotonic() < deadline:
             time.sleep(max(self._poll_interval, 0.1))
             response = requests.get(
                 f"{self._base_url}/job/{job_id}",
                 headers=self._headers(),
+                timeout=self._request_timeout,
             )
             self._classify_bad_response(response, f"{context} poll")
             try:
@@ -241,6 +271,7 @@ class PulseProvider(Provider):
                 raise ProviderTransientError(f"Pulse {context} poll returned non-JSON response: {e}") from e
             if not isinstance(state, dict):
                 raise ProviderTransientError(f"Pulse {context} poll returned invalid state: {state}")
+            last_state = state
 
             status = state.get("status")
             if status == "completed":
@@ -252,6 +283,9 @@ class PulseProvider(Provider):
                 raise ProviderPermanentError(
                     f"Pulse {context} job {job_id} ended with status={status}: {state.get('error', state)}"
                 )
+        raise ProviderTransientError(
+            f"Pulse {context} job {job_id} did not complete within {self._job_timeout:.0f}s. Last state: {last_state}"
+        )
 
     def _extract(self, file_path: str) -> dict[str, Any]:
         form_fields = self._build_form_fields()
@@ -260,7 +294,10 @@ class PulseProvider(Provider):
             files: list[tuple[str, Any]] = [("file", (Path(file_path).name, f, "application/pdf"))]
             files.extend(form_fields)
             response = requests.post(
-                f"{self._base_url}/extract", headers=self._headers(), files=files
+                f"{self._base_url}/extract",
+                headers=self._headers(),
+                files=files,
+                timeout=self._request_timeout,
             )
 
         self._classify_bad_response(response, "extract submit")
@@ -294,6 +331,7 @@ class PulseProvider(Provider):
             f"{self._base_url}/tables",
             headers={**self._headers(), "Content-Type": "application/json"},
             json=payload,
+            timeout=self._request_timeout,
         )
         self._classify_bad_response(response, "tables submit")
         try:
@@ -335,6 +373,8 @@ class PulseProvider(Provider):
             raise
         except requests.ConnectionError as e:
             raise ProviderTransientError(f"Pulse connection error: {e}") from e
+        except requests.Timeout as e:
+            raise ProviderTransientError(f"Pulse request timed out: {e}") from e
         except Exception as e:
             raise ProviderPermanentError(f"Unexpected error during inference: {e}") from e
 
@@ -359,16 +399,31 @@ class PulseProvider(Provider):
             "merge_tables_into_markdown": self._merge_tables_into_markdown,
             "replace_existing_tables": self._replace_existing_tables,
             "async_tables": self._async_tables,
+            "markdown_source": self._markdown_source,
+            "request_timeout": self._request_timeout,
+            "job_timeout": self._job_timeout,
+            "credits_per_page": self._credits_per_page,
         }
 
         if self._use_tables_endpoint:
             raw_output["_tables_endpoint_applied"] = "_tables_result" in raw_output
 
         plan_info = raw_output.get("plan-info", raw_output.get("plan_info", {}))
+        pages_used = None
         if isinstance(plan_info, dict):
-            pages_used = plan_info.get("pages_used", raw_output.get("page_count"))
-            if pages_used and pages_used > 0:
-                raw_output["num_pages"] = pages_used
+            pages_used = plan_info.get("pages_used")
+        if pages_used is None:
+            pages_used = raw_output.get("page_count", raw_output.get("num_pages"))
+        try:
+            pages_used_float = float(pages_used)
+        except (TypeError, ValueError):
+            pages_used_float = 0.0
+        if pages_used_float > 0:
+            raw_output["num_pages"] = int(pages_used_float) if pages_used_float.is_integer() else pages_used_float
+            if self._credits_per_page is not None:
+                cost_per_page_usd = self._credits_per_page * self.CREDIT_RATE_USD
+                raw_output["cost_usd"] = pages_used_float * cost_per_page_usd
+                raw_output["cost_per_page_usd"] = cost_per_page_usd
 
         completed_at = datetime.now()
         latency_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -393,8 +448,10 @@ class PulseProvider(Provider):
         raw = raw_result.raw_output
         html_content = _get_pulse_html(raw)
         native_markdown = raw.get("markdown")
-        if _is_parsebench_text_case(raw_result) and isinstance(native_markdown, str) and native_markdown:
+        if self._markdown_source == "markdown" and isinstance(native_markdown, str) and native_markdown:
             markdown = native_markdown
+        elif self._markdown_source == "html" and html_content:
+            markdown = html_content
         elif html_content:
             markdown = html_content
         elif isinstance(native_markdown, str):
@@ -497,15 +554,6 @@ def _get_pulse_html(raw: dict[str, Any]) -> str:
         return html
 
     return ""
-
-
-def _is_parsebench_text_case(raw_result: RawInferenceResult) -> bool:
-    example_id_parts = raw_result.request.example_id.replace("\\", "/").lower().split("/")
-    if "text" in example_id_parts:
-        return True
-
-    source_path = Path(raw_result.request.source_file_path)
-    return any(part.lower() == "text" for part in source_path.parts)
 
 
 def _table_endpoint_tables(tables_result: Any) -> list[dict[str, Any]]:

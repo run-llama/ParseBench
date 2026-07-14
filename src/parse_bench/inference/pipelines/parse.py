@@ -215,6 +215,7 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         "async_extract": True,
         "return_html": True,
         "storage": {"enabled": True},
+        "markdown_source": "markdown",
         "poll_interval": 1.0,
     }
     pulse_tables_config = {
@@ -240,6 +241,7 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     pulse_ultra_2_prompt = "Preserve chart captions, title hierarchy, table structure, and semantic formatting."
     pulse_ultra_2_config = {
         "model": "pulse-ultra-2",
+        "credits_per_page": 10,
         "refine": True,
         "extract_figure": True,
         "figure_description": True,
@@ -256,6 +258,7 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             config={
                 "model": "default",
                 "refine": False,
+                "credits_per_page": 1,
                 "figure_processing": {"description": True},
                 **pulse_tables_endpoint_config,
             },
