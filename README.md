@@ -22,13 +22,13 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
 | 1 | LlamaParse Agentic | LlamaParse | 84.88 | 90.74 | 78.11 | 89.68 | 85.24 | 80.62 | 1.25¢ |
 | 2 | Pulse Ultra 2 | Commercial - Startup APIs | 79.40 | 84.54 | 90.82 | 82.02 | 73.05 | 66.56 | — |
-| 3 | KDL-Frontier-Parser-nano | VLM - Open Weight | 76.36 | 85.56 | 63.41 | 87.19 | 66.81 | 78.84 | — |
-| 4 | Google Gemini 3 Flash (Thinking High) | VLM - Proprietary | 75.05 | 91.50 | 64.79 | 90.87 | 68.31 | 59.77 | 2.41¢ |
-| 5 | Infinity-Parser2-Pro | VLM - Open Weight | 74.28 | 86.4 | 61.3 | 89.7 | 59.1 | 74.9 | — |
-| 6 | Infinity-Parser2-Flash | VLM - Open Weight | 73.25 | 82.88 | 55.56 | 89.52 | 57.7 | 80.61 | — |
-| 7 | Reducto (Agentic) | Commercial - Startup APIs | 72.97 | 80.42 | 73.4 | 86.37 | 57.6 | 67.07 | 4.76¢ |
-| 8 | MinerU2.5-Pro-2605-1.2B | VLM - Open Weight | 72.78 | 77.59 | 61.64 | 87.88 | 57.49 | 79.30 | — |
-| 9 | LlamaParse Cost Effective | LlamaParse | 71.89 | 73.16 | 66.66 | 88.02 | 73.04 | 58.56 | 0.38¢ |
+| 3 | LlamaParse Cost Effective | LlamaParse | 76.77 | 81.42 | 70.15 | 90.92 | 68.78 | 72.59 | 0.38¢ |
+| 4 | KDL-Frontier-Parser-nano | VLM - Open Weight | 76.36 | 85.56 | 63.41 | 87.19 | 66.81 | 78.84 | — |
+| 5 | Google Gemini 3 Flash (Thinking High) | VLM - Proprietary | 75.05 | 91.50 | 64.79 | 90.87 | 68.31 | 59.77 | 2.41¢ |
+| 6 | Infinity-Parser2-Pro | VLM - Open Weight | 74.28 | 86.4 | 61.3 | 89.7 | 59.1 | 74.9 | — |
+| 7 | Infinity-Parser2-Flash | VLM - Open Weight | 73.25 | 82.88 | 55.56 | 89.52 | 57.7 | 80.61 | — |
+| 8 | Reducto (Agentic) | Commercial - Startup APIs | 72.97 | 80.42 | 73.4 | 86.37 | 57.6 | 67.07 | 4.76¢ |
+| 9 | MinerU2.5-Pro-2605-1.2B | VLM - Open Weight | 72.78 | 77.59 | 61.64 | 87.88 | 57.49 | 79.30 | — |
 | 10 | Google Gemini 3 Flash (Thinking Minimal) | VLM - Proprietary | 71.04 | 89.85 | 64.83 | 86.19 | 58.35 | 55.97 | 0.65¢ |
 <!-- LEADERBOARD:END -->
 
@@ -44,6 +44,10 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 ```bash
 # Install
 uv sync --extra runners
+
+# Optional: add the `fast` extra for a JIT-accelerated TEDS table metric (numba).
+# Scores are identical to the default path — just faster on large tables.
+uv sync --extra runners --extra fast
 
 # Quick test run (small dataset, 3 files per category — good for trying things out)
 uv run parse-bench run llamaparse_agentic --test
@@ -230,6 +234,12 @@ GOOGLE_API_KEY=...
 ```
 
 ParseBench does **not** use LLM-as-a-judge — all evaluation is deterministic and rule-based. API keys are only used to call the parsing tool being evaluated.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PARSEBENCH_FAST_TEDS` | `1` | Fast Zhang-Shasha TEDS table metric (uses the `numba` JIT when the [`fast` extra](#quick-start) is installed, otherwise an exact pure-Python fallback). Set to `0` to force the original APTED implementation — scores are identical either way, so this is only needed for debugging or benchmarking. |
 
 ### CLI Reference
 

@@ -1758,6 +1758,28 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # OpenAI GPT-5.6 (sol / terra / luna) - Parse with Layout File - Reasoning None
+    for _gpt56_suffix, _gpt56_model in (
+        ("sol", "gpt-5.6-sol"),
+        ("terra", "gpt-5.6-terra"),
+        ("luna", "gpt-5.6-luna"),
+    ):
+        register_fn(
+            PipelineSpec(
+                pipeline_name=(
+                    f"openai_gpt_5_6_{_gpt56_suffix}_reasoning_none_parse_with_layout_file"
+                ),
+                provider_name="openai",
+                product_type=ProductType.PARSE,
+                config={
+                    "model": _gpt56_model,
+                    "max_tokens": 32768,
+                    "mode": "parse_with_layout_file",
+                    "reasoning_effort": "none",
+                },
+            )
+        )
+
     # OpenAI GPT-5.4 Nano - Parse with Layout
     register_fn(
         PipelineSpec(
