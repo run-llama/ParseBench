@@ -215,8 +215,6 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         "async_extract": True,
         "return_html": True,
         "storage": {"enabled": True},
-        "timeout": 600,
-        "job_timeout": 14400,
         "poll_interval": 1.0,
     }
     pulse_tables_config = {
@@ -242,7 +240,7 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     pulse_ultra_2_prompt = "Preserve chart captions, title hierarchy, table structure, and semantic formatting."
     pulse_ultra_2_config = {
         "model": "pulse-ultra-2",
-        "refine": False,
+        "refine": True,
         "extract_figure": True,
         "figure_description": True,
         "additional_prompt": pulse_ultra_2_prompt,
@@ -264,9 +262,8 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
-    # pulse-ultra-2: vision-language model with native figure extraction.
-    # Refinement is intentionally disabled for this registered leaderboard
-    # pipeline to match the reproducible submitted configuration.
+    # pulse-ultra-2: hosted tier with native figure extraction.
+    # Refinement is enabled for the submitted leaderboard configuration.
     register_fn(
         PipelineSpec(
             pipeline_name="pulse_ultra_2",

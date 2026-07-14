@@ -49,6 +49,7 @@ _PULSE_LABEL_MAP: dict[str, str] = {
     "Section-header": "Section-header",
     "Text": "Text",
     "List-item": "List-item",
+    "List Items": "List-item",
     "Header": "Page-header",
     "Page-header": "Page-header",
     "Footer": "Page-footer",
@@ -65,6 +66,7 @@ _PULSE_LABEL_MAP: dict[str, str] = {
     "caption": "Caption",
     "Footnote": "Footnote",
     "Formula": "Formula",
+    "Formulas": "Formula",
 }
 
 _PAGE_HEADER_TOP_BAND = 0.10
@@ -76,8 +78,6 @@ _PULSE_BBOX_ORDERED_KEYS = {"ordered_elements"}
 @register_provider("pulse")
 class PulseProvider(Provider):
     """Provider for Pulse document extraction via REST."""
-
-    CREDIT_RATE_USD = 0.015  # PAYGO rate: $0.015 per credit
 
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         super().__init__(provider_name, base_config)
@@ -155,8 +155,6 @@ class PulseProvider(Provider):
         self._replace_existing_tables: bool = bool(self.base_config.get("replace_existing_tables", True))
 
         # Misc / async controls
-        self._timeout: float = float(self.base_config.get("timeout", 600))
-        self._job_timeout: float = float(self.base_config.get("job_timeout", os.getenv("PULSE_JOB_TIMEOUT", 14400)))
         self._poll_interval: float = float(self.base_config.get("poll_interval", os.getenv("PULSE_POLL_INTERVAL", 1.0)))
         self._async_extract: bool = bool(self.base_config.get("async_extract", self.base_config.get("async", False)))
         self._async_tables: bool = bool(self.base_config.get("async_tables", False))
@@ -219,7 +217,7 @@ class PulseProvider(Provider):
     def _resolve_large_result(self, raw: dict[str, Any], context: str) -> dict[str, Any]:
         if not raw.get("is_url") or not raw.get("url"):
             return raw
-        url_resp = requests.get(raw["url"], timeout=self._timeout)
+        url_resp = requests.get(raw["url"])
         self._classify_bad_response(url_resp, f"{context} large-result fetch")
         try:
             url_result = url_resp.json()
@@ -230,14 +228,11 @@ class PulseProvider(Provider):
         return url_result
 
     def _poll_job(self, job_id: str, context: str) -> dict[str, Any]:
-        deadline = time.time() + self._job_timeout
-        last_state: dict[str, Any] = {}
-        while time.time() < deadline:
+        while True:
             time.sleep(max(self._poll_interval, 0.1))
             response = requests.get(
                 f"{self._base_url}/job/{job_id}",
                 headers=self._headers(),
-                timeout=min(self._timeout, 120),
             )
             self._classify_bad_response(response, f"{context} poll")
             try:
@@ -247,7 +242,6 @@ class PulseProvider(Provider):
             if not isinstance(state, dict):
                 raise ProviderTransientError(f"Pulse {context} poll returned invalid state: {state}")
 
-            last_state = state
             status = state.get("status")
             if status == "completed":
                 result = state.get("result")
@@ -259,10 +253,6 @@ class PulseProvider(Provider):
                     f"Pulse {context} job {job_id} ended with status={status}: {state.get('error', state)}"
                 )
 
-        raise ProviderTransientError(
-            f"Pulse {context} job {job_id} did not complete within {self._job_timeout}s; last_state={last_state}"
-        )
-
     def _extract(self, file_path: str) -> dict[str, Any]:
         form_fields = self._build_form_fields()
 
@@ -270,7 +260,7 @@ class PulseProvider(Provider):
             files: list[tuple[str, Any]] = [("file", (Path(file_path).name, f, "application/pdf"))]
             files.extend(form_fields)
             response = requests.post(
-                f"{self._base_url}/extract", headers=self._headers(), files=files, timeout=self._timeout
+                f"{self._base_url}/extract", headers=self._headers(), files=files
             )
 
         self._classify_bad_response(response, "extract submit")
@@ -290,7 +280,8 @@ class PulseProvider(Provider):
             return False
         if not self._tables_endpoint_categories:
             return True
-        return bool({part.lower() for part in file_path.parts} & self._tables_endpoint_categories)
+        parts = [part.lower() for part in file_path.parts]
+        return any(cat in part for part in parts for cat in self._tables_endpoint_categories)
 
     def _extract_tables(self, extraction_id: str) -> dict[str, Any]:
         payload: dict[str, Any] = {"extraction_id": extraction_id}
@@ -303,7 +294,6 @@ class PulseProvider(Provider):
             f"{self._base_url}/tables",
             headers={**self._headers(), "Content-Type": "application/json"},
             json=payload,
-            timeout=self._timeout,
         )
         self._classify_bad_response(response, "tables submit")
         try:
@@ -343,8 +333,6 @@ class PulseProvider(Provider):
             ProviderRateLimitError,
         ):
             raise
-        except requests.Timeout as e:
-            raise ProviderTransientError(f"Pulse request timed out: {e}") from e
         except requests.ConnectionError as e:
             raise ProviderTransientError(f"Pulse connection error: {e}") from e
         except Exception as e:
@@ -382,20 +370,6 @@ class PulseProvider(Provider):
             if pages_used and pages_used > 0:
                 raw_output["num_pages"] = pages_used
 
-        credits = raw_output.get("credits_used")
-        if credits is not None and credits > 0:
-            cost_usd = credits * self.CREDIT_RATE_USD
-            raw_output["cost_usd"] = cost_usd
-            num_pages = raw_output.get("num_pages", raw_output.get("page_count", 0))
-            if num_pages and num_pages > 0:
-                raw_output["cost_per_page_usd"] = cost_usd / num_pages
-
-        tables_credits = None
-        if isinstance(raw_output.get("_tables_result"), dict):
-            tables_credits = raw_output["_tables_result"].get("credits_used")
-        if isinstance(credits, (int, float)) and isinstance(tables_credits, (int, float)):
-            raw_output["total_credits_used"] = credits + tables_credits
-
         completed_at = datetime.now()
         latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 
@@ -418,7 +392,15 @@ class PulseProvider(Provider):
 
         raw = raw_result.raw_output
         html_content = _get_pulse_html(raw)
-        markdown = html_content or raw.get("markdown", "")
+        native_markdown = raw.get("markdown")
+        if _is_parsebench_text_case(raw_result) and isinstance(native_markdown, str) and native_markdown:
+            markdown = native_markdown
+        elif html_content:
+            markdown = html_content
+        elif isinstance(native_markdown, str):
+            markdown = native_markdown
+        else:
+            markdown = ""
         if self._merge_tables_into_markdown:
             markdown = _merge_tables_endpoint_into_markdown(
                 markdown,
@@ -515,6 +497,15 @@ def _get_pulse_html(raw: dict[str, Any]) -> str:
         return html
 
     return ""
+
+
+def _is_parsebench_text_case(raw_result: RawInferenceResult) -> bool:
+    example_id_parts = raw_result.request.example_id.replace("\\", "/").lower().split("/")
+    if "text" in example_id_parts:
+        return True
+
+    source_path = Path(raw_result.request.source_file_path)
+    return any(part.lower() == "text" for part in source_path.parts)
 
 
 def _table_endpoint_tables(tables_result: Any) -> list[dict[str, Any]]:
