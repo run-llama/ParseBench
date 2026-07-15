@@ -2,6 +2,7 @@
 
 import base64
 import io
+import math
 import os
 from datetime import date, datetime
 from pathlib import Path
@@ -17,11 +18,10 @@ from parse_bench.inference.providers.base import (
     ProviderTransientError,
 )
 from parse_bench.inference.providers.parse._layout_utils import (
-    SYSTEM_PROMPT_LAYOUT,
-    USER_PROMPT_LAYOUT,
     build_layout_pages,
     items_to_markdown,
     parse_layout_blocks,
+    resolve_layout_prompts,
     split_pdf_to_pages,
 )
 from parse_bench.inference.providers.registry import register_provider
@@ -90,6 +90,45 @@ _ANTHROPIC_PRICING_PER_M: dict[str, tuple[float, float]] = {
 }
 
 
+def _count_image_tokens(width: int, height: int) -> int:
+    """Visual tokens consumed by an image: one token per 28x28 pixel patch."""
+    return math.ceil(width / 28) * math.ceil(height / 28)
+
+
+def _resized_size(width: int, height: int, max_edge: int, max_tokens: int) -> tuple[int, int]:
+    """The size the Claude API resizes an image to before padding.
+
+    Reference implementation from the vision docs (see
+    ``_resize_to_perceived_size``); images already within the limits are
+    returned unchanged.
+    """
+
+    def fits(w: int, h: int) -> bool:
+        return (
+            math.ceil(w / 28) * 28 <= max_edge
+            and math.ceil(h / 28) * 28 <= max_edge
+            and _count_image_tokens(w, h) <= max_tokens
+        )
+
+    if fits(width, height):
+        return (width, height)
+    if height > width:
+        resized_h, resized_w = _resized_size(height, width, max_edge, max_tokens)
+        return (resized_w, resized_h)
+
+    # Binary search along the long edge for the largest aspect-preserving
+    # size that fits.
+    aspect_ratio = width / height
+    lo, hi = 1, width  # lo always fits; hi never fits
+    while lo + 1 < hi:
+        mid = (lo + hi) // 2
+        if fits(mid, max(round(mid / aspect_ratio), 1)):
+            lo = mid
+        else:
+            hi = mid
+    return (lo, max(round(lo / aspect_ratio), 1))
+
+
 @register_provider("anthropic")
 class AnthropicProvider(Provider):
     """
@@ -136,6 +175,19 @@ class AnthropicProvider(Provider):
                 f"Invalid mode '{self._mode}'. "
                 "Must be 'image', 'file', 'parse_with_layout', or 'parse_with_layout_file'."
             )
+
+        # Grid the layout-mode bboxes are on: 1000 (the 0-1000 prompt, the
+        # default) or None (absolute pixels of the sent image, for models
+        # that ground well but re-normalize unreliably).
+        self._bbox_scale = self.base_config.get("bbox_scale", 1000)
+        self._layout_system_prompt, self._layout_user_prompt = resolve_layout_prompts(self._bbox_scale, self._mode)
+        # Image limits used to pre-resize pages in pixel-coordinate mode.
+        # Defaults are the standard resolution tier, which is safe for every
+        # model (an image within standard limits is never downscaled
+        # server-side on any tier); high-resolution-tier models can pass
+        # vision_max_edge=2576, vision_max_tokens=4784 to keep fidelity.
+        self._vision_max_edge = int(self.base_config.get("vision_max_edge", 1568))
+        self._vision_max_tokens = int(self.base_config.get("vision_max_tokens", 1568))
 
         # Initialize Anthropic client
         try:
@@ -192,6 +244,21 @@ class AnthropicProvider(Provider):
             "thinking_tokens": thinking_tok,
             "total_tokens": total_tok,
         }
+
+    def _resize_to_perceived_size(self, image: Image.Image) -> Image.Image:
+        """Pre-resize so the image Claude perceives is the image we recorded.
+
+        The API downscales images that exceed the model's native limits, and
+        with ``bbox_scale=None`` the model's pixel coordinates are in that
+        downscaled frame — while normalize() divides by the recorded dims.
+        Resizing up front (per the published resize rule) keeps the two
+        identical, as the vision docs recommend:
+        https://platform.claude.com/docs/en/docs/build-with-claude/vision-coordinates
+        """
+        target = _resized_size(image.width, image.height, self._vision_max_edge, self._vision_max_tokens)
+        if target == (image.width, image.height):
+            return image
+        return image.resize(target, Image.Resampling.LANCZOS)
 
     def _prepare_image_for_api(self, image: Image.Image) -> Image.Image:
         """
@@ -364,7 +431,7 @@ class AnthropicProvider(Provider):
             response = self._client.messages.create(
                 model=self._model,
                 max_tokens=self._max_tokens,
-                system=SYSTEM_PROMPT_LAYOUT,
+                system=self._layout_system_prompt,
                 timeout=httpx.Timeout(3600.0, connect=5.0),
                 messages=[
                     {
@@ -380,7 +447,7 @@ class AnthropicProvider(Provider):
                             },
                             {
                                 "type": "text",
-                                "text": USER_PROMPT_LAYOUT,
+                                "text": self._layout_user_prompt,
                             },
                         ],
                     }
@@ -489,7 +556,7 @@ class AnthropicProvider(Provider):
                 model=self._model,
                 max_tokens=self._max_tokens,
                 betas=["pdfs-2024-09-25"],
-                system=SYSTEM_PROMPT_LAYOUT,
+                system=self._layout_system_prompt,
                 timeout=httpx.Timeout(3600.0, connect=5.0),
                 messages=[
                     {
@@ -505,7 +572,7 @@ class AnthropicProvider(Provider):
                             },
                             {
                                 "type": "text",
-                                "text": USER_PROMPT_LAYOUT,
+                                "text": self._layout_user_prompt,
                             },
                         ],
                     }
@@ -629,15 +696,18 @@ class AnthropicProvider(Provider):
                 pages = []
                 for page_index, image in enumerate(images):  # type: ignore[assignment]
                     if self._mode == "parse_with_layout":
-                        items, raw_content, usage = self._parse_image_with_layout(image)
+                        # In pixel mode, send the pre-resized image so the recorded
+                        # dims are exactly what the model perceives.
+                        page = self._resize_to_perceived_size(image) if self._bbox_scale is None else image
+                        items, raw_content, usage = self._parse_image_with_layout(page)
                         page_usages.append(usage)
                         pages.append(
                             {
                                 "page_index": page_index,
                                 "items": items,
                                 "raw_content": raw_content,
-                                "width": image.width,
-                                "height": image.height,
+                                "width": page.width,
+                                "height": page.height,
                             }
                         )
                     else:
@@ -671,6 +741,7 @@ class AnthropicProvider(Provider):
                 "num_pages": num_pages,
                 "model": self._model,
                 "mode": self._mode,
+                "bbox_scale": self._bbox_scale,
                 "config": {
                     "dpi": self._dpi,
                     "max_tokens": self._max_tokens,
@@ -736,6 +807,7 @@ class AnthropicProvider(Provider):
                         image_height,
                         markdown,
                         page_number=page_index + 1,
+                        bbox_scale=raw_result.raw_output.get("bbox_scale", 1000),
                     )
                 )
             else:

@@ -16,11 +16,10 @@ from parse_bench.inference.providers.base import (
     ProviderTransientError,
 )
 from parse_bench.inference.providers.parse._layout_utils import (
-    SYSTEM_PROMPT_LAYOUT_GEMINI,
-    USER_PROMPT_LAYOUT_GEMINI,
     build_layout_pages,
     items_to_markdown,
     parse_layout_blocks,
+    resolve_layout_prompts,
     split_pdf_to_pages,
     swap_gemini_bbox,
 )
@@ -159,6 +158,17 @@ class GoogleProvider(Provider):
                 "Must be 'image', 'file', 'parse_with_layout', 'parse_with_layout_file', "
                 "or 'parse_with_layout_agentic_vision'."
             )
+
+        # Grid the layout-mode bboxes are on: 1000 (the 0-1000 prompt, the
+        # default) or None (absolute pixels of the sent image, for models
+        # that ground well but re-normalize unreliably).
+        self._bbox_scale = self.base_config.get("bbox_scale", 1000)
+        self._layout_system_prompt, self._layout_user_prompt = resolve_layout_prompts(
+            self._bbox_scale,
+            self._mode,
+            gemini=True,
+            pixel_disallowed_modes=("parse_with_layout_file", "parse_with_layout_agentic_vision"),
+        )
 
         # Initialize Gemini client
         try:
@@ -534,12 +544,12 @@ class GoogleProvider(Provider):
 
         try:
             image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
-            text_part = types.Part.from_text(text=USER_PROMPT_LAYOUT_GEMINI)
+            text_part = types.Part.from_text(text=self._layout_user_prompt)
 
             gen_config = types.GenerateContentConfig(
                 temperature=0,
                 max_output_tokens=self._max_tokens,
-                system_instruction=SYSTEM_PROMPT_LAYOUT_GEMINI,
+                system_instruction=self._layout_system_prompt,
             )
             if self._thinking_level is not None:
                 gen_config.thinking_config = types.ThinkingConfig(
@@ -667,12 +677,12 @@ class GoogleProvider(Provider):
 
         try:
             pdf_part = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
-            text_part = types.Part.from_text(text=USER_PROMPT_LAYOUT_GEMINI)
+            text_part = types.Part.from_text(text=self._layout_user_prompt)
 
             gen_config = types.GenerateContentConfig(
                 temperature=0,
                 max_output_tokens=self._max_tokens,
-                system_instruction=SYSTEM_PROMPT_LAYOUT_GEMINI,
+                system_instruction=self._layout_system_prompt,
             )
             if self._thinking_level is not None:
                 gen_config.thinking_config = types.ThinkingConfig(
@@ -939,6 +949,7 @@ class GoogleProvider(Provider):
                 "num_pages": num_pages,
                 "model": self._model,
                 "mode": self._mode,
+                "bbox_scale": self._bbox_scale,
                 "config": config_info,
                 **usage_summary,
             }
@@ -1008,6 +1019,7 @@ class GoogleProvider(Provider):
                         image_height,
                         markdown,
                         page_number=page_index + 1,
+                        bbox_scale=raw_result.raw_output.get("bbox_scale", 1000),
                     )
                 )
             elif mode == "parse_with_layout_agentic_vision":

@@ -33,11 +33,10 @@ from parse_bench.inference.providers.base import (
     ProviderTransientError,
 )
 from parse_bench.inference.providers.parse._layout_utils import (
-    SYSTEM_PROMPT_LAYOUT,
-    USER_PROMPT_LAYOUT,
     build_layout_pages,
     items_to_markdown,
     parse_layout_blocks,
+    resolve_layout_prompts,
 )
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import ParseOutput
@@ -97,6 +96,8 @@ class Gemma4Provider(Provider):
         - server_url (str, required): Modal server URL
         - model (str, default="gemma-4-26b-a4b"): Served model name
         - prompt_mode (str, default="parse"): "parse" or "layout"
+        - bbox_scale: 1000 (default, 0-1000 bboxes) or None
+          (absolute pixel bboxes, layout prompt only)
         - timeout (int, default=600): Request timeout in seconds
         - dpi (int, default=150): DPI for PDF to image conversion
         - max_tokens (int, default=16384): Max tokens per response
@@ -124,9 +125,14 @@ class Gemma4Provider(Provider):
         api_key_env = self.base_config.get("api_key_env", "VLLM_API_KEY")
         self._api_key = os.environ.get(api_key_env, "")
 
+        # Grid the layout-prompt bboxes are on: 1000 (the 0-1000 prompt,
+        # the default) or None (absolute pixels of the sent image).
+        self._bbox_scale = self.base_config.get("bbox_scale", 1000)
+        layout_system, layout_user = resolve_layout_prompts(self._bbox_scale, None)
+
         if self._prompt_mode == "layout":
-            self._system_prompt = SYSTEM_PROMPT_LAYOUT
-            self._user_prompt = USER_PROMPT_LAYOUT
+            self._system_prompt = layout_system
+            self._user_prompt = layout_user
         else:
             self._system_prompt = SYSTEM_PROMPT_PARSE
             self._user_prompt = USER_PROMPT_PARSE
@@ -228,6 +234,7 @@ class Gemma4Provider(Provider):
 
         result: dict[str, Any] = {
             "prompt_mode": self._prompt_mode,
+            "bbox_scale": self._bbox_scale,
             "_config": {
                 "server_url": self._server_url,
                 "model": self._model,
@@ -407,6 +414,7 @@ class Gemma4Provider(Provider):
                 image_height=img_h,
                 markdown=markdown,
                 page_number=1,
+                bbox_scale=raw_result.raw_output.get("bbox_scale", 1000),
             )
 
             output = ParseOutput(

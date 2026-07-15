@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from typing import Any
 
@@ -91,6 +92,122 @@ USER_PROMPT_LAYOUT_GEMINI = USER_PROMPT_LAYOUT.replace(
     "[x1,y1,x2,y2]",
     "[y_min,x_min,y_max,x_max]",
 )
+
+
+# ---------------------------------------------------------------------------
+# Absolute-pixel prompt variants (bbox_scale=None in the provider config).
+# Some models ground well but are unreliable at re-normalizing their bboxes
+# into the 0-1000 range, which conflates grounding quality with coordinate
+# compliance. These variants ask for the model's native pixel frame instead;
+# build_layout_pages(bbox_scale=None) then normalizes by the image
+# dimensions. Built by string replacement so the variants can never drift
+# from the base prompts on anything except the coordinate bullet.
+# ---------------------------------------------------------------------------
+
+_DATA_BBOX_BULLET_NORM = (
+    '"[x1, y1, x2, y2]" — bounding box in normalized 0-1000 '
+    "coordinates where x is horizontal (left edge = 0, right edge = 1000) "
+    "and y is vertical (top = 0, bottom = 1000). "
+    "x1,y1 is the top-left corner and x2,y2 is the bottom-right corner."
+)
+_DATA_BBOX_BULLET_ABS = (
+    '"[x1, y1, x2, y2]" — bounding box in ABSOLUTE PIXEL coordinates '
+    "of the image, where x is horizontal (left edge = 0) and y is "
+    "vertical (top = 0). "
+    "x1,y1 is the top-left corner and x2,y2 is the bottom-right corner."
+)
+
+SYSTEM_PROMPT_LAYOUT_ABS = SYSTEM_PROMPT_LAYOUT.replace(_DATA_BBOX_BULLET_NORM, _DATA_BBOX_BULLET_ABS)
+assert SYSTEM_PROMPT_LAYOUT_ABS != SYSTEM_PROMPT_LAYOUT, (
+    "data-bbox bullet replacement did not match SYSTEM_PROMPT_LAYOUT"
+)
+
+USER_PROMPT_LAYOUT_ABS = USER_PROMPT_LAYOUT.replace(
+    'data-label="Category"> tag. ',
+    'data-label="Category"> tag (data-bbox in absolute pixel coordinates). ',
+)
+assert USER_PROMPT_LAYOUT_ABS != USER_PROMPT_LAYOUT, "user-prompt replacement did not match USER_PROMPT_LAYOUT"
+
+_DATA_BBOX_BULLET_GEMINI_NORM = (
+    '"[y_min, x_min, y_max, x_max]" — bounding box in normalized 0-1000 '
+    "coordinates where x is horizontal (left edge = 0, right edge = 1000) "
+    "and y is vertical (top = 0, bottom = 1000). "
+    "The order is [y_min, x_min, y_max, x_max]."
+)
+_DATA_BBOX_BULLET_GEMINI_ABS = (
+    '"[y_min, x_min, y_max, x_max]" — bounding box in ABSOLUTE PIXEL '
+    "coordinates of the image, where x is horizontal (left edge = 0) "
+    "and y is vertical (top = 0). "
+    "The order is [y_min, x_min, y_max, x_max]."
+)
+
+SYSTEM_PROMPT_LAYOUT_GEMINI_ABS = SYSTEM_PROMPT_LAYOUT_GEMINI.replace(
+    _DATA_BBOX_BULLET_GEMINI_NORM, _DATA_BBOX_BULLET_GEMINI_ABS
+)
+assert SYSTEM_PROMPT_LAYOUT_GEMINI_ABS != SYSTEM_PROMPT_LAYOUT_GEMINI, (
+    "data-bbox bullet replacement did not match SYSTEM_PROMPT_LAYOUT_GEMINI"
+)
+
+USER_PROMPT_LAYOUT_GEMINI_ABS = USER_PROMPT_LAYOUT_GEMINI.replace(
+    'data-label="Category"> tag. ',
+    'data-label="Category"> tag (data-bbox in absolute pixel coordinates). ',
+)
+assert USER_PROMPT_LAYOUT_GEMINI_ABS != USER_PROMPT_LAYOUT_GEMINI, (
+    "user-prompt replacement did not match USER_PROMPT_LAYOUT_GEMINI"
+)
+
+
+def resolve_layout_prompts(
+    bbox_scale: float | None,
+    mode: str | None,
+    *,
+    gemini: bool = False,
+    pixel_disallowed_modes: tuple[str, ...] = ("parse_with_layout_file",),
+) -> tuple[str, str]:
+    """Validate *bbox_scale* and return the (system, user) layout prompts.
+
+    ``bbox_scale`` follows the same convention as the layoutdet providers:
+    a number means the model's coordinates are on that grid (only 1000 is
+    supported here, since the prompt text hardcodes the range), and ``None``
+    means absolute pixel coordinates, normalized by the image dimensions.
+
+    Shared by the div-layout providers so the scale validation, the
+    scale/mode constraint, and the prompt-pair selection cannot drift
+    between them.
+
+    The pixel frame is normalized by the recorded page dimensions, so it
+    assumes the model perceives the image at the sent resolution. Provider
+    APIs downscale images past their native limits — keep the render
+    ``dpi`` low enough that pages stay within them, or pre-resize per the
+    provider's documented resize rule.
+
+    Raises:
+        ProviderConfigError: for an unsupported scale, or for
+            ``bbox_scale=None`` combined with a mode in
+            *pixel_disallowed_modes* (absolute pixel coordinates are
+            undefined when the model is sent the PDF file rather than a
+            rendered image).
+    """
+    from parse_bench.inference.providers.base import ProviderConfigError
+
+    if bbox_scale is not None and bbox_scale != 1000:
+        raise ProviderConfigError(
+            f"Unsupported bbox_scale {bbox_scale!r}. Use 1000 (normalized 0-1000, "
+            "the default) or None (absolute pixel coordinates)."
+        )
+    if bbox_scale is None and mode in pixel_disallowed_modes:
+        raise ProviderConfigError(
+            f"bbox_scale=None (pixel coordinates) is not supported with mode "
+            f"'{mode}'; absolute pixel coordinates are undefined when the model "
+            "is sent the PDF file."
+        )
+    if bbox_scale is None:
+        if gemini:
+            return SYSTEM_PROMPT_LAYOUT_GEMINI_ABS, USER_PROMPT_LAYOUT_GEMINI_ABS
+        return SYSTEM_PROMPT_LAYOUT_ABS, USER_PROMPT_LAYOUT_ABS
+    if gemini:
+        return SYSTEM_PROMPT_LAYOUT_GEMINI, USER_PROMPT_LAYOUT_GEMINI
+    return SYSTEM_PROMPT_LAYOUT, USER_PROMPT_LAYOUT
 
 
 def swap_gemini_bbox(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -213,12 +330,28 @@ def items_to_markdown(items: list[dict[str, Any]]) -> str:
     return "\n\n".join(parts)
 
 
+# Coordinates may overshoot their grid by rounding noise; values beyond
+# scale * this tolerance indicate the model did not follow the coordinate
+# instruction (see the compliance warning in ``build_layout_pages``).
+_BBOX_ROUNDING_TOLERANCE = 1.05
+
+
+def _is_finite_bbox(bbox: Any) -> bool:
+    """True when *bbox* is four finite numeric (non-bool) values."""
+    return (
+        isinstance(bbox, list)
+        and len(bbox) == 4
+        and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in bbox)
+    )
+
+
 def build_layout_pages(
     items: list[dict[str, Any]],
     image_width: int,
     image_height: int,
     markdown: str,
     page_number: int = 1,
+    bbox_scale: float | None = 1000.0,
 ) -> list[ParseLayoutPageIR]:
     """Convert parsed layout blocks to ParseLayoutPageIR.
 
@@ -228,26 +361,62 @@ def build_layout_pages(
         image_height: Page image height in pixels.
         markdown: Page markdown content.
         page_number: 1-indexed page number.
+        bbox_scale: The grid the bboxes are on (same convention as the
+            layoutdet providers): a number divides coordinates by that
+            scale; ``None`` means absolute pixel coordinates (the
+            ``bbox_scale=None`` pipelines, prompted with the ``*_ABS``
+            variants), normalized by the image dimensions.
     """
     if not items or not image_width or not image_height:
         return []
 
+    if bbox_scale is None:
+        scale_x = float(image_width)
+        scale_y = float(image_height)
+    else:
+        scale_x = scale_y = float(bbox_scale)
+
+    compliance_warned = False
     layout_items: list[LayoutItemIR] = []
     for item in items:
         bbox = item.get("bbox", [])
         label_raw = item.get("label", "text")
         text = item.get("text", "")
 
-        if len(bbox) != 4:
+        # Clamping a non-finite value would silently place it at the page
+        # edge (min(scale, nan) returns scale), so skip boxes the clamp
+        # cannot handle honestly.
+        if not _is_finite_bbox(bbox):
+            if len(bbox) == 4:
+                logger.warning(f"Skipping layout item with non-numeric bbox: {bbox!r}")
             continue
+
+        if (
+            bbox_scale is not None
+            and not compliance_warned
+            and any(v > bbox_scale * _BBOX_ROUNDING_TOLERANCE for v in bbox)
+        ):
+            logger.warning(
+                f"Page {page_number}: bbox coordinates exceed the 0-{bbox_scale:g} "
+                "range; the model may be emitting absolute pixels (consider "
+                "bbox_scale=None)"
+            )
+            compliance_warned = True
 
         x1, y1, x2, y2 = bbox
 
-        # Convert from 0-1000 [x1,y1,x2,y2] to normalized [0,1] COCO [x,y,w,h]
-        nx = x1 / 1000.0
-        ny = y1 / 1000.0
-        nw = (x2 - x1) / 1000.0
-        nh = (y2 - y1) / 1000.0
+        # Clamp to the page so out-of-range values cannot produce segments
+        # outside the unit square.
+        x1 = max(0.0, min(scale_x, x1))
+        x2 = max(0.0, min(scale_x, x2))
+        y1 = max(0.0, min(scale_y, y1))
+        y2 = max(0.0, min(scale_y, y2))
+
+        # Convert [x1,y1,x2,y2] to normalized [0,1] COCO [x,y,w,h]
+        nx = x1 / scale_x
+        ny = y1 / scale_y
+        nw = (x2 - x1) / scale_x
+        nh = (y2 - y1) / scale_y
 
         label = LABEL_MAP.get(label_raw.lower(), "Text")
         seg = LayoutSegmentIR(x=nx, y=ny, w=nw, h=nh, confidence=1.0, label=label)
