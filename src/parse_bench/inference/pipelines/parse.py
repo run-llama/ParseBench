@@ -226,7 +226,6 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     pulse_tables_endpoint_config = {
         "async_tables": True,
         "use_tables_endpoint": True,
-        "tables_endpoint_categories": ["chart", "table"],
         "tables_config": pulse_tables_config,
         "merge_tables_into_markdown": True,
         "replace_existing_tables": True,
