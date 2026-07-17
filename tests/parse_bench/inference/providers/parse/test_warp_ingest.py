@@ -20,7 +20,6 @@ from parse_bench.schemas.pipeline import PipelineSpec
 from parse_bench.schemas.pipeline_io import InferenceRequest, InferenceResult
 from parse_bench.schemas.product import ProductType
 
-
 REPO_ROOT = Path(__file__).resolve().parents[5]
 
 
