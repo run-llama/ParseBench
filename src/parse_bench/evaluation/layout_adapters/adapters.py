@@ -203,6 +203,66 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
         return _build_llamaparse_granular_pages_from_payload(grounded_pages)
 
 
+@register_layout_adapter("warp_ingest", priority=100)
+class WarpIngestLayoutAdapter(LayoutAdapter):
+    """Adapter for generic layout predictions emitted by Warp-Ingest."""
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        try:
+            from warp_ingest.ingestor.markdown_exporter import render_layout_predictions
+        except ImportError as exc:
+            raise ValueError("warp-ingest>=2.0.1 is required for Warp-Ingest layout evaluation") from exc
+
+        payload = inference_result.raw_output if isinstance(inference_result.raw_output, dict) else {}
+        rendered = render_layout_predictions(payload, page_filter=page_filter)
+        predictions = [
+            self._build_prediction(prediction)
+            for prediction in rendered.get("predictions", [])
+            if isinstance(prediction, dict)
+        ]
+
+        return LayoutOutput(
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.UNSTRUCTURED_LAYOUT,
+            image_width=self._positive_int(rendered.get("image_width"), 612),
+            image_height=self._positive_int(rendered.get("image_height"), 792),
+            predictions=predictions,
+        )
+
+    @staticmethod
+    def _positive_int(value: Any, default: int) -> int:
+        try:
+            parsed = int(round(float(value)))
+        except (TypeError, ValueError):
+            return default
+        return max(1, parsed)
+
+    @staticmethod
+    def _build_prediction(prediction: dict[str, Any]) -> LayoutPrediction:
+        content_payload = prediction.get("content")
+        content: LayoutTextContent | LayoutTableContent | None = None
+        if isinstance(content_payload, dict) and content_payload.get("type") == "table":
+            content = LayoutTableContent(html=str(content_payload.get("html") or ""))
+        elif isinstance(content_payload, dict):
+            content = LayoutTextContent(text=str(content_payload.get("text") or ""))
+
+        provider_metadata = {"order_index": prediction.get("order_index")}
+        return LayoutPrediction(
+            bbox=[float(value) for value in prediction.get("bbox", [])],
+            score=float(prediction.get("score", 1.0)),
+            label=str(prediction.get("label", "")),
+            page=prediction.get("page"),
+            content=content,
+            provider_metadata=provider_metadata,
+        )
+
+
 def _build_llamaparse_granular_pages_from_payload(grounded_pages: Any) -> list[_GranularPage]:
     if not isinstance(grounded_pages, list):
         return []
