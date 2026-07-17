@@ -24,6 +24,7 @@ from lxml import etree, html
 from scipy.optimize import linear_sum_assignment
 
 from parse_bench.evaluation.metrics.base import Metric
+from parse_bench.evaluation.metrics.parse import fast_tree_edit
 from parse_bench.evaluation.metrics.parse.utils import normalize_cell_text
 from parse_bench.schemas.evaluation import MetricValue
 
@@ -187,6 +188,24 @@ VARIANT_CONFIGS: dict[str, type[Config]] = {
 }
 
 
+def _edit_distance(tree_pred: "TableTree", tree_true: "TableTree", config: Config) -> float:
+    """Ordered tree-edit distance between two table trees.
+
+    Prefers the fast Zhang-Shasha implementation in ``fast_tree_edit`` (numba
+    JIT when available, pure-Python otherwise). Zhang-Shasha computes the
+    *same* optimal ordered tree-edit distance as APTED, so the TEDS score is
+    unchanged — this is a speedup, not a re-definition of the metric. Any
+    unexpected failure (or ``PARSEBENCH_FAST_TEDS=0``) falls back to APTED so
+    the metric never breaks on an edge case the fast path hasn't seen.
+    """
+    if fast_tree_edit.FAST_TEDS_ENABLED:
+        try:
+            return fast_tree_edit.tree_edit_distance(tree_pred, tree_true, config)
+        except Exception as e:  # pragma: no cover - defensive: never fail scoring
+            fast_tree_edit._log_once(f"FALLBACK: fast tree-edit failed -> APTED. cause={e!r}")
+    return float(APTED(tree_pred, tree_true, config).compute_edit_distance())
+
+
 class TEDS:
     """
     Tree Edit Distance based Similarity metric for HTML tables.
@@ -321,8 +340,10 @@ class TEDS:
         for variant in self.variants:
             tree_pred = self._load_html_tree(pred_table)
             tree_true = self._load_html_tree(true_table)
+            # n_nodes > 0 (checked above) guarantees both trees are non-None.
+            assert tree_pred is not None and tree_true is not None
             config = VARIANT_CONFIGS[variant]()
-            distance = APTED(tree_pred, tree_true, config).compute_edit_distance()
+            distance = _edit_distance(tree_pred, tree_true, config)
             scores[variant] = max(0.0, 1.0 - (float(distance) / n_nodes))
 
         return (scores, n_nodes_true, n_nodes_pred)

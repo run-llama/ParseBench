@@ -211,33 +211,67 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     # Pulse Pipelines
     # =========================================================================
 
+    pulse_common_endpoint_config = {
+        "async_extract": True,
+        "return_html": True,
+        "storage": {"enabled": True},
+        "markdown_source": "markdown",
+        "poll_interval": 1.0,
+    }
+    pulse_tables_config = {
+        "merge": True,
+        "table_format": "html",
+        "charts_to_tables": True,
+    }
+    pulse_tables_endpoint_config = {
+        "async_tables": True,
+        "use_tables_endpoint": True,
+        "tables_config": pulse_tables_config,
+        "merge_tables_into_markdown": True,
+        "replace_existing_tables": True,
+        **pulse_common_endpoint_config,
+    }
+    pulse_ultra_2_image_prompt = (
+        "For ParseBench charts, output a markdown table where each row is one data point. "
+        "Include every visible chart label needed to identify the value as explicit row or column text, "
+        "including series names, legend labels, axis labels, sign/category labels such as "
+        "Favorable attitude or Unfavorable attitude, units, and years. Do not leave grouping labels only in prose."
+    )
+    pulse_ultra_2_prompt = "Preserve chart captions, title hierarchy, table structure, and semantic formatting."
+    pulse_ultra_2_config = {
+        "model": "pulse-ultra-2",
+        "credits_per_page": 10,
+        "refine": True,
+        "extract_figure": True,
+        "figure_description": True,
+        "additional_prompt": pulse_ultra_2_prompt,
+        "custom_image_prompt": pulse_ultra_2_image_prompt,
+        **pulse_common_endpoint_config,
+    }
+
     register_fn(
         PipelineSpec(
             pipeline_name="pulse",
             provider_name="pulse",
             product_type=ProductType.PARSE,
-            config={},
+            config={
+                "model": "default",
+                "refine": False,
+                "credits_per_page": 1,
+                "figure_processing": {"description": True},
+                **pulse_tables_endpoint_config,
+            },
         )
     )
 
-    # pulse-ultra-2: vision-language model with figure extraction,
-    # figure descriptions, and refinement enabled.
+    # pulse-ultra-2: hosted tier with native figure extraction.
+    # Refinement is enabled for the submitted leaderboard configuration.
     register_fn(
         PipelineSpec(
             pipeline_name="pulse_ultra_2",
             provider_name="pulse",
             product_type=ProductType.PARSE,
-            config={
-                "model": "pulse-ultra-2",
-                "extract_figure": True,
-                "figure_description": True,
-                "refine": True,
-                # Optional: select which refinement passes run.
-                "refine_options": {"tables": False, "text": True, "formatting": True},
-                # Optional: domain-specific guidance — replace as needed.
-                "additional_prompt": "<placeholder>",
-                "custom_refine_prompt": "<placeholder>",
-            },
+            config=pulse_ultra_2_config,
         )
     )
 
@@ -1734,6 +1768,28 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             },
         )
     )
+
+    # OpenAI GPT-5.6 (sol / terra / luna) - Parse with Layout File - Reasoning None
+    for _gpt56_suffix, _gpt56_model in (
+        ("sol", "gpt-5.6-sol"),
+        ("terra", "gpt-5.6-terra"),
+        ("luna", "gpt-5.6-luna"),
+    ):
+        register_fn(
+            PipelineSpec(
+                pipeline_name=(
+                    f"openai_gpt_5_6_{_gpt56_suffix}_reasoning_none_parse_with_layout_file"
+                ),
+                provider_name="openai",
+                product_type=ProductType.PARSE,
+                config={
+                    "model": _gpt56_model,
+                    "max_tokens": 32768,
+                    "mode": "parse_with_layout_file",
+                    "reasoning_effort": "none",
+                },
+            )
+        )
 
     # OpenAI GPT-5.4 Nano - Parse with Layout
     register_fn(
