@@ -546,7 +546,11 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             pipeline_name="pymupdf4llm_markdown",
             provider_name="pymupdf4llm",
             product_type=ProductType.PARSE,
-            config={},
+            config={
+                "use_ocr": True,
+                "ocr_backend": "rapidtess",
+                "ocr_dpi": 150,
+            },
         )
     )
 
