@@ -129,6 +129,32 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
+            pipeline_name="extend_parse_light",
+            provider_name="extend_parse",
+            product_type=ProductType.PARSE,
+            config={
+                "target": "markdown",
+                "chunking_strategy": "page",
+                "engine": "parse_light",
+                "engineVersion": "1.0.0",
+                "block_options": {
+                    "tables": {"target_format": "html"},
+                    "figures": {
+                        "enabled": True,
+                        "figureImageClippingEnabled": True,
+                        "advancedChartExtractionEnabled": True,
+                    },
+                    "formulas": {"enabled": True},
+                },
+                "advanced_options": {
+                    "enrichmentFormat": "xml",
+                },
+            },
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
             pipeline_name="extend_parse_document",
             provider_name="extend_parse",
             product_type=ProductType.PARSE,

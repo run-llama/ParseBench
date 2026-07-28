@@ -852,7 +852,7 @@ wheels = [
 
 [[package]]
 name = "extend-ai"
-version = "1.8.0"
+version = "1.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -860,9 +860,9 @@ dependencies = [
     { name = "pydantic-core" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/08/6f/519194532dd5971d7f32ddd2df75096f09a5f1862751e465c240939c5150/extend_ai-1.8.0.tar.gz", hash = "sha256:234405ff40b55c18c8af6bc24b0ba0947c71b6e6bead181883384f5619abc0d4", size = 390736, upload-time = "2026-04-10T21:54:43.65Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c1/66/af88075e18346d4b9a194a0c11acb68128b4c3b08fad5f37d425eb31caca/extend_ai-1.16.0.tar.gz", hash = "sha256:bafa475431330d571be8659daf312f6ebeed5fd5e152d62b7f5deb49e75c4aba", size = 433240, upload-time = "2026-07-15T18:02:11.593Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ed/79/89dac4a16f92b9a159e8d4979df6dad27b6b353193b3f473bfca02dc0b7b/extend_ai-1.8.0-py3-none-any.whl", hash = "sha256:d1c3373d459e4aa2fc84ec43de0e9938be7b8e78c87eb7873777021045911371", size = 929757, upload-time = "2026-04-10T21:54:41.989Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/6f/39d7456300d395e3eec88119e35ab1f28996ac0ffdf69565dfc21a833a36/extend_ai-1.16.0-py3-none-any.whl", hash = "sha256:862d1c918ebf11f78664e0f49198bbf613ee56de6af0ba29d6043498332dc028", size = 1015486, upload-time = "2026-07-15T18:02:09.883Z" },
 ]
 
 [[package]]
@@ -2633,7 +2633,7 @@ requires-dist = [
     { name = "datalab-python-sdk", marker = "extra == 'runners'" },
     { name = "datasets", specifier = ">=4.8.4" },
     { name = "docling-core", marker = "extra == 'runners'", specifier = ">=2.71.0" },
-    { name = "extend-ai", marker = "extra == 'runners'", specifier = ">=1.8.0" },
+    { name = "extend-ai", marker = "extra == 'runners'", specifier = ">=1.16.0" },
     { name = "fire", specifier = ">=0.7.1" },
     { name = "fuzzysearch", specifier = ">=0.7.3" },
     { name = "google-cloud-documentai", marker = "extra == 'runners'", specifier = ">=2.20.0" },
