@@ -27,7 +27,7 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | 5 | Extend (2.0) | Commercial - Startup APIs | 75.33 | 84.82 | 78.31 | 84.59 | 60.31 | 68.61 | 2.50¢ |
 | 6 | Google Gemini 3 Flash (Thinking High) | VLM - Proprietary | 75.05 | 91.50 | 64.79 | 90.87 | 68.31 | 59.77 | 2.41¢ |
 | 7 | Infinity-Parser2-Pro | VLM - Open Weight | 74.28 | 86.4 | 61.3 | 89.7 | 59.1 | 74.9 | — |
-| 8 | Extend Light (1.0) | Commercial - Startup APIs | 73.26 | 75.8 | 78.6 | 84.8 | 58.6 | 68.5 | — |
+| 8 | Extend Light (1.0) | Commercial - Startup APIs | 73.26 | 75.8 | 78.6 | 84.8 | 58.6 | 68.5 | 0.62¢ |
 | 9 | Infinity-Parser2-Flash | VLM - Open Weight | 73.25 | 82.88 | 55.56 | 89.52 | 57.7 | 80.61 | — |
 | 10 | Reducto (Agentic) | Commercial - Startup APIs | 72.97 | 80.42 | 73.4 | 86.37 | 57.6 | 67.07 | 4.76¢ |
 <!-- LEADERBOARD:END -->

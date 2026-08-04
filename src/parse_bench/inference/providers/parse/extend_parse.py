@@ -70,6 +70,17 @@ class ExtendParseProvider(Provider):
     3. Return markdown content from parsed result
     """
 
+    # Extend meters parsing in credits; one credit is $0.0125.
+    CREDIT_RATE_USD = 0.0125
+
+    # Credits billed per page, keyed by parse engine. The default engine (no
+    # explicit `engine` in the pipeline config) bills at the parse_performance rate.
+    ENGINE_CREDITS_PER_PAGE: dict[str, float] = {
+        "parse_performance": 2.0,
+        "parse_light": 0.5,
+    }
+    DEFAULT_CREDITS_PER_PAGE = 2.0
+
     def __init__(
         self,
         provider_name: str,
@@ -160,6 +171,27 @@ class ExtendParseProvider(Provider):
                 return 1
         else:
             return 1
+
+    def _credits_per_page(self, pipeline_config: dict[str, Any]) -> float | None:
+        """
+        Resolve how many credits per page the configured engine bills.
+
+        :param pipeline_config: Pipeline configuration options
+        :return: Credits per page, or None if the engine's rate is unknown
+        :raises ProviderConfigError: If an explicit override is negative
+        """
+        override = pipeline_config.get("credits_per_page", self.base_config.get("credits_per_page"))
+        if override is not None:
+            credits = float(override)
+            if credits < 0:
+                raise ProviderConfigError("credits_per_page must be non-negative")
+            return credits
+
+        engine = pipeline_config.get("engine")
+        if engine is None:
+            return self.DEFAULT_CREDITS_PER_PAGE
+        # Unknown engine: omit cost rather than report a rate we cannot vouch for.
+        return self.ENGINE_CREDITS_PER_PAGE.get(engine)
 
     def _upload_file(self, file_path: str) -> str:
         """
@@ -293,6 +325,15 @@ class ExtendParseProvider(Provider):
                 "page_dims": page_dims,
                 "config": parse_config,
             }
+
+            # Operational stats: page count feeds per-page latency, credits feed cost.
+            result["num_pages"] = num_pages
+            credits_per_page = self._credits_per_page(pipeline_config)
+            if credits_per_page is not None:
+                cost_per_page_usd = credits_per_page * self.CREDIT_RATE_USD
+                result["credits_used"] = credits_per_page * num_pages
+                result["cost_per_page_usd"] = cost_per_page_usd
+                result["cost_usd"] = cost_per_page_usd * num_pages
 
             return result
 
