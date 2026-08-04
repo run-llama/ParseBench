@@ -163,6 +163,7 @@ def resolve_layout_prompts(
     *,
     gemini: bool = False,
     pixel_disallowed_modes: tuple[str, ...] = ("parse_with_layout_file",),
+    pixel_frame_supported: bool = False,
 ) -> tuple[str, str]:
     """Validate *bbox_scale* and return the (system, user) layout prompts.
 
@@ -177,12 +178,17 @@ def resolve_layout_prompts(
 
     The pixel frame is normalized by the recorded page dimensions, so it
     assumes the model perceives the image at the sent resolution. Provider
-    APIs downscale images past their native limits — keep the render
-    ``dpi`` low enough that pages stay within them, or pre-resize per the
-    provider's documented resize rule.
+    APIs downscale images past their native limits, and the model then
+    reports pixels in that downscaled frame while ``normalize()`` divides by
+    the dimensions we recorded — so a provider may only opt in
+    (``pixel_frame_supported=True``) once it pre-resizes each page to the
+    size the model actually perceives. Anthropic does this in
+    ``_resize_to_perceived_size``; the other div-layout providers do not,
+    and are rejected rather than allowed to report a silently shifted frame.
 
     Raises:
-        ProviderConfigError: for an unsupported scale, or for
+        ProviderConfigError: for an unsupported scale; for ``bbox_scale=None``
+            on a provider that cannot pin the perceived frame; or for
             ``bbox_scale=None`` combined with a mode in
             *pixel_disallowed_modes* (absolute pixel coordinates are
             undefined when the model is sent the PDF file rather than a
@@ -194,6 +200,14 @@ def resolve_layout_prompts(
         raise ProviderConfigError(
             f"Unsupported bbox_scale {bbox_scale!r}. Use 1000 (normalized 0-1000, "
             "the default) or None (absolute pixel coordinates)."
+        )
+    if bbox_scale is None and not pixel_frame_supported:
+        raise ProviderConfigError(
+            "bbox_scale=None (pixel coordinates) is not supported by this provider. "
+            "The provider API may downscale the page before the model sees it, so "
+            "the model's pixel coordinates would be in a different frame than the "
+            "recorded page dimensions. Use bbox_scale=1000 (the default), or add a "
+            "perceived-size pre-resize to the provider first."
         )
     if bbox_scale is None and mode in pixel_disallowed_modes:
         raise ProviderConfigError(

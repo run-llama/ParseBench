@@ -180,7 +180,12 @@ class AnthropicProvider(Provider):
         # default) or None (absolute pixels of the sent image, for models
         # that ground well but re-normalize unreliably).
         self._bbox_scale = self.base_config.get("bbox_scale", 1000)
-        self._layout_system_prompt, self._layout_user_prompt = resolve_layout_prompts(self._bbox_scale, self._mode)
+        # Pixel mode is safe here because _resize_to_perceived_size() pins the
+        # sent image to the size the model perceives, so the recorded page
+        # dimensions and the model's coordinate frame are the same.
+        self._layout_system_prompt, self._layout_user_prompt = resolve_layout_prompts(
+            self._bbox_scale, self._mode, pixel_frame_supported=True
+        )
         # Image limits used to pre-resize pages in pixel-coordinate mode.
         # Defaults are the standard resolution tier, which is safe for every
         # model (an image within standard limits is never downscaled

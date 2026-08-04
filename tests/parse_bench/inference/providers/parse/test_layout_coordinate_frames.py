@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from unittest import mock
 
 from parse_bench.inference.providers.parse._layout_utils import (
     SYSTEM_PROMPT_LAYOUT,
@@ -22,6 +23,7 @@ from parse_bench.inference.providers.parse._layout_utils import (
     USER_PROMPT_LAYOUT_GEMINI,
     USER_PROMPT_LAYOUT_GEMINI_ABS,
     build_layout_pages,
+    resolve_layout_prompts,
 )
 
 
@@ -204,6 +206,96 @@ class TestProviderConfig(unittest.TestCase):
                 "anthropic",
                 {"mode": "parse_with_layout_file", "bbox_scale": None},
             )
+
+
+class TestPixelFrameProviderGate(unittest.TestCase):
+    """Pixel mode is only offered by providers that pin the perceived frame.
+
+    ``build_layout_pages(bbox_scale=None)`` normalizes by the page dimensions
+    recorded at inference time. That is only the model's coordinate frame if
+    the sent image is never downscaled on the way in — which holds for
+    Anthropic because ``_resize_to_perceived_size`` pre-resizes per the
+    published rule, and does not hold for the other div-layout providers.
+    Without the gate they would accept ``bbox_scale=None`` and report a
+    silently shifted frame.
+    """
+
+    def test_gate_defaults_closed(self) -> None:
+        from parse_bench.inference.providers.base import ProviderConfigError
+
+        with self.assertRaises(ProviderConfigError) as ctx:
+            resolve_layout_prompts(None, "parse_with_layout")
+        self.assertIn("not supported by this provider", str(ctx.exception))
+
+    def test_gate_open_returns_abs_prompts(self) -> None:
+        self.assertEqual(
+            resolve_layout_prompts(None, "parse_with_layout", pixel_frame_supported=True),
+            (SYSTEM_PROMPT_LAYOUT_ABS, USER_PROMPT_LAYOUT_ABS),
+        )
+
+    def test_gate_does_not_affect_default_frame(self) -> None:
+        # The 0-1000 frame is unchanged for every provider, gated or not.
+        for supported in (False, True):
+            self.assertEqual(
+                resolve_layout_prompts(1000, "parse_with_layout", pixel_frame_supported=supported),
+                (SYSTEM_PROMPT_LAYOUT, USER_PROMPT_LAYOUT),
+            )
+
+    def test_unsupported_scale_still_rejected_when_gate_open(self) -> None:
+        from parse_bench.inference.providers.base import ProviderConfigError
+
+        with self.assertRaises(ProviderConfigError):
+            resolve_layout_prompts(500, "parse_with_layout", pixel_frame_supported=True)
+
+    def _env(self, **kv: str) -> None:
+        """Set provider API keys for the duration of one test."""
+        patcher = mock.patch.dict(os.environ, kv)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_anthropic_opts_in(self) -> None:
+        from parse_bench.inference.providers.parse.anthropic import AnthropicProvider
+
+        self._env(ANTHROPIC_API_KEY="test-key")
+        provider = AnthropicProvider("anthropic", {"mode": "parse_with_layout", "bbox_scale": None})
+        self.assertEqual(provider._layout_system_prompt, SYSTEM_PROMPT_LAYOUT_ABS)
+
+    def test_openai_rejects_pixel_frame(self) -> None:
+        from parse_bench.inference.providers.base import ProviderConfigError
+        from parse_bench.inference.providers.parse.openai import OpenAIProvider
+
+        self._env(OPENAI_API_KEY="test-key")
+        with self.assertRaises(ProviderConfigError):
+            OpenAIProvider("openai", {"mode": "parse_with_layout", "bbox_scale": None})
+
+    def test_google_rejects_pixel_frame(self) -> None:
+        from parse_bench.inference.providers.base import ProviderConfigError
+        from parse_bench.inference.providers.parse.google import GoogleProvider
+
+        self._env(GEMINI_API_KEY="test-key", GOOGLE_API_KEY="test-key")
+        with self.assertRaises(ProviderConfigError):
+            GoogleProvider("google", {"mode": "parse_with_layout", "bbox_scale": None})
+
+    def test_gemma4_rejects_pixel_frame(self) -> None:
+        from parse_bench.inference.providers.base import ProviderConfigError
+        from parse_bench.inference.providers.parse.gemma4 import Gemma4Provider
+
+        with self.assertRaises(ProviderConfigError):
+            Gemma4Provider("gemma4", {"server_url": "http://x", "prompt_mode": "layout", "bbox_scale": None})
+
+    def test_gated_providers_still_accept_default_frame(self) -> None:
+        from parse_bench.inference.providers.parse.gemma4 import Gemma4Provider
+        from parse_bench.inference.providers.parse.openai import OpenAIProvider
+
+        self._env(OPENAI_API_KEY="test-key")
+        self.assertEqual(
+            OpenAIProvider("openai", {"mode": "parse_with_layout"})._layout_system_prompt,
+            SYSTEM_PROMPT_LAYOUT,
+        )
+        self.assertEqual(
+            Gemma4Provider("gemma4", {"server_url": "http://x", "prompt_mode": "layout"})._system_prompt,
+            SYSTEM_PROMPT_LAYOUT,
+        )
 
 
 if __name__ == "__main__":
