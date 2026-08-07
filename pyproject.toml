@@ -13,7 +13,6 @@ dependencies = [
     "huggingface-hub>=0.20.0",
     "lxml>=5.0.0",
     "markdown>=3.0",
-    "markdown-it-py>=3.0",
     "markdown2>=2.4.0",
     "numpy>=1.24.0",
     "pandas>=2.0.0",
@@ -59,8 +58,8 @@ runners = [
     "warp-ingest[ocr]>=2.0.1",
 ]
 pymupdf4llm = [
-    "pymupdf4llm==1.28.0",
-    "rapidocr-onnxruntime==1.2.3",
+    "pymupdf4llm==1.28.2",
+    "rapidocr==3.9.2",
 ]
 fast = [
     "numba>=0.59.0",

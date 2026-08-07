@@ -1,15 +1,11 @@
 """Provider for PyMuPDF4LLM PARSE."""
 
-import html
 import importlib
 import math
-import re
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
-
-from markdown_it import MarkdownIt
 
 from parse_bench.inference.providers.base import (
     Provider,
@@ -32,223 +28,20 @@ from parse_bench.schemas.pipeline_io import (
 )
 from parse_bench.schemas.product import ProductType
 
-# Raw HTML is disabled so extracted document content cannot inject markup while
-# cell-level Markdown is rendered. A separate parser identifies blocks where
-# table recovery must not run.
-_MD = MarkdownIt("commonmark", {"html": False}).enable("table")
-_BLOCK_MD = MarkdownIt("commonmark")
-_BR_TAG_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
-_BR_PLACEHOLDER = "\ue000"
-
 _OCR_BACKEND_MODULES = {
-    "rapidtess": "pymupdf4llm.ocr.rapidtess_api",
+    "rapidocr": "pymupdf4llm.ocr.rapidocr_api",
 }
-
-
-def _is_pipe_table_line(line: str) -> bool:
-    stripped = line.strip()
-    return stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 2
-
-
-def _is_separator_row(line: str) -> bool:
-    stripped = line.strip().strip("|")
-    if not stripped:
-        return False
-    cells = [cell.strip() for cell in stripped.split("|")]
-    return all(cell and re.fullmatch(r":?-+:?", cell) for cell in cells)
-
-
-def _split_pipe_row(line: str) -> list[str]:
-    stripped = line.strip()
-    if stripped.startswith("|"):
-        stripped = stripped[1:]
-    if stripped.endswith("|"):
-        stripped = stripped[:-1]
-
-    cells: list[str] = []
-    current: list[str] = []
-    code_delimiter_length = 0
-    i = 0
-    while i < len(stripped):
-        char = stripped[i]
-        if char == "\\" and i + 1 < len(stripped):
-            current.extend((char, stripped[i + 1]))
-            i += 2
-            continue
-        if char == "`":
-            end = i + 1
-            while end < len(stripped) and stripped[end] == "`":
-                end += 1
-            delimiter_length = end - i
-            if code_delimiter_length == 0:
-                code_delimiter_length = delimiter_length
-            elif code_delimiter_length == delimiter_length:
-                code_delimiter_length = 0
-            current.extend(stripped[i:end])
-            i = end
-            continue
-        if char == "|" and code_delimiter_length == 0:
-            cells.append("".join(current).strip())
-            current = []
-        else:
-            current.append(char)
-        i += 1
-
-    cells.append("".join(current).strip())
-    return cells
-
-
-def _render_cell_inline(cell: str) -> str:
-    if cell.startswith("**") and not cell.endswith("**"):
-        cell = cell[2:]
-    if cell.endswith("**") and not cell.startswith("**"):
-        cell = cell[:-2]
-    # PyMuPDF4LLM uses HTML line breaks inside Markdown table cells. Preserve
-    # only that structural tag while keeping arbitrary raw HTML disabled.
-    protected_cell = _BR_TAG_RE.sub(_BR_PLACEHOLDER, cell)
-    rendered = _MD.renderInline(protected_cell).strip().replace(_BR_PLACEHOLDER, "<br>")
-    return rendered if rendered else html.escape(cell)
-
-
-def _render_html_table(
-    rows: list[list[str]],
-    *,
-    header_rows: int = 1,
-    alignments: list[str | None] | None = None,
-) -> str:
-    if not rows:
-        return ""
-
-    max_cols = max(len(row) for row in rows)
-    normalized_rows = [row + [""] * (max_cols - len(row)) for row in rows]
-    normalized_alignments = (alignments or []) + [None] * max_cols
-
-    def render_cell(tag: str, cell: str, column_index: int) -> str:
-        alignment = normalized_alignments[column_index]
-        style = f' style="text-align:{alignment}"' if alignment else ""
-        return f"<{tag}{style}>{_render_cell_inline(cell)}</{tag}>"
-
-    parts = ["<table>"]
-    if header_rows > 0:
-        parts.append("<thead>")
-        for row in normalized_rows[:header_rows]:
-            cells = "".join(render_cell("th", cell, index) for index, cell in enumerate(row))
-            parts.append(f"<tr>{cells}</tr>")
-        parts.append("</thead>")
-
-    body_rows = normalized_rows[header_rows:]
-    if body_rows:
-        parts.append("<tbody>")
-        for row in body_rows:
-            cells = "".join(render_cell("td", cell, index) for index, cell in enumerate(row))
-            parts.append(f"<tr>{cells}</tr>")
-        parts.append("</tbody>")
-
-    parts.append("</table>")
-    return "\n".join(parts)
-
-
-def _render_forgiving_pipe_table(block: list[str], *, min_columns: int = 2) -> str | None:
-    if len(block) < 2:
-        return None
-    separator_idx = next((idx for idx, line in enumerate(block) if _is_separator_row(line)), None)
-    if separator_idx is None:
-        return None
-
-    alignments: list[str | None] = []
-    for cell in _split_pipe_row(block[separator_idx]):
-        stripped = cell.strip()
-        if stripped.startswith(":") and stripped.endswith(":"):
-            alignments.append("center")
-        elif stripped.startswith(":"):
-            alignments.append("left")
-        elif stripped.endswith(":"):
-            alignments.append("right")
-        else:
-            alignments.append(None)
-
-    header = [_split_pipe_row(line) for line in block[:separator_idx]]
-    body = [_split_pipe_row(line) for line in block[separator_idx + 1 :]]
-    while header and not any(cell.strip() for cell in header[0]):
-        header.pop(0)
-
-    rows = [*header, *body]
-    non_empty_rows = [row for row in rows if any(cell.strip() for cell in row)]
-    if len(non_empty_rows) < 2 or max(len(row) for row in non_empty_rows) < min_columns:
-        return None
-    return _render_html_table(rows, header_rows=len(header), alignments=alignments)
-
-
-def _protected_block_lines(text: str) -> set[int]:
-    protected: set[int] = set()
-    for token in _BLOCK_MD.parse(text):
-        if token.type in {"fence", "code_block", "html_block"} and token.map:
-            start, end = token.map
-            protected.update(range(start, end))
-    return protected
-
-
-def _render_strict_pipe_tables(text: str) -> str:
-    tokens = _MD.parse(text)
-    lines = text.split("\n")
-    protected = _protected_block_lines(text)
-    spans: list[tuple[int, int, str]] = []
-    i = 0
-    while i < len(tokens):
-        token = tokens[i]
-        if token.type != "table_open" or not token.map:
-            i += 1
-            continue
-        start, end = token.map
-        j = i
-        while j < len(tokens) and tokens[j].type != "table_close":
-            j += 1
-        if not any(line_number in protected for line_number in range(start, end)):
-            # Markdown-it has already established that this is a structural
-            # table, so valid one-column tables are safe to render here.
-            rendered = _render_forgiving_pipe_table(lines[start:end], min_columns=1)
-            if rendered is not None:
-                spans.append((start, end, rendered))
-        i = j + 1
-
-    for start, end, rendered in sorted(spans, reverse=True):
-        lines[start:end] = [rendered]
-    return "\n".join(lines)
-
-
-def _render_forgiving_pipe_tables(text: str) -> str:
-    lines = text.split("\n")
-    protected = _protected_block_lines(text)
-    result: list[str] = []
-    i = 0
-    while i < len(lines):
-        if i in protected or not _is_pipe_table_line(lines[i]):
-            result.append(lines[i])
-            i += 1
-            continue
-        start = i
-        while i < len(lines) and i not in protected and _is_pipe_table_line(lines[i]):
-            i += 1
-        block = lines[start:i]
-        rendered = _render_forgiving_pipe_table(block)
-        result.extend(block if rendered is None else [rendered])
-    return "\n".join(result)
-
-
-def convert_pipe_tables_to_html(text: str) -> str:
-    """Convert structural GFM pipe tables without touching protected blocks."""
-    converted = _render_strict_pipe_tables(text) if "|" in text else text
-    return _render_forgiving_pipe_tables(converted) if "|" in converted else converted
 
 
 @register_provider("pymupdf4llm")
 class PyMuPDF4LLMProvider(Provider):
-    """Provider for PyMuPDF4LLM (markdown). AGPL — runtime dep only."""
+    """Provider for PyMuPDF4LLM native HTML table output. AGPL — runtime dep only."""
 
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         super().__init__(provider_name, base_config)
 
     def _markdown_options(self) -> dict[str, Any]:
+        """Build serializable options for ``pymupdf4llm.to_markdown``."""
         options: dict[str, Any] = {
             "page_chunks": True,
             "show_progress": False,
@@ -281,6 +74,15 @@ class PyMuPDF4LLMProvider(Provider):
                 raise ProviderConfigError("PyMuPDF4LLM 'ocr_language' must be a non-empty string")
             options["ocr_language"] = ocr_language
 
+        table_output = self.base_config.get("table_output")
+        if table_output is not None:
+            if not isinstance(table_output, str):
+                raise ProviderConfigError("PyMuPDF4LLM 'table_output' must be a string")
+            normalized_table_output = table_output.strip().lower()
+            if normalized_table_output not in ("markdown", "html"):
+                raise ProviderConfigError("PyMuPDF4LLM 'table_output' must be 'markdown' or 'html'")
+            options["table_output"] = normalized_table_output
+
         raw_backend = self.base_config.get("ocr_backend")
         if raw_backend is None:
             return options
@@ -309,10 +111,6 @@ class PyMuPDF4LLMProvider(Provider):
         ocr_function = getattr(ocr_module, "exec_ocr", None)
         if not callable(ocr_function):
             raise ProviderConfigError(f"PyMuPDF4LLM OCR backend '{raw_backend}' does not expose exec_ocr")
-        if getattr(ocr_module, "TESSDATA", True) is None:
-            raise ProviderConfigError(
-                f"PyMuPDF4LLM OCR backend '{raw_backend}' is unavailable: Tesseract language data was not found"
-            )
         return cast(Callable[..., Any], ocr_function)
 
     def _extract(self, pdf_path: str) -> dict[str, Any]:
@@ -401,10 +199,6 @@ class PyMuPDF4LLMProvider(Provider):
             raise ProviderPermanentError(f"Unexpected error: {e}") from e
 
     @staticmethod
-    def _convert_md_tables_to_html(content: str) -> str:
-        return convert_pipe_tables_to_html(content)
-
-    @staticmethod
     def _coerce_bbox(
         raw_bbox: Any,
         *,
@@ -459,6 +253,7 @@ class PyMuPDF4LLMProvider(Provider):
         *,
         raw_markdown: str,
     ) -> ParseLayoutPageIR | None:
+        """Convert native PyMuPDF page boxes into benchmark visual-grounding IR."""
         try:
             page_number = int(page_data.get("page_number", 0))
             page_width = float(page_data.get("width", 0.0))
@@ -515,7 +310,7 @@ class PyMuPDF4LLMProvider(Provider):
             )
             if normalized_class == "table":
                 item_type = "table"
-                item_html = cls._convert_md_tables_to_html(content)
+                item_html = content
             elif normalized_class == "picture":
                 item_type = "image"
                 item_html = ""
@@ -552,9 +347,8 @@ class PyMuPDF4LLMProvider(Provider):
             layout_page = self._build_layout_page(page_data, raw_markdown=raw_markdown)
             if layout_page is not None:
                 layout_pages.append(layout_page)
-            text = self._convert_md_tables_to_html(raw_markdown)
-            pages.append(PageIR(page_index=page_index, markdown=text))
-            page_texts.append(text)
+            pages.append(PageIR(page_index=page_index, markdown=raw_markdown))
+            page_texts.append(raw_markdown)
 
         full_text = "\n\n".join(page_texts)
         output = ParseOutput(

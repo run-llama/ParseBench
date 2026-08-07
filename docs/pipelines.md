@@ -283,7 +283,7 @@ These run entirely locally and do not require API keys.
 | `pypdf_baseline` | PyPDF text extraction | None |
 | `pymupdf_text` | PyMuPDF text extraction | None |
 | `pymupdf_html` | PyMuPDF HTML extraction | None |
-| `pymupdf4llm_markdown` | PyMuPDF4LLM Markdown with RapidOCR detection, Tesseract recognition at 150 DPI, and normalized HTML tables | Python 3.12, `pymupdf4llm==1.28.0`, `rapidocr-onnxruntime==1.2.3`, and system Tesseract with English language data installed |
+| `pymupdf4llm_markdown` | PyMuPDF4LLM Markdown with native HTML tables and modern RapidOCR at 150 DPI | Python 3.12, `pymupdf4llm==1.28.2`, and `rapidocr==3.9.2` |
 | `warp_ingest` | Warp-Ingest local parser | `warp-ingest[ocr]>=2.0.1` installed |
 | `tesseract_eng` | Tesseract OCR (English) | `tesseract` installed |
 | `tesseract_fast` | Tesseract OCR (fast) | `tesseract` installed |
@@ -291,13 +291,12 @@ These run entirely locally and do not require API keys.
 | `infinity_parser2_flash` | Infinity-Parser2-Flash (vLLM server, JSON layout) | `infinity_parser2`, running vLLM server |
 | `infinity_parser2_pro` | Infinity-Parser2-Pro (vLLM server, JSON layout) | `infinity_parser2`, running vLLM server |
 
-On Ubuntu/Debian, install the system dependency for `pymupdf4llm_markdown` with
-`sudo apt-get install tesseract-ocr tesseract-ocr-eng`.
-Create its isolated Python environment with
+Create the isolated Python environment for `pymupdf4llm_markdown` with
 `uv sync --python 3.12 --extra pymupdf4llm`, then run it with
 `uv run --python 3.12 --extra pymupdf4llm parse-bench run pymupdf4llm_markdown --max_concurrent 1`.
-The dedicated extra is isolated because `warp-ingest[ocr]` requires a newer,
-incompatible `rapidocr-onnxruntime` release.
+The dedicated extra is isolated from `runners` so the legacy
+`rapidocr-onnxruntime` dependency used by other pipelines cannot affect
+PyMuPDF4LLM's modern `rapidocr` backend selection.
 
 ---
 
