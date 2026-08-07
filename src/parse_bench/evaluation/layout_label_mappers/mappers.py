@@ -134,6 +134,58 @@ class OIParserLabelMapper(LayoutLabelMapper):
 
 
 @register_layout_label_mapper(
+    "pymupdf4llm",
+    "model:pymupdf4llm_layout",
+    priority=95,
+)
+class PyMuPDF4LLMLabelMapper(LayoutLabelMapper):
+    """Map raw PyMuPDF4LLM boxclass labels into the benchmark ontology."""
+
+    _MAPPING: dict[str, CanonicalLabel] = {
+        "caption": CanonicalLabel.CAPTION,
+        "footnote": CanonicalLabel.FOOTNOTE,
+        "formula": CanonicalLabel.FORMULA,
+        "list-item": CanonicalLabel.LIST_ITEM,
+        "listitem": CanonicalLabel.LIST_ITEM,
+        "page-footer": CanonicalLabel.PAGE_FOOTER,
+        "pagefooter": CanonicalLabel.PAGE_FOOTER,
+        "page-header": CanonicalLabel.PAGE_HEADER,
+        "pageheader": CanonicalLabel.PAGE_HEADER,
+        "picture": CanonicalLabel.PICTURE,
+        "image": CanonicalLabel.PICTURE,
+        "section-header": CanonicalLabel.SECTION_HEADER,
+        "sectionheader": CanonicalLabel.SECTION_HEADER,
+        "heading": CanonicalLabel.SECTION_HEADER,
+        "table": CanonicalLabel.TABLE,
+        "text": CanonicalLabel.TEXT,
+        "title": CanonicalLabel.TITLE,
+        "code": CanonicalLabel.CODE,
+        "document-index": CanonicalLabel.DOCUMENT_INDEX,
+        "documentindex": CanonicalLabel.DOCUMENT_INDEX,
+        "form": CanonicalLabel.FORM,
+        "key-value-region": CanonicalLabel.KEY_VALUE_REGION,
+        "keyvalueregion": CanonicalLabel.KEY_VALUE_REGION,
+        "checkbox-selected": CanonicalLabel.CHECKBOX_SELECTED,
+        "checkboxselected": CanonicalLabel.CHECKBOX_SELECTED,
+        "checkbox-unselected": CanonicalLabel.CHECKBOX_UNSELECTED,
+        "checkboxunselected": CanonicalLabel.CHECKBOX_UNSELECTED,
+    }
+
+    def to_canonical(
+        self,
+        label: str,
+        prediction: LayoutPrediction,
+        context: MappingContext,
+    ) -> CanonicalLabel:
+        del prediction, context
+        normalized = label.strip().lower().replace("_", "-").replace(" ", "-")
+        mapped = self._MAPPING.get(normalized)
+        if mapped is None:
+            raise UnknownRawLayoutLabelError(f"Unknown PyMuPDF4LLM raw layout label '{label}'")
+        return mapped
+
+
+@register_layout_label_mapper(
     "model:yolo_doclaynet",
     "model:docling_layout_old",
     "model:docling_layout_heron_101",

@@ -57,6 +57,10 @@ runners = [
     "unstructured-client>=0.26.0",
     "warp-ingest[ocr]>=2.0.1",
 ]
+pymupdf4llm = [
+    "pymupdf4llm==1.28.2",
+    "rapidocr==3.9.2",
+]
 fast = [
     "numba>=0.59.0",
 ]
@@ -76,6 +80,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/parse_bench"]
+
+[tool.uv]
+conflicts = [
+    [
+        { extra = "runners" },
+        { extra = "pymupdf4llm" },
+    ],
+]
 
 [tool.ruff]
 line-length = 120

@@ -2943,3 +2943,89 @@ class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
             image_height=S,
             predictions=predictions,
         )
+
+
+@register_layout_adapter("pymupdf4llm", priority=90)
+class PyMuPDF4LLMLayoutAdapter(LayoutAdapter):
+    """Extract layout predictions from PyMuPDF4LLM parse output."""
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput) or not inference_result.output.layout_pages:
+            return False
+        pages = inference_result.raw_output.get("pages")
+        if not isinstance(pages, list) or not pages or not isinstance(pages[0], dict):
+            return False
+        return isinstance(pages[0].get("page_boxes"), list)
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            filtered = [
+                prediction for prediction in inference_result.output.predictions if prediction.page == page_filter
+            ]
+            return inference_result.output.model_copy(update={"predictions": filtered})
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("PyMuPDF4LLMLayoutAdapter requires ParseOutput or LayoutOutput")
+
+        layout_pages = inference_result.output.layout_pages
+        selected_pages = [page for page in layout_pages if page_filter is None or page.page_number == page_filter]
+        reference_page = selected_pages[0] if selected_pages else (layout_pages[0] if layout_pages else None)
+        output_width = int(reference_page.width or 1) if reference_page is not None else 1
+        output_height = int(reference_page.height or 1) if reference_page is not None else 1
+
+        predictions: list[LayoutPrediction] = []
+        for page in layout_pages:
+            if page_filter is not None and page.page_number != page_filter:
+                continue
+            page_width = float(page.width or output_width)
+            page_height = float(page.height or output_height)
+            for item in page.items:
+                segments = item.layout_segments or ([item.bbox] if item.bbox is not None else [])
+                for segment in segments:
+                    if segment is None:
+                        continue
+                    label = segment.label or item.type or "Text"
+                    is_table = item.type == "table"
+                    content_text = item.html if is_table and item.html else item.md or item.value
+                    content = _build_docling_parse_content(
+                        "table" if is_table else "text",
+                        content_text,
+                    )
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[
+                                segment.x * page_width,
+                                segment.y * page_height,
+                                (segment.x + segment.w) * page_width,
+                                (segment.y + segment.h) * page_height,
+                            ],
+                            score=segment.confidence if segment.confidence is not None else 1.0,
+                            label=label,
+                            page=page.page_number,
+                            content=content,
+                            provider_metadata={
+                                "order_index": len(predictions),
+                                "score_source": (
+                                    "provider" if segment.confidence is not None else "unavailable_default"
+                                ),
+                            },
+                        )
+                    )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.PYMUPDF4LLM_LAYOUT,
+            image_width=max(output_width, 1),
+            image_height=max(output_height, 1),
+            predictions=predictions,
+            markdown=inference_result.output.markdown,
+        )
