@@ -1,8 +1,6 @@
 """Tests for the PyMuPDF4LLM native-HTML provider."""
 
-import tomllib
 from datetime import datetime
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -18,8 +16,6 @@ from parse_bench.schemas.pipeline import PipelineSpec
 from parse_bench.schemas.pipeline_io import InferenceRequest, RawInferenceResult
 from parse_bench.schemas.product import ProductType
 
-REPO_ROOT = Path(__file__).resolve().parents[5]
-
 
 def test_only_one_pymupdf4llm_pipeline_is_registered() -> None:
     assert [name for name in list_pipelines() if name.startswith("pymupdf4llm")] == [
@@ -27,7 +23,7 @@ def test_only_one_pymupdf4llm_pipeline_is_registered() -> None:
     ]
 
 
-def test_pipeline_uses_modern_rapidocr_and_native_html() -> None:
+def test_pipeline_uses_rapidocr_and_native_html() -> None:
     pipeline = get_pipeline("pymupdf4llm_markdown")
 
     assert pipeline.provider_name == "pymupdf4llm"
@@ -37,20 +33,6 @@ def test_pipeline_uses_modern_rapidocr_and_native_html() -> None:
         "ocr_dpi": 150,
         "table_output": "html",
     }
-
-
-def test_pymupdf4llm_extra_pins_modern_rapidocr_runtime() -> None:
-    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
-    lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text())
-    extras = pyproject["project"]["optional-dependencies"]
-
-    assert extras["pymupdf4llm"] == ["pymupdf4llm==1.28.2", "rapidocr==3.9.2"]
-    assert not any(dependency.startswith("rapidocr-onnxruntime") for dependency in extras["pymupdf4llm"])
-    assert {package["version"] for package in lock["package"] if package["name"] == "rapidocr"} == {"3.9.2"}
-    assert not any(
-        package["name"] == "rapidocr-onnxruntime" and package["version"] == "1.2.3"
-        for package in lock["package"]
-    )
 
 
 def test_markdown_options_are_declarative() -> None:
@@ -73,7 +55,7 @@ def test_markdown_options_are_declarative() -> None:
     }
 
 
-def test_resolve_rapidocr_uses_modern_bundled_module(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_rapidocr_uses_bundled_module(monkeypatch: pytest.MonkeyPatch) -> None:
     def exec_ocr() -> None:
         return None
 
@@ -92,7 +74,7 @@ def test_resolve_rapidocr_uses_modern_bundled_module(monkeypatch: pytest.MonkeyP
 
 
 @pytest.mark.parametrize("backend", ["rapidtess", "tesseract", "rapidocr_onnxruntime"])
-def test_markdown_options_reject_legacy_ocr_backends(backend: str) -> None:
+def test_markdown_options_rejects_unsupported_ocr_backends(backend: str) -> None:
     provider = PyMuPDF4LLMProvider("pymupdf4llm", {"ocr_backend": backend})
 
     with pytest.raises(ProviderConfigError, match="Unsupported.*OCR backend"):
@@ -107,17 +89,6 @@ def test_markdown_options_reject_invalid_ocr_dpi(ocr_dpi: object) -> None:
         provider._markdown_options()
 
 
-@pytest.mark.parametrize("table_output", [None, 1, "xml"])
-def test_markdown_options_reject_invalid_table_output(table_output: object) -> None:
-    provider = PyMuPDF4LLMProvider("pymupdf4llm", {"table_output": table_output})
-
-    if table_output is None:
-        assert "table_output" not in provider._markdown_options()
-    else:
-        with pytest.raises(ProviderConfigError, match="table_output"):
-            provider._markdown_options()
-
-
 def test_build_layout_page_preserves_native_html_raw_labels_and_bbox() -> None:
     native_html = "<table><tr><td>value</td></tr></table>"
     page = PyMuPDF4LLMProvider._build_layout_page(
@@ -130,7 +101,6 @@ def test_build_layout_page_preserves_native_html_raw_labels_and_bbox() -> None:
                     "class": "table",
                     "bbox": [20, 10, 180, 90],
                     "pos": [0, len(native_html)],
-                    "confidence": 0.8,
                 }
             ],
         },

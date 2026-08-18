@@ -74,14 +74,10 @@ class PyMuPDF4LLMProvider(Provider):
                 raise ProviderConfigError("PyMuPDF4LLM 'ocr_language' must be a non-empty string")
             options["ocr_language"] = ocr_language
 
-        table_output = self.base_config.get("table_output")
-        if table_output is not None:
-            if not isinstance(table_output, str):
-                raise ProviderConfigError("PyMuPDF4LLM 'table_output' must be a string")
-            normalized_table_output = table_output.strip().lower()
-            if normalized_table_output not in ("markdown", "html"):
-                raise ProviderConfigError("PyMuPDF4LLM 'table_output' must be 'markdown' or 'html'")
-            options["table_output"] = normalized_table_output
+        table_output = self.base_config.get("table_output", "html")
+        if not isinstance(table_output, str) or table_output.strip().lower() != "html":
+            raise ProviderConfigError("PyMuPDF4LLM only supports table_output='html'")
+        options["table_output"] = "html"
 
         raw_backend = self.base_config.get("ocr_backend")
         if raw_backend is None:
@@ -288,22 +284,11 @@ class PyMuPDF4LLMProvider(Provider):
                 start_index, end_index = text_range
                 content = raw_markdown[start_index:end_index]
 
-            confidence: float | None = None
-            raw_confidence = page_box.get("confidence")
-            if raw_confidence is not None:
-                try:
-                    parsed_confidence = float(raw_confidence)
-                except (TypeError, ValueError):
-                    parsed_confidence = math.nan
-                if math.isfinite(parsed_confidence) and 0.0 <= parsed_confidence <= 1.0:
-                    confidence = parsed_confidence
-
             segment = LayoutSegmentIR(
                 x=bbox[0],
                 y=bbox[1],
                 w=bbox[2],
                 h=bbox[3],
-                confidence=confidence,
                 label=raw_label,
                 start_index=start_index,
                 end_index=end_index,

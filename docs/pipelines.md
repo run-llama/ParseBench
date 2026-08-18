@@ -283,7 +283,7 @@ These run entirely locally and do not require API keys.
 | `pypdf_baseline` | PyPDF text extraction | None |
 | `pymupdf_text` | PyMuPDF text extraction | None |
 | `pymupdf_html` | PyMuPDF HTML extraction | None |
-| `pymupdf4llm_markdown` | PyMuPDF4LLM Markdown with native HTML tables and modern RapidOCR at 150 DPI | Python 3.12, `pymupdf4llm==1.28.2`, and `rapidocr==3.9.2` |
+| `pymupdf4llm_markdown` | PyMuPDF4LLM Markdown with native HTML tables and RapidOCR at 150 DPI | Python 3.12, `pymupdf4llm==1.28.2`, and `rapidocr==3.9.2` |
 | `warp_ingest` | Warp-Ingest local parser | `warp-ingest[ocr]>=2.0.1` installed |
 | `tesseract_eng` | Tesseract OCR (English) | `tesseract` installed |
 | `tesseract_fast` | Tesseract OCR (fast) | `tesseract` installed |
@@ -294,9 +294,6 @@ These run entirely locally and do not require API keys.
 Create the isolated Python environment for `pymupdf4llm_markdown` with
 `uv sync --python 3.12 --extra pymupdf4llm`, then run it with
 `uv run --python 3.12 --extra pymupdf4llm parse-bench run pymupdf4llm_markdown --max_concurrent 1`.
-The dedicated extra is isolated from `runners` so the legacy
-`rapidocr-onnxruntime` dependency used by other pipelines cannot affect
-PyMuPDF4LLM's modern `rapidocr` backend selection.
 
 ---
 
