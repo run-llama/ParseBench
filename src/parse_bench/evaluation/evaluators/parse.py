@@ -235,7 +235,7 @@ class ParseEvaluator(BaseEvaluator):
                 # For now, use document-level markdown
                 # TODO: Support per-page rule execution
                 markdown_content = inference_result.output.markdown
-                if "text_content" in test_case.tags:
+                if test_case.group == "text_content":
                     markdown_content = canonicalize_tables_for_text_content(markdown_content)
 
                 # Execute rules

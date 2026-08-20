@@ -6,55 +6,29 @@ import re
 
 from bs4 import BeautifulSoup, Tag
 
-_MARKDOWN_DELIMITER_CELL = re.compile(r"^:?-{3,}:?$")
+_HTML_TABLE_TAG = re.compile(r"<table(?=[\s>])[^>]*>|</table\s*>", re.IGNORECASE)
+_MARKDOWN_DELIMITER_CELL = re.compile(r"^:?-+:?$")
 
 
 def _html_table_spans(content: str) -> list[tuple[int, int]]:
-    """Return non-overlapping top-level HTML table spans."""
-    spans: list[tuple[int, int]] = []
-    lower = content.lower()
-    search_start = 0
+    """Return matched top-level HTML table spans, recovering after malformed starts."""
+    stack: list[int] = []
+    matched: list[tuple[int, int]] = []
 
-    while True:
-        start = lower.find("<table", search_start)
-        if start == -1:
-            break
+    for tag in _HTML_TABLE_TAG.finditer(content):
+        if tag.group().lower().startswith("</"):
+            if stack:
+                matched.append((stack.pop(), tag.end()))
+        else:
+            stack.append(tag.start())
 
-        tag_end = start + len("<table")
-        if tag_end < len(lower) and lower[tag_end] not in (">", " ", "\t", "\n", "\r"):
-            search_start = start + 1
-            continue
-
-        depth = 0
-        position = start
-        end = -1
-        while position < len(lower):
-            next_open = lower.find("<table", position + 1)
-            next_close = lower.find("</table>", position + 1)
-            if next_close == -1:
-                break
-
-            if next_open != -1 and next_open < next_close:
-                nested_end = next_open + len("<table")
-                if nested_end < len(lower) and lower[nested_end] not in (">", " ", "\t", "\n", "\r"):
-                    position = next_open
-                    continue
-                depth += 1
-                position = next_open
-                continue
-
-            if depth == 0:
-                end = next_close + len("</table>")
-                break
-            depth -= 1
-            position = next_close
-
-        if end == -1:
-            break
-        spans.append((start, end))
-        search_start = end
-
-    return spans
+    # A valid nested table is projected through its outer table. If an unmatched
+    # outer start precedes a later valid table, the later matched span survives.
+    return [
+        span
+        for span in matched
+        if not any(outer_start < span[0] and span[1] < outer_end for outer_start, outer_end in matched)
+    ]
 
 
 def _normalize_cell_text(cell: Tag) -> str:
@@ -68,16 +42,26 @@ def _canonicalize_html_table(table_html: str) -> str:
         return table_html
 
     rows: list[str] = []
+    caption = table.find("caption")
+    if caption is not None and caption.find_parent("table") is table:
+        caption_text = _normalize_cell_text(caption)
+        if caption_text:
+            rows.append(caption_text)
+
     for row in table.find_all("tr"):
         if row.find_parent("table") is not table:
             continue
-        cells = [
-            _normalize_cell_text(cell)
-            for cell in row.find_all(["th", "td"])
-            if cell.find_parent("tr") is row
-        ]
+        cells = [_normalize_cell_text(cell) for cell in row.find_all(["th", "td"]) if cell.find_parent("tr") is row]
         if cells:
             rows.append("\t".join(cells))
+
+    orphan_cells = [
+        _normalize_cell_text(cell)
+        for cell in table.find_all(["th", "td"])
+        if cell.find_parent("table") is table and cell.find_parent("tr") is None
+    ]
+    if orphan_cells:
+        rows.append("\t".join(orphan_cells))
 
     return "\n".join(rows)
 
