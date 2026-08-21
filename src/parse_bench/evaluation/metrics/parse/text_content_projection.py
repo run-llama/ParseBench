@@ -35,35 +35,53 @@ def _normalize_cell_text(cell: Tag) -> str:
     return " ".join(cell.get_text(" ", strip=True).split())
 
 
+def _html_table_lines(table: Tag) -> list[str]:
+    """Emit captions, explicit rows, and orphan cells in document order."""
+    lines: list[str] = []
+    orphan_cells: list[str] = []
+
+    def flush_orphan_cells() -> None:
+        if orphan_cells:
+            lines.append("\t".join(orphan_cells))
+            orphan_cells.clear()
+
+    def visit(container: Tag) -> None:
+        for child in container.children:
+            if not isinstance(child, Tag):
+                continue
+            if child.name == "caption":
+                flush_orphan_cells()
+                text = _normalize_cell_text(child)
+                if text:
+                    lines.append(text)
+            elif child.name == "tr":
+                flush_orphan_cells()
+                cells = [
+                    _normalize_cell_text(cell)
+                    for cell in child.find_all(["th", "td"])
+                    if cell.find_parent("tr") is child
+                ]
+                if cells:
+                    lines.append("\t".join(cells))
+            elif child.name in {"th", "td"}:
+                text = _normalize_cell_text(child)
+                if text:
+                    orphan_cells.append(text)
+            elif child.name != "table":
+                visit(child)
+
+    visit(table)
+    flush_orphan_cells()
+    return lines
+
+
 def _canonicalize_html_table(table_html: str) -> str:
     soup = BeautifulSoup(table_html, "html.parser")
     table = soup.find("table")
     if table is None:
         return table_html
 
-    rows: list[str] = []
-    caption = table.find("caption")
-    if caption is not None and caption.find_parent("table") is table:
-        caption_text = _normalize_cell_text(caption)
-        if caption_text:
-            rows.append(caption_text)
-
-    for row in table.find_all("tr"):
-        if row.find_parent("table") is not table:
-            continue
-        cells = [_normalize_cell_text(cell) for cell in row.find_all(["th", "td"]) if cell.find_parent("tr") is row]
-        if cells:
-            rows.append("\t".join(cells))
-
-    orphan_cells = [
-        _normalize_cell_text(cell)
-        for cell in table.find_all(["th", "td"])
-        if cell.find_parent("table") is table and cell.find_parent("tr") is None
-    ]
-    if orphan_cells:
-        rows.append("\t".join(orphan_cells))
-
-    return "\n".join(rows)
+    return "\n".join(_html_table_lines(table))
 
 
 def _split_markdown_row(line: str) -> list[str]:

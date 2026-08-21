@@ -41,6 +41,21 @@ def test_preserves_caption_and_cells_without_explicit_rows() -> None:
     assert projected.strip() == "Summary\nAlpha\t42"
 
 
+def test_preserves_document_order_for_orphan_cells_and_section_rows() -> None:
+    markdown = """
+<table>
+  <th>Orphan header</th>
+  <thead><tr><th>Section header</th></tr></thead>
+  <tbody><tr><td>Body value</td></tr></tbody>
+  <tfoot><tr><td>Footer value</td></tr></tfoot>
+</table>
+"""
+
+    projected = canonicalize_tables_for_text_content(markdown)
+
+    assert projected.strip() == "Orphan header\nSection header\nBody value\nFooter value"
+
+
 def test_projects_valid_table_after_unclosed_table_start() -> None:
     markdown = "Before <table> malformed\nMiddle\n<table><tr><td>Valid</td></tr></table>\nAfter"
 
