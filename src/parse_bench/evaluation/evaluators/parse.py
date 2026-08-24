@@ -70,6 +70,23 @@ def _has_html_tables(content: str) -> bool:
 logger = logging.getLogger(__name__)
 
 
+# Positive/negative rule-type pairs that make up the text styling category.
+# This must cover every styling kind handled by FormattingRule; a kind that is
+# missing here is still scored into its own ``rule_<type>_pass_rate`` sub-metric
+# but is silently excluded from ``normalized_text_styling`` and therefore from
+# the ``semantic_formatting`` headline. ``mark_color`` is deliberately absent:
+# it is a colour-value assertion with no positive/negative counterpart.
+_TEXT_STYLING_PAIRS: list[tuple[str, str]] = [
+    ("is_bold", "is_not_bold"),
+    ("is_italic", "is_not_italic"),
+    ("is_underline", "is_not_underline"),
+    ("is_strikeout", "is_not_strikeout"),
+    ("is_mark", "is_not_mark"),
+    ("is_sup", "is_not_sup"),
+    ("is_sub", "is_not_sub"),
+]
+
+
 def _has_extract_field_bboxes(test_case: ExtractTestCase) -> bool:
     return any(rule.bboxes for rule in test_case.get_extract_field_rules())
 
@@ -348,14 +365,8 @@ class ParseEvaluator(BaseEvaluator):
 
                     # Normalized category scores: avg of per-type averages
                     # to reduce impact of docs with many rules of one type.
-                    # Text styling: bold, strikeout, sup, sub pairs.
+                    # Text styling: see _TEXT_STYLING_PAIRS at module level.
                     # A pair is included only if the positive rule exists for this doc.
-                    _TEXT_STYLING_PAIRS = [
-                        ("is_bold", "is_not_bold"),
-                        ("is_strikeout", "is_not_strikeout"),
-                        ("is_sup", "is_not_sup"),
-                        ("is_sub", "is_not_sub"),
-                    ]
                     _TEXT_STYLING_POS_TYPES: set[str] = set()
                     _TEXT_STYLING_NEG_TYPES: set[str] = set()
                     for pos, neg in _TEXT_STYLING_PAIRS:
