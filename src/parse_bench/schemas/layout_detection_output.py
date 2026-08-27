@@ -316,6 +316,7 @@ class LayoutDetectionModel(StrEnum):
     DATABRICKS_LAYOUT = "databricks_layout"
     INFINITY_PARSER2_LAYOUT = "infinity_parser2_layout"
     OI_PARSER_LAYOUT = "oi_parser_layout"
+    COHERE_PARSE_LAYOUT = "cohere_parse_layout"
     PYMUPDF4LLM_LAYOUT = "pymupdf4llm_layout"
 
 
@@ -371,6 +372,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.OI_PARSER_LAYOUT: {
         "name": "oi-parser",
         "hf_url": "https://oi-parser.ai/",
+    },
+    LayoutDetectionModel.COHERE_PARSE_LAYOUT: {
+        "name": "Cohere Parse",
+        "hf_url": "https://cohere.com/blog/cohere-parse",
     },
     LayoutDetectionModel.PULSE_LAYOUT: {
         "name": "Pulse Layout",

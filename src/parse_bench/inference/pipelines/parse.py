@@ -2281,3 +2281,19 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             config={},
         )
     )
+
+    # =========================================================================
+    # Cohere Parse Pipelines
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="cohere_parse_v5",
+            provider_name="cohere_parse",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "parse-v5.0",
+                "max_pages": 50,
+            },
+        )
+    )

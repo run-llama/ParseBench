@@ -11,6 +11,7 @@ _PROVIDER_MODULES = [
     "azure_document_intelligence",
     "chandra2",
     "chunkr",
+    "cohere_parse",
     "databricks_ai_parse",
     "datalab",
     "deepseekocr2",
