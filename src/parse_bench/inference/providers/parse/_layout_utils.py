@@ -13,6 +13,7 @@ import math
 import re
 from typing import Any
 
+from parse_bench.inference.providers.base import ProviderPermanentError
 from parse_bench.schemas.parse_output import (
     LayoutItemIR,
     LayoutSegmentIR,
@@ -68,7 +69,7 @@ USER_PROMPT_LAYOUT = (
     "Use HTML tables for any tabular data. "
     "For charts/graphs, use flat combined column headers. "
     "Output ONLY the parsed content with div wrappers, "
-    "no explanations."
+    "no explanations. If the page is genuinely blank, output exactly []."
 )
 
 # ---------------------------------------------------------------------------
@@ -437,6 +438,42 @@ def parse_layout_blocks(content: str) -> list[dict[str, Any]]:
     return blocks
 
 
+def parse_layout_response(content: str) -> list[dict[str, Any]]:
+    """Parse a complete layout response and reject malformed output.
+
+    An explicit empty JSON array is the only empty representation accepted by
+    the layout protocol. It proves that the model returned a structured blank
+    page rather than no output. Any other response must contain at least one
+    valid layout wrapper.
+    """
+    if content.strip() == "[]":
+        return []
+    blocks = parse_layout_blocks(content)
+    if not blocks:
+        raise ValueError("layout response contains no valid layout elements")
+    return blocks
+
+
+def validated_sorted_page_records(raw_pages: object) -> list[dict[str, Any]]:
+    """Validate zero-based page records once, then return document order."""
+    if not isinstance(raw_pages, list):
+        raise ProviderPermanentError("Invalid raw output: 'pages' must be a list")
+
+    records: list[dict[str, Any]] = []
+    for position, record in enumerate(raw_pages):
+        if not isinstance(record, dict):
+            raise ProviderPermanentError(f"Invalid raw output: page record {position} must be an object")
+        page_index = record.get("page_index")
+        if not isinstance(page_index, int) or isinstance(page_index, bool) or page_index < 0:
+            raise ProviderPermanentError(f"Invalid raw output: page record {position} has invalid page_index")
+        records.append(record)
+
+    records.sort(key=lambda record: record["page_index"])
+    if [record["page_index"] for record in records] != list(range(len(records))):
+        raise ProviderPermanentError("Invalid raw output: pages must be unique, contiguous, and zero-based")
+    return records
+
+
 # A markdown ATX heading marker: optional indent, 1-6 hashes, then whitespace.
 # The trailing whitespace is required (as in CommonMark), so literal text like
 # "#1 Best Seller" is not mistaken for a marker.
@@ -533,7 +570,7 @@ def build_layout_pages(
             ``bbox_scale=None`` pipelines, prompted with the ``*_ABS``
             variants), normalized by the image dimensions.
     """
-    if not items or not image_width or not image_height:
+    if not image_width or not image_height:
         return []
 
     if bbox_scale is None:
@@ -596,9 +633,6 @@ def build_layout_pages(
             item_type = "text"
 
         layout_items.append(LayoutItemIR(type=item_type, value=text, bbox=seg, layout_segments=[seg]))
-
-    if not layout_items:
-        return []
 
     return [
         ParseLayoutPageIR(

@@ -11,10 +11,9 @@ import base64
 import io
 import os
 import re
-import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn, cast
 
 from openai import OpenAI
 from PIL import Image
@@ -24,7 +23,15 @@ from parse_bench.inference.providers.base import (
     Provider,
     ProviderConfigError,
     ProviderPermanentError,
+    ProviderRateLimitError,
     ProviderTransientError,
+)
+from parse_bench.inference.providers.parse._layout_utils import validated_sorted_page_records
+from parse_bench.inference.providers.parse._multipage_image import (
+    append_attempt_usages,
+    attempt_usages_complete,
+    open_document_page_images,
+    run_page_with_retries,
 )
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import (
@@ -141,6 +148,8 @@ class DotsOcrParseProvider(Provider):
         - prompt_override (str, optional): Custom prompt text (overrides prompt_mode)
     """
 
+    PDF_RENDER_DPI = 150
+
     def __init__(
         self,
         provider_name: str,
@@ -158,12 +167,13 @@ class DotsOcrParseProvider(Provider):
         self._client = OpenAI(
             base_url=endpoint_url,
             api_key=os.getenv("DOTS_OCR_API_KEY", "not-needed"),
+            max_retries=0,
         )
 
         self._model = self.base_config.get("model", SERVED_MODEL_NAME)
         self._timeout = self.base_config.get("timeout", 180)
         self._max_tokens = self.base_config.get("max_tokens", 16384)
-        self._dpi = self.base_config.get("dpi", 150)
+        self._dpi = self.base_config.get("dpi", self.PDF_RENDER_DPI)
         self._temperature = self.base_config.get("temperature", 0.1)
         self._top_p = self.base_config.get("top_p", 0.9)
 
@@ -191,22 +201,12 @@ class DotsOcrParseProvider(Provider):
         buffer.seek(0)
         return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-    def _pdf_to_images(self, pdf_path: str) -> list[Image.Image]:
-        try:
-            from pdf2image import convert_from_path
-        except ImportError as e:
-            raise ProviderConfigError("pdf2image package not installed. Run: pip install pdf2image") from e
-        try:
-            return convert_from_path(pdf_path, dpi=self._dpi)
-        except Exception as e:
-            raise ProviderPermanentError(f"Failed to convert PDF to images: {e}") from e
-
     # ------------------------------------------------------------------
     # API call
     # ------------------------------------------------------------------
 
-    def _call_endpoint(self, image: Image.Image) -> str:
-        """Call dots.ocr via OpenAI-compatible API and return raw response text."""
+    def _call_endpoint(self, image: Image.Image) -> tuple[str, dict[str, int]]:
+        """Call dots.ocr and return response text with any reported usage."""
         img_base64 = self._image_to_base64(image)
         try:
             response = self._client.chat.completions.create(
@@ -228,15 +228,51 @@ class DotsOcrParseProvider(Provider):
                 top_p=self._top_p,
             )
         except Exception as e:
-            error_msg = str(e).lower()
-            if "timeout" in error_msg or "connection" in error_msg:
-                raise ProviderTransientError(f"API call failed: {e}") from e
-            raise ProviderPermanentError(f"API call failed: {e}") from e
+            self._raise_api_error(e)
 
+        usage = self._extract_usage(response)
         content = response.choices[0].message.content
         if not content:
-            raise ProviderPermanentError("Empty response from model")
-        return content
+            raise ProviderTransientError("Empty response from model", attempt_stats=usage or None)
+        return cast(str, content), usage
+
+    @staticmethod
+    def _extract_usage(response: Any) -> dict[str, int]:
+        """Extract only token fields actually reported by the compatible API."""
+        raw_usage = getattr(response, "usage", None)
+        if raw_usage is None:
+            return {}
+        usage: dict[str, int] = {}
+        for key, attribute in (
+            ("input_tokens", "prompt_tokens"),
+            ("output_tokens", "completion_tokens"),
+            ("total_tokens", "total_tokens"),
+        ):
+            value = getattr(raw_usage, attribute, None)
+            if value is not None:
+                usage[key] = int(value)
+        details = getattr(raw_usage, "completion_tokens_details", None)
+        thinking_tokens = getattr(details, "reasoning_tokens", None) if details is not None else None
+        if thinking_tokens is not None:
+            usage["thinking_tokens"] = int(thinking_tokens)
+        return usage
+
+    @staticmethod
+    def _raise_api_error(exc: Exception) -> NoReturn:
+        """Classify real OpenAI-compatible transport and HTTP failures."""
+        from openai import APIConnectionError, APITimeoutError
+
+        if isinstance(exc, (APITimeoutError, APIConnectionError, TimeoutError, ConnectionError)):
+            raise ProviderTransientError(f"Transient dots.ocr API failure: {exc}") from exc
+
+        status_code = getattr(exc, "status_code", None)
+        if status_code is None:
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code == 429:
+            raise ProviderRateLimitError(f"dots.ocr rate limited (429): {exc}") from exc
+        if status_code == 408 or isinstance(status_code, int) and status_code >= 500:
+            raise ProviderTransientError(f"Transient dots.ocr HTTP {status_code}: {exc}") from exc
+        raise ProviderPermanentError(f"Permanent dots.ocr API failure: {exc}") from exc
 
     # ------------------------------------------------------------------
     # HTML sanitization
@@ -287,7 +323,7 @@ class DotsOcrParseProvider(Provider):
         adapter = TypeAdapter(list[DotsOcrLayoutItem])
         for candidate in candidates:
             try:
-                return adapter.validate_json(candidate)
+                return cast(list[DotsOcrLayoutItem], adapter.validate_json(candidate))
             except Exception:
                 continue
 
@@ -297,53 +333,97 @@ class DotsOcrParseProvider(Provider):
     # Per-page inference
     # ------------------------------------------------------------------
 
+    def _call_page_with_retries(
+        self,
+        image: Image.Image,
+        page_number: int,
+        attempt_ledger: list[dict[str, object]],
+        prior_attempt_ledger: list[dict[str, object]],
+    ) -> tuple[str, dict[str, int], list[DotsOcrLayoutItem] | None]:
+        """Own transient retries at the billable page request boundary."""
+
+        def call_and_validate() -> tuple[str, dict[str, int], list[DotsOcrLayoutItem] | None]:
+            response = self._call_endpoint(image)
+            if isinstance(response, tuple):
+                raw_text, usage = response
+            else:  # compatibility for custom test doubles and provider adapters
+                raw_text, usage = response, {}
+            if not self._is_layout_mode:
+                return raw_text, usage, None
+            try:
+                layout_items = self._parse_layout_items(raw_text)
+            except ProviderPermanentError as exc:
+                raise ProviderTransientError(str(exc), attempt_stats=usage or None) from exc
+            return raw_text, usage, layout_items
+
+        return run_page_with_retries(
+            call_and_validate,
+            provider_name="dots.ocr",
+            page_number=page_number,
+            attempt_ledger=attempt_ledger,
+            prior_attempt_ledger=prior_attempt_ledger,
+        )
+
     def _run_inference_pages(self, source_path: Path) -> dict[str, Any]:
         """Convert source file to images and run inference on each page."""
-        if source_path.suffix.lower() == ".pdf":
-            images = self._pdf_to_images(str(source_path))
-        else:
-            images = [Image.open(source_path)]
-
         pages = []
-        for page_index, image in enumerate(images):
-            if image.mode not in ("RGB", "RGBA"):
-                image = image.convert("RGB")
-
-            raw_text = self._call_endpoint(image)
-
-            page_data: dict[str, Any] = {
-                "page_index": page_index,
-                "width": image.width,
-                "height": image.height,
-                "raw_response": raw_text,
-            }
-
-            if self._is_layout_mode:
-                # Parse structured JSON → typed layout items + reassemble markdown
+        api_attempts: list[dict[str, object]] = []
+        with open_document_page_images(source_path, dpi=self._dpi) as images:
+            for page_index, image in enumerate(images):
+                page_image = image if image.mode in ("RGB", "RGBA") else image.convert("RGB")
                 try:
-                    layout_items = self._parse_layout_items(raw_text)
-                except ProviderPermanentError:
-                    layout_items = []
+                    attempts: list[dict[str, object]] = []
+                    raw_text, _, layout_items = self._call_page_with_retries(
+                        page_image,
+                        page_index + 1,
+                        attempts,
+                        api_attempts,
+                    )
+                    api_attempts.extend(attempts)
 
-                page_data["layout_items"] = [item.model_dump() for item in layout_items]
-                page_data["markdown"] = _reassemble_markdown(layout_items)
-            else:
-                page_data["markdown"] = raw_text
-                page_data["layout_items"] = []
+                    page_data: dict[str, Any] = {
+                        "page_index": page_index,
+                        "width": page_image.width,
+                        "height": page_image.height,
+                        "raw_response": raw_text,
+                    }
 
-            pages.append(page_data)
+                    if self._is_layout_mode:
+                        assert layout_items is not None
+                        page_data["layout_items"] = [item.model_dump() for item in layout_items]
+                        page_data["markdown"] = _reassemble_markdown(layout_items)
+                    else:
+                        page_data["markdown"] = raw_text
+                        page_data["layout_items"] = []
 
-        return {
+                    pages.append(page_data)
+                finally:
+                    if page_image is not image:
+                        page_image.close()
+
+            num_pages = len(images)
+
+        raw_output: dict[str, Any] = {
             "pages": pages,
-            "num_pages": len(images),
+            "num_pages": num_pages,
             "model": self._model,
             "prompt_mode": self._prompt_mode,
+            "num_api_calls": len(api_attempts),
+            "api_attempts": api_attempts,
             "config": {
                 "dpi": self._dpi,
                 "max_tokens": self._max_tokens,
                 "timeout": self._timeout,
             },
         }
+        attempt_usages: list[dict[str, int]] = []
+        append_attempt_usages(attempt_usages, api_attempts)
+        if attempt_usages_complete(attempt_usages):
+            for field in ("input_tokens", "output_tokens", "total_tokens"):
+                raw_output[field] = sum(int(usage[field]) for usage in attempt_usages)
+            if all("thinking_tokens" in usage for usage in attempt_usages):
+                raw_output["thinking_tokens"] = sum(int(usage["thinking_tokens"]) for usage in attempt_usages)
+        return raw_output
 
     # ------------------------------------------------------------------
     # run_inference
@@ -366,69 +446,21 @@ class DotsOcrParseProvider(Provider):
             )
 
         started_at = datetime.now()
-        max_retries = 3
-        last_error: Exception | None = None
-
-        for attempt in range(max_retries):
-            try:
-                raw_output = self._run_inference_pages(source_path)
-
-                completed_at = datetime.now()
-                latency_ms = int((completed_at - started_at).total_seconds() * 1000)
-
-                return RawInferenceResult(
-                    request=request,
-                    pipeline=pipeline,
-                    pipeline_name=pipeline.pipeline_name,
-                    product_type=request.product_type,
-                    raw_output=raw_output,
-                    started_at=started_at,
-                    completed_at=completed_at,
-                    latency_in_ms=latency_ms,
-                )
-
-            except ProviderTransientError as e:
-                last_error = e
-                if attempt < max_retries - 1:
-                    delay = 15 * (2**attempt)
-                    print(
-                        f"[dots.ocr] Transient error on {request.example_id}: {e}. "
-                        f"Retrying in {delay}s (attempt {attempt + 1}/{max_retries})..."
-                    )
-                    time.sleep(delay)
-                    continue
-
-            except (ProviderPermanentError, ProviderConfigError) as e:
-                last_error = e
-                break
-
-            except Exception as e:
-                last_error = e
-                break
+        try:
+            raw_output = self._run_inference_pages(source_path)
+        except (ProviderPermanentError, ProviderTransientError, ProviderConfigError):
+            raise
+        except Exception as exc:
+            raise ProviderPermanentError(f"Unexpected error during inference: {exc}") from exc
 
         completed_at = datetime.now()
         latency_ms = int((completed_at - started_at).total_seconds() * 1000)
-
-        error_msg = str(last_error)
-        if isinstance(last_error, TimeoutError):
-            error_msg = f"Request timed out after {self._timeout} seconds"
-
         return RawInferenceResult(
             request=request,
             pipeline=pipeline,
             pipeline_name=pipeline.pipeline_name,
             product_type=request.product_type,
-            raw_output={
-                "pages": [],
-                "_error": error_msg,
-                "_error_type": type(last_error).__name__ if last_error else "Unknown",
-                "model": self._model,
-                "config": {
-                    "dpi": self._dpi,
-                    "max_tokens": self._max_tokens,
-                    "timeout": self._timeout,
-                },
-            },
+            raw_output=raw_output,
             started_at=started_at,
             completed_at=completed_at,
             latency_in_ms=latency_ms,
@@ -448,7 +480,7 @@ class DotsOcrParseProvider(Provider):
         layout_pages: list[ParseLayoutPageIR] = []
         page_markdowns: list[str] = []
 
-        for page_data in raw_result.raw_output.get("pages", []):
+        for page_data in validated_sorted_page_records(raw_result.raw_output.get("pages", [])):
             page_index = page_data.get("page_index", 0)
             markdown = page_data.get("markdown", "")
             img_width = page_data.get("width", 0)
@@ -462,7 +494,8 @@ class DotsOcrParseProvider(Provider):
 
             # Build layout_pages from structured layout items (if available)
             layout_items = page_data.get("layout_items", [])
-            if layout_items and img_width > 0 and img_height > 0:
+            is_layout_mode = raw_result.raw_output.get("prompt_mode") in _LAYOUT_PROMPT_MODES
+            if is_layout_mode and img_width > 0 and img_height > 0:
                 layout_page = _build_layout_page(
                     layout_items=layout_items,
                     page_number=page_index + 1,
@@ -472,7 +505,6 @@ class DotsOcrParseProvider(Provider):
                 )
                 layout_pages.append(layout_page)
 
-        pages.sort(key=lambda p: p.page_index)
         full_markdown = "\n\n".join(page_markdowns)
 
         output = ParseOutput(

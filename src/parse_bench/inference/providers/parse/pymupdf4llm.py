@@ -12,6 +12,7 @@ from parse_bench.inference.providers.base import (
     ProviderConfigError,
     ProviderPermanentError,
 )
+from parse_bench.inference.providers.parse._layout_utils import validated_sorted_page_records
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import (
     LayoutItemIR,
@@ -326,8 +327,8 @@ class PyMuPDF4LLMProvider(Provider):
         pages: list[PageIR] = []
         layout_pages: list[ParseLayoutPageIR] = []
         page_texts: list[str] = []
-        for page_data in raw_result.raw_output.get("pages", []):
-            page_index = page_data.get("page_index", 0)
+        for page_data in validated_sorted_page_records(raw_result.raw_output.get("pages")):
+            page_index = page_data["page_index"]
             raw_markdown = page_data.get("text", "") or ""
             layout_page = self._build_layout_page(page_data, raw_markdown=raw_markdown)
             if layout_page is not None:

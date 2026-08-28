@@ -23,6 +23,7 @@ from parse_bench.inference.providers.base import (
     ProviderPermanentError,
     ProviderTransientError,
 )
+from parse_bench.inference.providers.parse._multipage_image import normalize_pdf_pages, run_pdf_pages
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.layout_ontology import CanonicalLabel
 from parse_bench.schemas.parse_output import (
@@ -154,6 +155,8 @@ class FalconOcrProvider(Provider):
         - temperature (float, default=0.0): Sampling temperature.
     """
 
+    PDF_RENDER_DPI = 200
+
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         super().__init__(provider_name, base_config)
 
@@ -165,7 +168,7 @@ class FalconOcrProvider(Provider):
         self._server_url: str = str(server_url).rstrip("/")
         self._task: str = str(self.base_config.get("task", "ocr"))
         self._timeout = int(self.base_config.get("timeout", 600))
-        self._dpi = int(self.base_config.get("dpi", 200))
+        self._dpi = int(self.base_config.get("dpi", self.PDF_RENDER_DPI))
         self._max_new_tokens = int(self.base_config.get("max_new_tokens", 4096))
         self._temperature = float(self.base_config.get("temperature", 0.0))
 
@@ -241,6 +244,10 @@ class FalconOcrProvider(Provider):
         }
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
+        multipage_result = run_pdf_pages(pipeline, request, dpi=self._dpi, run_single_image=self.run_inference)
+        if multipage_result is not None:
+            return multipage_result
+
         if request.product_type != ProductType.PARSE:
             raise ProviderPermanentError(
                 f"FalconOcrProvider only supports PARSE product type, got {request.product_type}"
@@ -369,6 +376,10 @@ class FalconOcrProvider(Provider):
         return "\n".join(result_parts)
 
     def normalize(self, raw_result: RawInferenceResult) -> InferenceResult:
+        multipage_result = normalize_pdf_pages(raw_result, normalize_single_image=self.normalize)
+        if multipage_result is not None:
+            return multipage_result
+
         if raw_result.product_type != ProductType.PARSE:
             raise ProviderPermanentError(
                 f"FalconOcrProvider only supports PARSE product type, got {raw_result.product_type}"

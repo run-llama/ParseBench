@@ -5,7 +5,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-_PROVIDER_MODULES = [
+PARSE_PROVIDER_MODULES = (
     "amazon_nova",
     "anthropic",
     "azure_document_intelligence",
@@ -33,7 +33,6 @@ _PROVIDER_MODULES = [
     "pdf_inspector",
     "pymupdf4llm",
     "llamaparse",
-    "llamaparse_v2_normalization",
     "mineru25",
     "mineru2605pro",
     "mineru_diffusion",
@@ -53,9 +52,9 @@ _PROVIDER_MODULES = [
     "unstructured",
     "warp_ingest",
     "oi_parser",
-]
+)
 
-for _mod in _PROVIDER_MODULES:
+for _mod in PARSE_PROVIDER_MODULES:
     try:
         importlib.import_module(f"parse_bench.inference.providers.parse.{_mod}")
     except ImportError:

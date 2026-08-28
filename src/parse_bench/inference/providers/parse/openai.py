@@ -4,6 +4,7 @@ import base64
 import io
 import os
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -18,9 +19,19 @@ from parse_bench.inference.providers.base import (
 from parse_bench.inference.providers.parse._layout_utils import (
     build_layout_pages,
     items_to_markdown,
-    parse_layout_blocks,
+    parse_layout_response,
     resolve_layout_prompts,
     split_pdf_to_pages,
+    validated_sorted_page_records,
+)
+from parse_bench.inference.providers.parse._multipage_image import (
+    annotate_attempt_costs,
+    append_attempt_usages,
+    attempt_usages_complete,
+    close_derived_images,
+    open_document_page_images,
+    run_page_once,
+    run_page_with_retries,
 )
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import PageIR, ParseLayoutPageIR, ParseOutput
@@ -98,6 +109,8 @@ class OpenAIProvider(Provider):
     capabilities to parse document content to markdown.
     """
 
+    PDF_RENDER_DPI = 150
+
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         """
         Initialize the provider.
@@ -121,7 +134,7 @@ class OpenAIProvider(Provider):
 
         # Configuration
         self._model = self.base_config.get("model", "gpt-5-mini")
-        self._dpi = self.base_config.get("dpi", 150)
+        self._dpi = self.base_config.get("dpi", self.PDF_RENDER_DPI)
         self._max_tokens = self.base_config.get("max_tokens", 8192)
         self._timeout = self.base_config.get("timeout", 120)
         self._reasoning_effort = self.base_config.get("reasoning_effort", None)
@@ -143,7 +156,9 @@ class OpenAIProvider(Provider):
         try:
             from openai import OpenAI
 
-            self._client = OpenAI(api_key=self._api_key)
+            # Retry exactly once at the active owner: per page for split modes,
+            # or in the outer document runner for native file mode.
+            self._client = OpenAI(api_key=self._api_key, max_retries=0)
         except ImportError as e:
             raise ProviderConfigError("openai package not installed. Run: pip install openai") from e
 
@@ -152,33 +167,38 @@ class OpenAIProvider(Provider):
     # API limit is 20MB for base64 data; base64 adds ~33% overhead, so raw limit is 20MB * 3/4
     MAX_IMAGE_SIZE_BYTES = int(20 * 1024 * 1024 * 3 / 4)  # ~15 MB raw -> ~20 MB base64
 
-    def _get_pricing(self) -> tuple[float, float]:
-        """Return (input_rate, output_rate) in USD per million tokens.
+    def _get_pricing(self) -> tuple[float, float] | None:
+        """Return known (input_rate, output_rate) in USD per million tokens.
 
         Uses longest-prefix matching to avoid ambiguity when one model
         prefix is a substring of another.
         """
         matches = [(p, r) for p, r in _OPENAI_PRICING_PER_M.items() if self._model.startswith(p)]
-        return max(matches, key=lambda x: len(x[0]))[1] if matches else (0.0, 0.0)
+        return max(matches, key=lambda x: len(x[0]))[1] if matches else None
 
     @staticmethod
     def _extract_usage(response) -> dict[str, int]:  # type: ignore[no-untyped-def]
         """Extract token counts from an OpenAI API response."""
         usage = getattr(response, "usage", None)
         if usage is None:
-            return {"input_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "total_tokens": 0}
-        input_tok = getattr(usage, "prompt_tokens", 0) or 0
-        output_tok = getattr(usage, "completion_tokens", 0) or 0
-        total_tok = getattr(usage, "total_tokens", 0) or 0
+            return {}
         # Reasoning tokens (o-series models)
         details = getattr(usage, "completion_tokens_details", None)
         thinking_tok = getattr(details, "reasoning_tokens", 0) or 0 if details else 0
-        return {
-            "input_tokens": input_tok,
-            "output_tokens": output_tok,
-            "thinking_tokens": thinking_tok,
-            "total_tokens": total_tok,
-        }
+        result = {"thinking_tokens": int(thinking_tok)}
+        prompt_details = getattr(usage, "prompt_tokens_details", None)
+        cached_tokens = getattr(prompt_details, "cached_tokens", None) if prompt_details else None
+        if cached_tokens is not None:
+            result["cached_content_tokens"] = int(cached_tokens)
+        for key, attribute in (
+            ("input_tokens", "prompt_tokens"),
+            ("output_tokens", "completion_tokens"),
+            ("total_tokens", "total_tokens"),
+        ):
+            value = getattr(usage, attribute, None)
+            if value is not None:
+                result[key] = int(value)
+        return result
 
     def _prepare_image_for_api(self, image: Image.Image) -> Image.Image:
         """
@@ -209,70 +229,53 @@ class OpenAIProvider(Provider):
         - Images exceeding size limit after encoding (reduces quality iteratively)
         """
         # Resize if dimensions exceed limit
-        image = self._prepare_image_for_api(image)
+        with close_derived_images(image) as track:
+            image = track(self._prepare_image_for_api(image))
 
-        # Convert to RGB if necessary (e.g., RGBA images)
-        if image.mode in ("RGBA", "P"):
-            image = image.convert("RGB")
+            # Convert to RGB if necessary (e.g., RGBA images)
+            if image.mode in ("RGBA", "P"):
+                image = track(image.convert("RGB"))
 
-        # Try encoding with decreasing quality until under size limit
-        quality = 85
-        min_quality = 20
+            # Try encoding with decreasing quality until under size limit
+            quality = 85
+            min_quality = 20
 
-        while quality >= min_quality:
-            buffer = io.BytesIO()
-            image.save(buffer, format="JPEG", quality=quality)
-            buffer.seek(0)
-            data = buffer.getvalue()
+            while quality >= min_quality:
+                buffer = io.BytesIO()
+                image.save(buffer, format="JPEG", quality=quality)
+                buffer.seek(0)
+                data = buffer.getvalue()
 
-            if len(data) <= self.MAX_IMAGE_SIZE_BYTES:
-                return base64.standard_b64encode(data).decode("utf-8")
+                if len(data) <= self.MAX_IMAGE_SIZE_BYTES:
+                    return base64.standard_b64encode(data).decode("utf-8")
 
-            quality -= 10
+                quality -= 10
 
-        # If still too large after quality reduction, resize the image
-        while True:
-            width, height = image.size
-            new_width = int(width * 0.8)
-            new_height = int(height * 0.8)
+            # If still too large after quality reduction, resize the image
+            while True:
+                width, height = image.size
+                new_width = int(width * 0.8)
+                new_height = int(height * 0.8)
 
-            if new_width < 100 or new_height < 100:
-                # Give up - image is too complex to fit in limits
-                break
+                if new_width < 100 or new_height < 100:
+                    # Give up - image is too complex to fit in limits
+                    break
 
-            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                image = track(image.resize((new_width, new_height), Image.Resampling.LANCZOS))
 
+                buffer = io.BytesIO()
+                image.save(buffer, format="JPEG", quality=min_quality)
+                buffer.seek(0)
+                data = buffer.getvalue()
+
+                if len(data) <= self.MAX_IMAGE_SIZE_BYTES:
+                    return base64.standard_b64encode(data).decode("utf-8")
+
+            # Final fallback - return what we have
             buffer = io.BytesIO()
             image.save(buffer, format="JPEG", quality=min_quality)
             buffer.seek(0)
-            data = buffer.getvalue()
-
-            if len(data) <= self.MAX_IMAGE_SIZE_BYTES:
-                return base64.standard_b64encode(data).decode("utf-8")
-
-        # Final fallback - return what we have
-        buffer = io.BytesIO()
-        image.save(buffer, format="JPEG", quality=min_quality)
-        buffer.seek(0)
-        return base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
-
-    def _pdf_to_images(self, pdf_path: str) -> list[Image.Image]:
-        """
-        Convert PDF pages to images.
-
-        :param pdf_path: Path to the PDF file
-        :return: List of PIL Images, one per page
-        """
-        try:
-            from pdf2image import convert_from_path
-        except ImportError as e:
-            raise ProviderConfigError("pdf2image package not installed. Run: pip install pdf2image") from e
-
-        try:
-            images = convert_from_path(pdf_path, dpi=self._dpi)
-            return images
-        except Exception as e:
-            raise ProviderPermanentError(f"Failed to convert PDF to images: {e}") from e
+            return base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
 
     def _parse_image(self, image: Image.Image) -> tuple[str, dict[str, int]]:
         """
@@ -313,9 +316,15 @@ class OpenAIProvider(Provider):
             usage = self._extract_usage(response)
 
             # Extract text from response
-            content = response.choices[0].message.content if response.choices else ""
-            return (content or ""), usage
+            try:
+                text = self._extract_response_text(response, context="image")
+            except ProviderTransientError as exc:
+                exc.attempt_stats = usage
+                raise
+            return text, usage
 
+        except (ProviderPermanentError, ProviderTransientError):
+            raise
         except Exception as e:
             error_str = str(e).lower()
             if any(kw in error_str for kw in ["timeout", "connection", "network"]):
@@ -360,12 +369,16 @@ class OpenAIProvider(Provider):
             response = self._client.chat.completions.create(**kwargs)
 
             usage = self._extract_usage(response)
-            content = response.choices[0].message.content if response.choices else ""
-            text = content or ""
-
-            items = parse_layout_blocks(text)
+            try:
+                text = self._extract_response_text(response, context="image layout")
+                items = self._parse_layout_response(text)
+            except ProviderTransientError as exc:
+                exc.attempt_stats = usage
+                raise
             return items, text, usage
 
+        except (ProviderPermanentError, ProviderTransientError):
+            raise
         except Exception as e:
             error_str = str(e).lower()
             if any(kw in error_str for kw in ["timeout", "connection", "network"]):
@@ -421,9 +434,15 @@ class OpenAIProvider(Provider):
             usage = self._extract_usage(response)
 
             # Extract text from response
-            content = response.choices[0].message.content if response.choices else ""
-            return (content or ""), usage
+            try:
+                text = self._extract_response_text(response, context="PDF")
+            except ProviderTransientError as exc:
+                exc.attempt_stats = usage
+                raise
+            return text, usage
 
+        except (ProviderPermanentError, ProviderTransientError):
+            raise
         except Exception as e:
             error_str = str(e).lower()
             if any(kw in error_str for kw in ["timeout", "connection", "network"]):
@@ -469,12 +488,16 @@ class OpenAIProvider(Provider):
             response = self._client.chat.completions.create(**kwargs)
 
             usage = self._extract_usage(response)
-            content = response.choices[0].message.content if response.choices else ""
-            text = content or ""
-
-            items = parse_layout_blocks(text)
+            try:
+                text = self._extract_response_text(response, context="PDF layout page")
+                items = self._parse_layout_response(text)
+            except ProviderTransientError as exc:
+                exc.attempt_stats = usage
+                raise
             return items, text, usage
 
+        except (ProviderPermanentError, ProviderTransientError):
+            raise
         except Exception as e:
             error_str = str(e).lower()
             if any(kw in error_str for kw in ["timeout", "connection", "network"]):
@@ -482,13 +505,34 @@ class OpenAIProvider(Provider):
             if any(kw in error_str for kw in ["rate_limit", "rate limit", "429"]):
                 raise ProviderTransientError(f"Rate limited: {e}") from e
             # GPT-5.6 intermittently returns a 401 "insufficient permissions"
-            # that clears on retry; treat it as transient so the runner retries.
+            # that clears on retry; classify it for the active retry owner.
             is_gpt56_401_blip = (
                 self._model.startswith("gpt-5.6-") and "insufficient permissions for this operation" in error_str
             )
             if is_gpt56_401_blip:
                 raise ProviderTransientError(f"Transient OpenAI 401 (retryable): {e}") from e
             raise ProviderPermanentError(f"Error calling OpenAI API: {e}") from e
+
+    @staticmethod
+    def _extract_response_text(response: Any, *, context: str) -> str:
+        """Return non-empty message text from a structurally valid response."""
+        choices = getattr(response, "choices", None)
+        if not choices:
+            raise ProviderTransientError(f"OpenAI returned no choices for {context}")
+        message = getattr(choices[0], "message", None)
+        if message is None or not hasattr(message, "content"):
+            raise ProviderTransientError(f"OpenAI returned no message content for {context}")
+        content = message.content
+        if not isinstance(content, str) or not content.strip():
+            raise ProviderTransientError(f"OpenAI returned empty message content for {context}")
+        return content
+
+    @staticmethod
+    def _parse_layout_response(text: str) -> list[dict[str, Any]]:
+        try:
+            return parse_layout_response(text)
+        except ValueError as exc:
+            raise ProviderTransientError(f"OpenAI returned malformed layout output: {exc}") from exc
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         """
@@ -514,12 +558,20 @@ class OpenAIProvider(Provider):
 
         try:
             page_usages: list[dict[str, int]] = []
+            api_attempts: list[dict[str, object]] = []
+            attempts: list[dict[str, object]]
 
             if self._mode == "file":
                 if source_path.suffix.lower() == ".pdf":
                     # File mode: send raw PDF to API
-                    markdown, usage = self._parse_pdf_file(str(source_path))
-                    page_usages.append(usage)
+                    attempts = []
+                    markdown, usage = run_page_once(
+                        partial(self._parse_pdf_file, str(source_path)),
+                        page_number=1,
+                        attempt_ledger=attempts,
+                    )
+                    api_attempts.extend(attempts)
+                    append_attempt_usages(page_usages, attempts)
                     # In file mode, we get one response for the entire document
                     # We don't have page-level info, so we treat it as a single "page"
                     pages = [
@@ -533,17 +585,23 @@ class OpenAIProvider(Provider):
                     num_pages = 1  # We don't know actual page count in file mode
                 else:
                     # Non-PDF: fall back to image-based parsing
-                    image = Image.open(source_path)
-                    markdown, usage = self._parse_image(image)
-                    page_usages.append(usage)
-                    pages = [
-                        {
-                            "page_index": 0,
-                            "markdown": markdown,
-                            "width": image.width,
-                            "height": image.height,
-                        }
-                    ]
+                    with Image.open(source_path) as image:
+                        attempts = []
+                        markdown, usage = run_page_once(
+                            partial(self._parse_image, image),
+                            page_number=1,
+                            attempt_ledger=attempts,
+                        )
+                        api_attempts.extend(attempts)
+                        append_attempt_usages(page_usages, attempts)
+                        pages = [
+                            {
+                                "page_index": 0,
+                                "markdown": markdown,
+                                "width": image.width,
+                                "height": image.height,
+                            }
+                        ]
                     num_pages = 1
             elif self._mode == "parse_with_layout_file":
                 if source_path.suffix.lower() == ".pdf":
@@ -551,8 +609,16 @@ class OpenAIProvider(Provider):
                     pdf_pages = split_pdf_to_pages(str(source_path))
                     pages = []
                     for page_index, (pdf_bytes, w, h) in enumerate(pdf_pages):
-                        items, raw_content, usage = self._parse_pdf_page_with_layout(pdf_bytes)
-                        page_usages.append(usage)
+                        attempts = []
+                        items, raw_content, usage = run_page_with_retries(
+                            partial(self._parse_pdf_page_with_layout, pdf_bytes),
+                            provider_name=pipeline.provider_name,
+                            page_number=page_index + 1,
+                            attempt_ledger=attempts,
+                            prior_attempt_ledger=api_attempts,
+                        )
+                        api_attempts.extend(attempts)
+                        append_attempt_usages(page_usages, attempts)
                         pages.append(
                             {
                                 "page_index": page_index,
@@ -565,67 +631,110 @@ class OpenAIProvider(Provider):
                     num_pages = len(pdf_pages)
                 else:
                     # Non-PDF: fall back to image-based layout parsing
-                    image = Image.open(source_path)
-                    items, raw_content, usage = self._parse_image_with_layout(image)
-                    page_usages.append(usage)
-                    pages = [
-                        {
-                            "page_index": 0,
-                            "items": items,
-                            "raw_content": raw_content,
-                            "width": image.width,
-                            "height": image.height,
-                        }
-                    ]
-                    num_pages = 1
-            else:
-                # Image mode (both "image" and "parse_with_layout"):
-                # convert PDF to images and process each page
-                if source_path.suffix.lower() == ".pdf":
-                    images = self._pdf_to_images(str(source_path))
-                else:
-                    images = [Image.open(source_path)]
-
-                # Parse each page
-                pages = []
-                for page_index, image in enumerate(images):  # type: ignore[assignment]
-                    if self._mode == "parse_with_layout":
-                        items, raw_content, usage = self._parse_image_with_layout(image)
-                        page_usages.append(usage)
-                        pages.append(
+                    with Image.open(source_path) as image:
+                        attempts = []
+                        items, raw_content, usage = run_page_with_retries(
+                            partial(self._parse_image_with_layout, image),
+                            provider_name=pipeline.provider_name,
+                            page_number=1,
+                            attempt_ledger=attempts,
+                        )
+                        api_attempts.extend(attempts)
+                        append_attempt_usages(page_usages, attempts)
+                        pages = [
                             {
-                                "page_index": page_index,
+                                "page_index": 0,
                                 "items": items,
                                 "raw_content": raw_content,
                                 "width": image.width,
                                 "height": image.height,
                             }
-                        )
-                    else:
-                        markdown, usage = self._parse_image(image)
-                        page_usages.append(usage)
-                        pages.append(
-                            {
-                                "page_index": page_index,
-                                "markdown": markdown,
-                                "width": image.width,
-                                "height": image.height,
-                            }
-                        )
-                num_pages = len(images)
+                        ]
+                    num_pages = 1
+            else:
+                # Image mode (both "image" and "parse_with_layout"):
+                # convert PDF to images and process each page
+                pages = []
+                with open_document_page_images(source_path, dpi=self._dpi) as images:
+                    for page_index, image in enumerate(images):
+                        if self._mode == "parse_with_layout":
+                            attempts = []
+                            items, raw_content, usage = run_page_with_retries(
+                                partial(self._parse_image_with_layout, image),
+                                provider_name=pipeline.provider_name,
+                                page_number=page_index + 1,
+                                attempt_ledger=attempts,
+                                prior_attempt_ledger=api_attempts,
+                            )
+                            api_attempts.extend(attempts)
+                            append_attempt_usages(page_usages, attempts)
+                            pages.append(
+                                {
+                                    "page_index": page_index,
+                                    "items": items,
+                                    "raw_content": raw_content,
+                                    "width": image.width,
+                                    "height": image.height,
+                                }
+                            )
+                        else:
+                            attempts = []
+                            markdown, usage = run_page_with_retries(
+                                partial(self._parse_image, image),
+                                provider_name=pipeline.provider_name,
+                                page_number=page_index + 1,
+                                attempt_ledger=attempts,
+                                prior_attempt_ledger=api_attempts,
+                            )
+                            api_attempts.extend(attempts)
+                            append_attempt_usages(page_usages, attempts)
+                            pages.append(
+                                {
+                                    "page_index": page_index,
+                                    "markdown": markdown,
+                                    "width": image.width,
+                                    "height": image.height,
+                                }
+                            )
+                    num_pages = len(images)
 
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 
-            # Aggregate token usage across pages
-            total_input = sum(u["input_tokens"] for u in page_usages)
-            total_output = sum(u["output_tokens"] for u in page_usages)
-            total_thinking = sum(u["thinking_tokens"] for u in page_usages)
-            total_all = sum(u["total_tokens"] for u in page_usages)
-
-            # Compute cost
-            input_rate, output_rate = self._get_pricing()
-            cost = (total_input * input_rate + (total_output + total_thinking) * output_rate) / 1_000_000
+            # Aggregate token usage only when every physical call reported it.
+            usage_summary: dict[str, int | float] = {}
+            if attempt_usages_complete(page_usages):
+                total_input = sum(u["input_tokens"] for u in page_usages)
+                total_output = sum(u["output_tokens"] for u in page_usages)
+                total_thinking = sum(u["thinking_tokens"] for u in page_usages)
+                total_all = sum(u["total_tokens"] for u in page_usages)
+                usage_summary.update(
+                    {
+                        "input_tokens": total_input,
+                        "output_tokens": total_output,
+                        "thinking_tokens": total_thinking,
+                        "total_tokens": total_all,
+                        "input_tokens_per_page": total_input / num_pages if num_pages > 0 else 0.0,
+                        "output_tokens_per_page": total_output / num_pages if num_pages > 0 else 0.0,
+                    }
+                )
+            pricing = self._get_pricing()
+            if pricing is not None and attempt_usages_complete(page_usages):
+                input_rate, output_rate = pricing
+                annotate_attempt_costs(
+                    api_attempts,
+                    input_rate_per_million=input_rate,
+                    output_rate_per_million=output_rate,
+                    output_tokens_include_thinking=True,
+                )
+                if not any(usage.get("cached_content_tokens", 0) for usage in page_usages):
+                    cost = (total_input * input_rate + total_output * output_rate) / 1_000_000
+                    usage_summary.update(
+                        {
+                            "cost_usd": cost,
+                            "cost_per_page_usd": cost / num_pages if num_pages > 0 else 0.0,
+                        }
+                    )
 
             config_info: dict[str, Any] = {
                 "dpi": self._dpi,
@@ -642,14 +751,9 @@ class OpenAIProvider(Provider):
                 "mode": self._mode,
                 "bbox_scale": self._bbox_scale,
                 "config": config_info,
-                "input_tokens": total_input,
-                "output_tokens": total_output,
-                "thinking_tokens": total_thinking,
-                "total_tokens": total_all,
-                "cost_usd": cost,
-                "cost_per_page_usd": cost / num_pages if num_pages > 0 else 0.0,
-                "input_tokens_per_page": total_input / num_pages if num_pages > 0 else 0.0,
-                "output_tokens_per_page": total_output / num_pages if num_pages > 0 else 0.0,
+                **usage_summary,
+                "num_api_calls": len(api_attempts) if api_attempts else len(page_usages),
+                "api_attempts": api_attempts,
             }
 
             return RawInferenceResult(
@@ -687,7 +791,7 @@ class OpenAIProvider(Provider):
         page_markdowns: list[str] = []
         layout_pages: list[ParseLayoutPageIR] = []
 
-        for page_data in raw_result.raw_output.get("pages", []):
+        for page_data in validated_sorted_page_records(raw_result.raw_output.get("pages", [])):
             page_index = page_data.get("page_index", 0)
 
             if mode in ("parse_with_layout", "parse_with_layout_file"):
@@ -711,8 +815,6 @@ class OpenAIProvider(Provider):
             pages.append(PageIR(page_index=page_index, markdown=markdown))
             page_markdowns.append(markdown)
 
-        # Sort by page index and concatenate in sorted order
-        pages.sort(key=lambda p: p.page_index)
         full_markdown = "\n\n".join(page_markdowns)
 
         output = ParseOutput(

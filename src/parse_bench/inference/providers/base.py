@@ -1,7 +1,7 @@
 import asyncio
 import concurrent.futures
 from abc import ABC, abstractmethod
-from collections.abc import Coroutine
+from collections.abc import Coroutine, Mapping
 from typing import Any
 
 from parse_bench.schemas.pipeline import PipelineSpec
@@ -15,9 +15,16 @@ from parse_bench.schemas.pipeline_io import (
 class ProviderError(Exception):
     """Base exception for provider-related failures."""
 
-    def __init__(self, message: str, *, debug_payload: dict[str, Any] | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        debug_payload: dict[str, Any] | None = None,
+        attempt_stats: Mapping[str, int | float] | None = None,
+    ):
         super().__init__(message)
         self.debug_payload = debug_payload
+        self.attempt_stats = attempt_stats
 
 
 class ProviderConfigError(ProviderError):
@@ -39,6 +46,15 @@ class ProviderPermanentError(ProviderError):
     """
     Raised for permanent errors that are not expected to succeed on retry
     (e.g. unsupported file type, invalid request, 4xx errors).
+    """
+
+
+class ProviderRetryExhaustedError(ProviderPermanentError):
+    """Terminal failure after a provider-owned retry budget is exhausted.
+
+    Providers that retry at a finer-grained boundary raise this error so the
+    document runner does not start a second retry cycle and replay completed
+    work.
     """
 
 

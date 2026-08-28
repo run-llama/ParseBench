@@ -27,6 +27,7 @@ from parse_bench.inference.providers.base import (
     ProviderTransientError,
 )
 from parse_bench.inference.providers.parse._layout_utils import build_layout_pages
+from parse_bench.inference.providers.parse._multipage_image import normalize_pdf_pages, run_pdf_pages
 from parse_bench.inference.providers.parse.mistral_ocr import _convert_pipe_tables_to_html
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import ParseOutput
@@ -51,6 +52,8 @@ class UnlimitedOCRProvider(Provider):
         - dpi (int, default=300): DPI for PDF to image conversion
     """
 
+    PDF_RENDER_DPI = 300
+
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         super().__init__(provider_name, base_config)
 
@@ -61,7 +64,7 @@ class UnlimitedOCRProvider(Provider):
 
         # Match the model's reference config: PDF_DPI=300, REQUEST_TIMEOUT=1200.
         self._timeout = self.base_config.get("timeout", 1200)
-        self._dpi = self.base_config.get("dpi", 300)
+        self._dpi = self.base_config.get("dpi", self.PDF_RENDER_DPI)
 
     def _pdf_to_image(self, pdf_path: Path) -> bytes:
         try:
@@ -130,6 +133,10 @@ class UnlimitedOCRProvider(Provider):
         }
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
+        multipage_result = run_pdf_pages(pipeline, request, dpi=self._dpi, run_single_image=self.run_inference)
+        if multipage_result is not None:
+            return multipage_result
+
         if request.product_type != ProductType.PARSE:
             raise ProviderPermanentError(
                 f"UnlimitedOCRProvider only supports PARSE product type, got {request.product_type}"
@@ -265,6 +272,10 @@ class UnlimitedOCRProvider(Provider):
     }
 
     def normalize(self, raw_result: RawInferenceResult) -> InferenceResult:
+        multipage_result = normalize_pdf_pages(raw_result, normalize_single_image=self.normalize)
+        if multipage_result is not None:
+            return multipage_result
+
         if raw_result.product_type != ProductType.PARSE:
             raise ProviderPermanentError(
                 f"UnlimitedOCRProvider only supports PARSE product type, got {raw_result.product_type}"

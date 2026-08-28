@@ -31,6 +31,7 @@ from parse_bench.inference.providers.base import (
     ProviderPermanentError,
     ProviderTransientError,
 )
+from parse_bench.inference.providers.parse._multipage_image import normalize_pdf_pages, run_pdf_pages
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import (
     LayoutItemIR,
@@ -193,6 +194,8 @@ class Chandra2Provider(Provider):
         - api_key_env (str, default="VLLM_API_KEY"): Env var for API key (openai format only)
     """
 
+    PDF_RENDER_DPI = 192
+
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         super().__init__(provider_name, base_config)
 
@@ -213,7 +216,7 @@ class Chandra2Provider(Provider):
             raise ProviderConfigError(f"Invalid task '{self._task}'. Must be one of: {list(TASK_PROMPTS.keys())}")
 
         self._timeout = self.base_config.get("timeout", 600)
-        self._dpi = self.base_config.get("dpi", 192)
+        self._dpi = self.base_config.get("dpi", self.PDF_RENDER_DPI)
 
         # API key for authenticated vLLM endpoints
         api_key_env = self.base_config.get("api_key_env", "VLLM_API_KEY")
@@ -358,6 +361,10 @@ class Chandra2Provider(Provider):
                 }
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
+        multipage_result = run_pdf_pages(pipeline, request, dpi=self._dpi, run_single_image=self.run_inference)
+        if multipage_result is not None:
+            return multipage_result
+
         if request.product_type != ProductType.PARSE:
             raise ProviderPermanentError(
                 f"Chandra2Provider only supports PARSE product type, got {request.product_type}"
@@ -557,6 +564,10 @@ class Chandra2Provider(Provider):
         return "\n".join(parts) if parts else raw_html
 
     def normalize(self, raw_result: RawInferenceResult) -> InferenceResult:
+        multipage_result = normalize_pdf_pages(raw_result, normalize_single_image=self.normalize)
+        if multipage_result is not None:
+            return multipage_result
+
         if raw_result.product_type != ProductType.PARSE:
             raise ProviderPermanentError(
                 f"Chandra2Provider only supports PARSE product type, got {raw_result.product_type}"

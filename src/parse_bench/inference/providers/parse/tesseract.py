@@ -1,14 +1,20 @@
 """Provider for Tesseract OCR PARSE."""
 
 from datetime import datetime
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from parse_bench.inference.providers.base import (
     Provider,
     ProviderConfigError,
     ProviderPermanentError,
     ProviderTransientError,
+)
+from parse_bench.inference.providers.parse._layout_utils import validated_sorted_page_records
+from parse_bench.inference.providers.parse._multipage_image import (
+    open_document_page_images,
+    run_page_with_retries,
 )
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import PageIR, ParseOutput
@@ -30,6 +36,8 @@ class TesseractProvider(Provider):
     Handles scanned documents where embedded text is not available.
     """
 
+    PDF_RENDER_DPI = 300
+
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         """
         Initialize the provider.
@@ -46,7 +54,7 @@ class TesseractProvider(Provider):
         super().__init__(provider_name, base_config)
         self._lang = self.base_config.get("lang", "eng")
         self._config = self.base_config.get("config", "")
-        self._dpi = self.base_config.get("dpi", 300)
+        self._dpi = self.base_config.get("dpi", self.PDF_RENDER_DPI)
         self._output_type = self.base_config.get("output_type", "text")
 
     def _ocr_pdf(self, pdf_path: str) -> dict[str, Any]:
@@ -59,39 +67,50 @@ class TesseractProvider(Provider):
         """
         try:
             import pytesseract
-            from pdf2image import convert_from_path
         except ImportError as e:
-            missing_pkg = "pytesseract" if "pytesseract" in str(e) else "pdf2image"
-            raise ProviderConfigError(
-                f"{missing_pkg} package not installed. Run: pip install pytesseract pdf2image"
-            ) from e
+            raise ProviderConfigError("pytesseract package not installed. Run: pip install pytesseract") from e
+
+        def ocr_page(image: Any) -> str:
+            try:
+                if self._output_type == "text":
+                    return cast(str, pytesseract.image_to_string(image, lang=self._lang, config=self._config))
+                if self._output_type == "dict":
+                    data = pytesseract.image_to_data(
+                        image,
+                        lang=self._lang,
+                        config=self._config,
+                        output_type=pytesseract.Output.DICT,
+                    )
+                    return " ".join(word for word in data.get("text", []) if word.strip())
+                if self._output_type == "data":
+                    return cast(str, pytesseract.image_to_data(image, lang=self._lang, config=self._config))
+                if self._output_type == "boxes":
+                    return cast(str, pytesseract.image_to_boxes(image, lang=self._lang, config=self._config))
+                if self._output_type == "osd":
+                    return cast(str, pytesseract.image_to_osd(image, config=self._config))
+                return cast(str, pytesseract.image_to_string(image, lang=self._lang, config=self._config))
+            except Exception as exc:
+                error_str = str(exc).lower()
+                if any(keyword in error_str for keyword in ["timeout", "memory", "resource"]):
+                    raise ProviderTransientError(f"Transient error during OCR: {exc}") from exc
+                if "tesseract" in error_str and any(
+                    keyword in error_str for keyword in ["not found", "not installed", "command"]
+                ):
+                    raise ProviderConfigError(
+                        "Tesseract OCR engine not found. Please install Tesseract: "
+                        "https://github.com/tesseract-ocr/tesseract"
+                    ) from exc
+                raise ProviderPermanentError(f"Error during OCR: {exc}") from exc
 
         try:
-            # Convert PDF pages to images
-            images = convert_from_path(pdf_path, dpi=self._dpi)
-
             pages = []
-            for page_index, image in enumerate(images):
-                try:
-                    # Perform OCR based on output type
-                    if self._output_type == "text":
-                        text = pytesseract.image_to_string(image, lang=self._lang, config=self._config)
-                    elif self._output_type == "dict":
-                        data = pytesseract.image_to_data(
-                            image,
-                            lang=self._lang,
-                            config=self._config,
-                            output_type=pytesseract.Output.DICT,
-                        )
-                        text = " ".join([word for word in data.get("text", []) if word.strip()])
-                    elif self._output_type == "data":
-                        text = pytesseract.image_to_data(image, lang=self._lang, config=self._config)
-                    elif self._output_type == "boxes":
-                        text = pytesseract.image_to_boxes(image, lang=self._lang, config=self._config)
-                    elif self._output_type == "osd":
-                        text = pytesseract.image_to_osd(image, config=self._config)
-                    else:
-                        text = pytesseract.image_to_string(image, lang=self._lang, config=self._config)
+            with open_document_page_images(pdf_path, dpi=self._dpi) as images:
+                for page_index, image in enumerate(images):
+                    text = run_page_with_retries(
+                        partial(ocr_page, image),
+                        provider_name="tesseract",
+                        page_number=page_index + 1,
+                    )
 
                     pages.append(
                         {
@@ -101,18 +120,12 @@ class TesseractProvider(Provider):
                             "height": image.height,
                         }
                     )
-                except Exception as e:
-                    pages.append(
-                        {
-                            "page_index": page_index,
-                            "text": "",
-                            "error": str(e),
-                        }
-                    )
+
+                num_pages = len(images)
 
             return {
                 "pages": pages,
-                "num_pages": len(images),
+                "num_pages": num_pages,
                 "config": {
                     "lang": self._lang,
                     "dpi": self._dpi,
@@ -120,6 +133,8 @@ class TesseractProvider(Provider):
                 },
             }
 
+        except (ProviderPermanentError, ProviderTransientError, ProviderConfigError):
+            raise
         except FileNotFoundError as e:
             raise ProviderPermanentError(f"PDF file not found: {pdf_path}") from e
         except Exception as e:
@@ -153,40 +168,39 @@ class TesseractProvider(Provider):
             ) from e
 
         try:
-            image = Image.open(image_path)
+            with Image.open(image_path) as image:
+                # Perform OCR
+                if self._output_type == "text":
+                    text = pytesseract.image_to_string(image, lang=self._lang, config=self._config)
+                elif self._output_type == "dict":
+                    data = pytesseract.image_to_data(
+                        image, lang=self._lang, config=self._config, output_type=pytesseract.Output.DICT
+                    )
+                    text = " ".join([word for word in data.get("text", []) if word.strip()])
+                elif self._output_type == "data":
+                    text = pytesseract.image_to_data(image, lang=self._lang, config=self._config)
+                elif self._output_type == "boxes":
+                    text = pytesseract.image_to_boxes(image, lang=self._lang, config=self._config)
+                elif self._output_type == "osd":
+                    text = pytesseract.image_to_osd(image, config=self._config)
+                else:
+                    text = pytesseract.image_to_string(image, lang=self._lang, config=self._config)
 
-            # Perform OCR
-            if self._output_type == "text":
-                text = pytesseract.image_to_string(image, lang=self._lang, config=self._config)
-            elif self._output_type == "dict":
-                data = pytesseract.image_to_data(
-                    image, lang=self._lang, config=self._config, output_type=pytesseract.Output.DICT
-                )
-                text = " ".join([word for word in data.get("text", []) if word.strip()])
-            elif self._output_type == "data":
-                text = pytesseract.image_to_data(image, lang=self._lang, config=self._config)
-            elif self._output_type == "boxes":
-                text = pytesseract.image_to_boxes(image, lang=self._lang, config=self._config)
-            elif self._output_type == "osd":
-                text = pytesseract.image_to_osd(image, config=self._config)
-            else:
-                text = pytesseract.image_to_string(image, lang=self._lang, config=self._config)
-
-            return {
-                "pages": [
-                    {
-                        "page_index": 0,
-                        "text": text,
-                        "width": image.width,
-                        "height": image.height,
-                    }
-                ],
-                "num_pages": 1,
-                "config": {
-                    "lang": self._lang,
-                    "output_type": self._output_type,
-                },
-            }
+                return {
+                    "pages": [
+                        {
+                            "page_index": 0,
+                            "text": text,
+                            "width": image.width,
+                            "height": image.height,
+                        }
+                    ],
+                    "num_pages": 1,
+                    "config": {
+                        "lang": self._lang,
+                        "output_type": self._output_type,
+                    },
+                }
 
         except FileNotFoundError as e:
             raise ProviderPermanentError(f"Image file not found: {image_path}") from e
@@ -271,8 +285,8 @@ class TesseractProvider(Provider):
         pages: list[PageIR] = []
         page_texts = []
 
-        for page_data in raw_result.raw_output.get("pages", []):
-            page_index = page_data.get("page_index", 0)
+        for page_data in validated_sorted_page_records(raw_result.raw_output.get("pages")):
+            page_index = page_data["page_index"]
             text = page_data.get("text", "")
 
             pages.append(PageIR(page_index=page_index, markdown=text))

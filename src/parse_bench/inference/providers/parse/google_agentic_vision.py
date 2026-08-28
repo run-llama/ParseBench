@@ -6,13 +6,18 @@ import hashlib
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 
 from PIL import Image
 
-from parse_bench.inference.providers.base import ProviderPermanentError, ProviderTransientError
+from parse_bench.inference.providers.base import (
+    ProviderPermanentError,
+    ProviderRetryExhaustedError,
+    ProviderTransientError,
+)
 from parse_bench.inference.providers.parse._layout_utils import LABEL_MAP, items_to_markdown
 from parse_bench.schemas.parse_output import LayoutItemIR, LayoutSegmentIR, ParseLayoutPageIR
 
@@ -20,6 +25,18 @@ logger = logging.getLogger(__name__)
 
 TRANSIENT_ERROR_KEYWORDS = ("timeout", "connection", "network")
 RATE_LIMIT_ERROR_KEYWORDS = ("rate_limit", "rate limit", "429", "resource_exhausted")
+_TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+_STATUS_NAME_CODES = {
+    "request_timeout": 408,
+    "deadline_exceeded": 504,
+    "resource_exhausted": 429,
+    "internal": 500,
+    "internal_server_error": 500,
+    "bad_gateway": 502,
+    "unavailable": 503,
+    "service_unavailable": 503,
+    "gateway_timeout": 504,
+}
 
 CORE11_LABELS = [
     "Caption",
@@ -50,6 +67,7 @@ SYSTEM_PROMPT_AGENTIC_VISION = (
     "- data-label must be one of: Caption, Footnote, Formula, List-item, Page-footer, "
     "Page-header, Picture, Section-header, Table, Text, Title.\n"
     "- Every piece of content must be inside exactly one <div> wrapper.\n"
+    "- If and only if the page is visually blank, return exactly [] with no wrappers or other text.\n"
     "- Start from the full page image and preserve reading order from that full-page view.\n"
     "- First try to read and ground content from the full page image.\n"
     "- If you zoom, crop, rotate, or enhance the page using code execution, always convert the final box "
@@ -83,6 +101,7 @@ USER_PROMPT_AGENTIC_VISION_PREFIX = (
     "After inspection, return the wrapped markdown as assistant text. If you must use code for the final step, "
     "print only one raw triple-quoted string containing the wrapped markdown and nothing else.\n"
     "Output ONLY the wrapped content, no explanations.\n"
+    "For a visually blank page, output exactly [] and nothing else.\n"
 )
 
 RETRY_PROMPT_RECITATION = (
@@ -128,9 +147,9 @@ class AgenticVisionCacheInfo:
 
     name: str
     display_name: str
-    token_count: int
+    token_count: int | None
     ttl_seconds: int
-    storage_cost_usd: float
+    storage_cost_usd: float | None
     created: bool
 
 
@@ -412,6 +431,9 @@ def _normalize_bbox_2d(value: object) -> list[int]:
 
 def parse_agentic_layout_blocks(content: str) -> AgenticVisionPageResponse:
     """Parse wrapped layout blocks using Gemini-native y-first bbox ordering."""
+    if content.strip() == "[]":
+        return AgenticVisionPageResponse(raw_content="", items=[])
+
     raw_matches: list[tuple[int, list[int], str, str, str]] = []
 
     for match in _PATTERN_BBOX_FIRST.finditer(content):
@@ -454,7 +476,7 @@ def parse_page_response(response: Any) -> AgenticVisionPageResponse:
     errors: list[str] = []
     for payload in _candidate_layout_payloads(response):
         parsed = parse_agentic_layout_blocks(payload)
-        if parsed.items:
+        if parsed.items or payload.strip() == "[]":
             return parsed
         errors.append("No wrapped layout blocks found")
 
@@ -491,8 +513,19 @@ def build_layout_pages_from_agentic_items(
     page_number: int,
 ) -> tuple[str, list[ParseLayoutPageIR]]:
     """Convert wrapped Agentic Vision items to page markdown and ParseLayoutPageIR."""
-    if not items_data or not image_width or not image_height:
+    if not image_width or not image_height:
         return "", []
+
+    if not items_data:
+        return "", [
+            ParseLayoutPageIR(
+                page_number=page_number,
+                width=float(image_width),
+                height=float(image_height),
+                md="",
+                items=[],
+            )
+        ]
 
     markdown = items_to_markdown(items_data)
     layout_items: list[LayoutItemIR] = []
@@ -549,9 +582,9 @@ class GoogleAgenticVisionRunner:
         enable_explicit_context_cache: bool,
         context_cache_ttl_seconds: int,
         min_cacheable_tokens: int,
-        input_cost_per_million: float,
-        cache_hit_cost_per_million: float,
-        cache_storage_cost_per_million_token_hour: float,
+        input_cost_per_million: float | None,
+        cache_hit_cost_per_million: float | None,
+        cache_storage_cost_per_million_token_hour: float | None,
         expected_page_calls: int,
     ) -> None:
         self._client = client
@@ -568,6 +601,7 @@ class GoogleAgenticVisionRunner:
         self._expected_page_calls = expected_page_calls
         self._cache_info: AgenticVisionCacheInfo | None = None
         self._cache_error: str | None = None
+        self._cache_deleted = False
 
     @property
     def cache_info(self) -> AgenticVisionCacheInfo | None:
@@ -576,6 +610,23 @@ class GoogleAgenticVisionRunner:
     @property
     def cache_error(self) -> str | None:
         return self._cache_error
+
+    @property
+    def cache_deleted(self) -> bool:
+        return self._cache_deleted
+
+    def delete_prefix_cache(self) -> None:
+        """Delete the document-scoped server cache once, including failure paths."""
+        if self._cache_deleted or self._cache_info is None or not self._cache_info.name:
+            return
+        try:
+            self._client.caches.delete(name=self._cache_info.name)
+        except Exception as exc:  # cleanup must not replace the document outcome
+            logger.warning("Failed to delete Gemini context cache for Agentic Vision: %s", exc)
+            message = f"cache deletion failed: {exc}"
+            self._cache_error = f"{self._cache_error}; {message}" if self._cache_error else message
+        else:
+            self._cache_deleted = True
 
     def _maybe_create_prefix_cache(self) -> AgenticVisionCacheInfo | None:
         if self._cache_info is not None:
@@ -622,12 +673,14 @@ class GoogleAgenticVisionRunner:
             self._cache_error = str(exc)
             return None
 
-        token_count = int(getattr(getattr(cache, "usage_metadata", None), "total_token_count", 0) or 0)
+        usage_metadata = getattr(cache, "usage_metadata", None)
+        raw_token_count = getattr(usage_metadata, "total_token_count", None)
+        token_count = int(raw_token_count) if raw_token_count is not None else None
         ttl_hours = self._context_cache_ttl_seconds / 3600.0
         storage_cost_usd = (
             token_count * self._cache_storage_cost_per_million_token_hour * ttl_hours / 1_000_000
-            if token_count > 0
-            else 0.0
+            if token_count is not None and self._cache_storage_cost_per_million_token_hour is not None
+            else None
         )
         self._cache_info = AgenticVisionCacheInfo(
             name=str(getattr(cache, "name", "")),
@@ -684,7 +737,7 @@ class GoogleAgenticVisionRunner:
         image_mime_type: str,
         max_attempts: int = 3,
     ) -> AgenticVisionPageResult:
-        """Run one Agentic Vision page parse with retry on malformed final wrapped output."""
+        """Run one Agentic Vision page parse with the complete page retry budget."""
         cache_info = self._maybe_create_prefix_cache()
         use_cached_prefix = cache_info is not None
         cache_name = cache_info.name if cache_info is not None else None
@@ -726,7 +779,38 @@ class GoogleAgenticVisionRunner:
                     config=self._build_generation_config(cache_name),
                 )
             except Exception as exc:
-                raise classify_gemini_api_exception(exc) from exc
+                classified = classify_gemini_api_exception(exc)
+                last_error = str(classified)
+                api_calls.append(
+                    {
+                        "page_index": page_index,
+                        "attempt": attempt,
+                        "request": request_summary,
+                        "response": None,
+                        "response_parts": [],
+                        "usage": {},
+                        "final_text": "",
+                        "error": {
+                            "type": type(classified).__name__,
+                            "message": last_error,
+                        },
+                    }
+                )
+                if not isinstance(classified, ProviderTransientError):
+                    if isinstance(classified, ProviderPermanentError):
+                        classified.debug_payload = {
+                            "mode": "parse_with_layout_agentic_vision",
+                            "page_index": page_index,
+                            "page_width": width,
+                            "page_height": height,
+                            "image_mime_type": image_mime_type,
+                            "api_calls": api_calls,
+                            "last_error": last_error,
+                        }
+                    raise classified from exc
+                if attempt < max_attempts:
+                    time.sleep(2.0 * (2 ** (attempt - 1)))
+                continue
 
             usage = extract_usage_from_response(response)
             response_parts = extract_serialized_response_parts(response)
@@ -750,7 +834,6 @@ class GoogleAgenticVisionRunner:
                 "response_parts": response_parts,
                 "usage": usage,
                 "final_text": final_text,
-                "cost_usd": 0.0,
             }
             api_calls.append(call_record)
 
@@ -773,8 +856,8 @@ class GoogleAgenticVisionRunner:
 
             retry_instruction = build_retry_instruction(response, last_error, attempt=attempt)
 
-        raise ProviderPermanentError(
-            f"Failed to obtain valid Agentic Vision wrapped layout output after {max_attempts} attempts: {last_error}",
+        raise ProviderRetryExhaustedError(
+            f"Google Agentic Vision page {page_index + 1} failed after {max_attempts} attempts: {last_error}",
             debug_payload={
                 "mode": "parse_with_layout_agentic_vision",
                 "page_index": page_index,
@@ -791,29 +874,68 @@ def extract_usage_from_response(response: Any) -> dict[str, int]:
     """Extract all usage buckets relevant to Agentic Vision accounting."""
     meta = getattr(response, "usage_metadata", None)
     if meta is None:
-        return {
-            "input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "cached_content_tokens": 0,
-            "output_tokens": 0,
-            "thinking_tokens": 0,
-            "total_tokens": 0,
-        }
-    return {
-        "input_tokens": int(getattr(meta, "prompt_token_count", 0) or 0),
-        "tool_use_prompt_tokens": int(getattr(meta, "tool_use_prompt_token_count", 0) or 0),
-        "cached_content_tokens": int(getattr(meta, "cached_content_token_count", 0) or 0),
-        "output_tokens": int(getattr(meta, "candidates_token_count", 0) or 0),
-        "thinking_tokens": int(getattr(meta, "thoughts_token_count", 0) or 0),
-        "total_tokens": int(getattr(meta, "total_token_count", 0) or 0),
-    }
+        return {}
+    usage: dict[str, int] = {}
+    for key, attribute in (
+        ("input_tokens", "prompt_token_count"),
+        ("tool_use_prompt_tokens", "tool_use_prompt_token_count"),
+        ("cached_content_tokens", "cached_content_token_count"),
+        ("output_tokens", "candidates_token_count"),
+        ("thinking_tokens", "thoughts_token_count"),
+        ("total_tokens", "total_token_count"),
+    ):
+        value = getattr(meta, attribute, None)
+        if value is not None:
+            usage[key] = int(value)
+    return usage
 
 
 def classify_gemini_api_exception(exc: Exception) -> Exception:
     """Classify raw SDK exceptions into retryable provider errors when possible."""
+    status_code = _extract_gemini_status_code(exc)
+    if status_code == 429:
+        return cast(Exception, ProviderTransientError(f"Rate limited: {exc}"))
+    if status_code in _TRANSIENT_STATUS_CODES or (status_code is not None and status_code >= 500):
+        return cast(Exception, ProviderTransientError(f"Transient error calling Gemini API: {exc}"))
+    if status_code is not None and 400 <= status_code < 500:
+        return cast(Exception, ProviderPermanentError(f"Error calling Gemini API: {exc}"))
+
     error_str = str(exc).lower()
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return cast(Exception, ProviderTransientError(f"Transient error calling Gemini API: {exc}"))
     if any(keyword in error_str for keyword in TRANSIENT_ERROR_KEYWORDS):
-        return ProviderTransientError(f"Transient error calling Gemini API: {exc}")
+        return cast(Exception, ProviderTransientError(f"Transient error calling Gemini API: {exc}"))
     if any(keyword in error_str for keyword in RATE_LIMIT_ERROR_KEYWORDS):
-        return ProviderTransientError(f"Rate limited: {exc}")
-    return ProviderPermanentError(f"Error calling Gemini API: {exc}")
+        return cast(Exception, ProviderTransientError(f"Rate limited: {exc}"))
+    return cast(Exception, ProviderPermanentError(f"Error calling Gemini API: {exc}"))
+
+
+def _extract_gemini_status_code(exc: Exception) -> int | None:
+    """Extract an HTTP-like status from Google SDK and api_core exceptions."""
+    response = getattr(exc, "response", None)
+    candidates = [
+        getattr(exc, "status_code", None),
+        getattr(exc, "code", None),
+        getattr(exc, "status", None),
+        getattr(response, "status_code", None),
+        getattr(response, "status", None),
+    ]
+    for candidate in candidates:
+        if callable(candidate):
+            try:
+                candidate = candidate()
+            except TypeError:
+                continue
+        if candidate is None:
+            continue
+
+        raw_value = getattr(candidate, "value", candidate)
+        if isinstance(raw_value, int):
+            return raw_value
+        if isinstance(raw_value, str) and raw_value.isdigit():
+            return int(raw_value)
+
+        name = str(getattr(candidate, "name", candidate)).lower().replace("-", "_").replace(" ", "_")
+        if name in _STATUS_NAME_CODES:
+            return _STATUS_NAME_CODES[name]
+    return None

@@ -3,6 +3,7 @@
 import asyncio
 import concurrent.futures
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -11,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
@@ -48,6 +49,29 @@ from parse_bench.test_cases.schema import TestCase
 MAX_RETRIES = 5
 INITIAL_BACKOFF_S = 2.0  # seconds
 BACKOFF_MULTIPLIER = 2.0  # exponential backoff factor
+
+_RETRY_ADDITIVE_FIELDS = (
+    "credits_used",
+    "cost_usd",
+    "input_cost_usd",
+    "tool_use_prompt_cost_usd",
+    "cached_input_cost_usd",
+    "output_and_thinking_cost_usd",
+    "cache_storage_cost_usd",
+    "input_tokens",
+    "tool_use_prompt_tokens",
+    "cached_content_tokens",
+    "output_tokens",
+    "total_tokens",
+    "thinking_tokens",
+)
+_RETRY_PER_PAGE_FIELDS = {
+    "cost_per_page_usd": "cost_usd",
+    "input_tokens_per_page": "input_tokens",
+    "tool_use_prompt_tokens_per_page": "tool_use_prompt_tokens",
+    "cached_content_tokens_per_page": "cached_content_tokens",
+    "output_tokens_per_page": "output_tokens",
+}
 
 # Per-file timeout and retry configuration
 DEFAULT_PER_FILE_TIMEOUT_S = 600.0  # 10 minutes per file
@@ -237,29 +261,160 @@ class InferenceRunner:
         self,
         example_id: str,
         future: concurrent.futures.Future[Any],
-        *,
-        drain_timeout_seconds: float = 5.0,
-    ) -> None:
-        """Best-effort timeout cancel for synchronous retry loops."""
+    ) -> Any | None:
+        """Cancel cooperatively, drain the worker, and preserve a late outcome."""
         self._signal_cancel_and_cancel_future(example_id, future)
         try:
-            future.result(timeout=drain_timeout_seconds)
-        except (concurrent.futures.TimeoutError, concurrent.futures.CancelledError, Exception):
-            pass
+            return future.result()
+        except Exception:
+            return None
 
     async def _cancel_inflight_and_drain_async(
         self,
         example_id: str,
         future: concurrent.futures.Future[Any],
-        *,
-        drain_timeout_seconds: float = 5.0,
-    ) -> None:
-        """Best-effort timeout cancel for async retry loops without blocking the event loop."""
+    ) -> Any | None:
+        """Cancel cooperatively, await termination, and preserve a late outcome."""
         self._signal_cancel_and_cancel_future(example_id, future)
         try:
-            await asyncio.wait_for(asyncio.wrap_future(future), timeout=drain_timeout_seconds)
-        except (TimeoutError, concurrent.futures.CancelledError, asyncio.CancelledError, Exception):
-            pass
+            return await asyncio.shield(asyncio.wrap_future(future))
+        except asyncio.CancelledError:
+            if future.cancelled():
+                return None
+            raise
+        except Exception:
+            return None
+
+    @staticmethod
+    def _drained_outcome_is_retryable(outcome: Any) -> bool:
+        """Whether a cooperatively cancelled worker returned a retryable failure."""
+        if not isinstance(outcome, tuple) or len(outcome) != 3:
+            return False
+        error_info = outcome[2]
+        return (
+            isinstance(error_info, tuple)
+            and len(error_info) == 3
+            and error_info[2] in {"ProviderTransientError", "ProviderRateLimitError"}
+        )
+
+    @staticmethod
+    async def _cancel_child_tasks_and_wait(tasks: list[asyncio.Task[None]]) -> None:
+        """Cancel every batch child and wait for its provider worker to drain."""
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    @staticmethod
+    def _is_finite_number(value: object) -> TypeGuard[int | float]:
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+    def _attempt_stats_with_cost(self, error: ProviderError) -> dict[str, int | float]:
+        """Return public stats for one failed physical call, deriving model cost."""
+        stats = {key: value for key, value in dict(error.attempt_stats or {}).items() if self._is_finite_number(value)}
+        if "cost_usd" in stats:
+            return stats
+
+        pricing = getattr(self.provider, "_get_pricing", None)
+        if not callable(pricing):
+            return stats
+        try:
+            input_rate, output_rate = pricing()
+        except Exception:  # pragma: no cover - provider-specific defensive path
+            return stats
+        input_tokens = stats.get("input_tokens")
+        output_tokens = stats.get("output_tokens")
+        thinking_tokens = stats.get("thinking_tokens", 0)
+        if not self._is_finite_number(input_rate) or not self._is_finite_number(output_rate):
+            return stats
+        if not self._is_finite_number(input_tokens) or not self._is_finite_number(output_tokens):
+            return stats
+        if not self._is_finite_number(thinking_tokens):
+            return stats
+        stats["cost_usd"] = (input_tokens * input_rate + (output_tokens + thinking_tokens) * output_rate) / 1_000_000
+        return stats
+
+    def _merge_retry_attempts(
+        self,
+        raw_result: RawInferenceResult,
+        failed_attempts: list[dict[str, object]],
+    ) -> None:
+        """Merge runner-owned failures into the successful provider result."""
+        if not failed_attempts:
+            return
+
+        raw_output = raw_result.raw_output
+        existing = raw_output.get("api_attempts")
+        successful_attempts = (
+            [dict(attempt) for attempt in existing if isinstance(attempt, dict)] if isinstance(existing, list) else []
+        )
+        successful_call_count = raw_output.get("num_api_calls")
+        if not self._is_finite_number(successful_call_count):
+            successful_call_count = len(successful_attempts) or 1
+        if not successful_attempts:
+            successful_attempts = [
+                {
+                    "runner_attempt": len(failed_attempts) + 1,
+                    "status": "succeeded",
+                    "stats": {
+                        field: raw_output[field]
+                        for field in _RETRY_ADDITIVE_FIELDS
+                        if self._is_finite_number(raw_output.get(field))
+                    },
+                }
+            ]
+
+        failed_stats = [attempt["stats"] for attempt in failed_attempts]
+        for stat_field in _RETRY_ADDITIVE_FIELDS:
+            current = raw_output.get(stat_field)
+            prior_values = [stats.get(stat_field) if isinstance(stats, dict) else None for stats in failed_stats]
+            if self._is_finite_number(current) and all(self._is_finite_number(value) for value in prior_values):
+                raw_output[stat_field] = current + sum(prior_values)  # type: ignore[arg-type,operator]
+            elif stat_field in raw_output:
+                # A partial total is more misleading than an explicit omission.
+                del raw_output[stat_field]
+
+        raw_output["num_api_calls"] = len(failed_attempts) + int(successful_call_count)
+        raw_output["api_attempts"] = [*failed_attempts, *successful_attempts]
+
+        num_pages = raw_output.get("num_pages")
+        for per_page_field, total_field in _RETRY_PER_PAGE_FIELDS.items():
+            total = raw_output.get(total_field)
+            if self._is_finite_number(total) and self._is_finite_number(num_pages) and num_pages > 0:
+                raw_output[per_page_field] = total / num_pages
+            else:
+                raw_output.pop(per_page_field, None)
+
+    def _run_inference_with_retries(self, request: InferenceRequest) -> RawInferenceResult:
+        """Run a document provider and account every runner-owned API attempt."""
+        failed_attempts: list[dict[str, object]] = []
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                raw_result = self.provider.run_inference(self.pipeline, request)
+            except (ProviderTransientError, ProviderRateLimitError) as error:
+                failed_attempts.append(
+                    {
+                        "runner_attempt": attempt + 1,
+                        "status": "failed",
+                        "stats": self._attempt_stats_with_cost(error),
+                        "error_type": type(error).__name__,
+                        "error": str(error),
+                    }
+                )
+                if attempt == MAX_RETRIES:
+                    payload = dict(error.debug_payload or {})
+                    current_attempts = payload.get("attempts")
+                    payload["attempts"] = [
+                        *failed_attempts,
+                        *(current_attempts if isinstance(current_attempts, list) else []),
+                    ]
+                    error.debug_payload = payload
+                    raise
+                time.sleep(INITIAL_BACKOFF_S * (BACKOFF_MULTIPLIER**attempt))
+            else:
+                self._merge_retry_attempts(raw_result, failed_attempts)
+                return raw_result
+        raise AssertionError("unreachable")
 
     def _is_already_processed(self, example_id: str) -> bool:
         """Check if a file has already been processed."""
@@ -562,7 +717,7 @@ class InferenceRunner:
 
     def _process_document(
         self, pdf_path: Path, example_id: str, product_type: ProductType
-    ) -> tuple[RawInferenceResult | None, InferenceResult | None, str | None]:
+    ) -> tuple[RawInferenceResult | None, InferenceResult | None, str | tuple[str, str, str] | None]:
         """
         Process a single document (synchronous).
 
@@ -585,21 +740,7 @@ class InferenceRunner:
                 product_type=product_type,
             )
 
-            # Run inference with retry for transient / rate-limit errors
-            last_error: Exception | None = None
-            for attempt in range(MAX_RETRIES + 1):
-                try:
-                    raw_result = self.provider.run_inference(self.pipeline, request)
-                    break
-                except (ProviderTransientError, ProviderRateLimitError) as e:
-                    last_error = e
-                    if attempt < MAX_RETRIES:
-                        backoff = INITIAL_BACKOFF_S * (BACKOFF_MULTIPLIER**attempt)
-                        time.sleep(backoff)
-                    else:
-                        raise
-            else:
-                raise last_error  # type: ignore[misc]
+            raw_result = self._run_inference_with_retries(request)
 
             # Fetch parse jobLogs + extract token usage BEFORE normalize, so that
             # token fields land in the InferenceResult that evaluation reads.
@@ -628,12 +769,17 @@ class InferenceRunner:
             error_msg = f"Provider error: {str(e)}"
             if raw_result is not None:
                 self._save_result(raw_result, None)
+            debug_payload = getattr(e, "debug_payload", None)
+            if isinstance(debug_payload, dict):
+                debug_payload_path = self._save_error_debug_payload(example_id, debug_payload)
+                if debug_payload_path:
+                    error_msg += f" [debug payload: {debug_payload_path}]"
             error_traceback = traceback.format_exc()
             if self.use_rich and example_id in self.job_statuses:
                 self.job_statuses[example_id].status = "failed"
                 self.job_statuses[example_id].error = error_msg
                 self.job_statuses[example_id].completed_at = datetime.now()
-            return None, None, (error_msg, error_traceback, type(e).__name__)  # type: ignore[return-value]
+            return None, None, (error_msg, error_traceback, type(e).__name__)
         except Exception as e:
             import traceback
 
@@ -645,11 +791,11 @@ class InferenceRunner:
                 self.job_statuses[example_id].status = "failed"
                 self.job_statuses[example_id].error = error_msg
                 self.job_statuses[example_id].completed_at = datetime.now()
-            return None, None, (error_msg, error_traceback, type(e).__name__)  # type: ignore[return-value]
+            return None, None, (error_msg, error_traceback, type(e).__name__)
 
     def _process_test_case(
         self, test_case: TestCase, product_type: ProductType
-    ) -> tuple[RawInferenceResult | None, InferenceResult | None, str | None]:
+    ) -> tuple[RawInferenceResult | None, InferenceResult | None, str | tuple[str, str, str] | None]:
         """
         Process a single test case (synchronous).
 
@@ -679,21 +825,7 @@ class InferenceRunner:
                 config_override=getattr(test_case, "config", None),
             )
 
-            # Run inference with retry for transient / rate-limit errors
-            last_error: Exception | None = None
-            for attempt in range(MAX_RETRIES + 1):
-                try:
-                    raw_result = self.provider.run_inference(self.pipeline, request)
-                    break
-                except (ProviderTransientError, ProviderRateLimitError) as e:
-                    last_error = e
-                    if attempt < MAX_RETRIES:
-                        backoff = INITIAL_BACKOFF_S * (BACKOFF_MULTIPLIER**attempt)
-                        time.sleep(backoff)
-                    else:
-                        raise
-            else:
-                raise last_error  # type: ignore[misc]
+            raw_result = self._run_inference_with_retries(request)
 
             # Fetch parse jobLogs + extract token usage BEFORE normalize, so that
             # token fields land in the InferenceResult that evaluation reads.
@@ -733,7 +865,7 @@ class InferenceRunner:
                 self.job_statuses[test_case.test_id].status = "failed"
                 self.job_statuses[test_case.test_id].error = error_msg
                 self.job_statuses[test_case.test_id].completed_at = datetime.now()
-            return None, None, (error_msg, error_traceback, type(e).__name__)  # type: ignore[return-value]
+            return None, None, (error_msg, error_traceback, type(e).__name__)
         except Exception as e:
             import traceback
 
@@ -745,7 +877,7 @@ class InferenceRunner:
                 self.job_statuses[test_case.test_id].status = "failed"
                 self.job_statuses[test_case.test_id].error = error_msg
                 self.job_statuses[test_case.test_id].completed_at = datetime.now()
-            return None, None, (error_msg, error_traceback, type(e).__name__)  # type: ignore[return-value]
+            return None, None, (error_msg, error_traceback, type(e).__name__)
 
     def _run_files_sync(
         self,
@@ -975,7 +1107,13 @@ class InferenceRunner:
                     raw_result, normalized_result, error_info = future.result(timeout=self.per_file_timeout)
                     break  # Success (or handled provider error) - exit retry loop
                 except concurrent.futures.TimeoutError:
-                    self._cancel_inflight_and_drain(test_case.test_id, future)
+                    drained_outcome = self._cancel_inflight_and_drain(test_case.test_id, future)
+                    if drained_outcome is not None and (
+                        not self._drained_outcome_is_retryable(drained_outcome)
+                        or timeout_attempt == self.timeout_retries
+                    ):
+                        raw_result, normalized_result, error_info = drained_outcome
+                        break
                     remaining = self.timeout_retries - timeout_attempt
                     if remaining > 0:
                         print(
@@ -1115,7 +1253,13 @@ class InferenceRunner:
                     )
                     break  # Success (or handled provider error) - exit retry loop
                 except TimeoutError:
-                    await self._cancel_inflight_and_drain_async(test_case.test_id, future)
+                    drained_outcome = await self._cancel_inflight_and_drain_async(test_case.test_id, future)
+                    if drained_outcome is not None and (
+                        not self._drained_outcome_is_retryable(drained_outcome)
+                        or timeout_attempt == self.timeout_retries
+                    ):
+                        raw_result, normalized_result, error_info = drained_outcome
+                        break
                     remaining = self.timeout_retries - timeout_attempt
                     if remaining > 0:
                         print(
@@ -1135,6 +1279,9 @@ class InferenceRunner:
                             "TimeoutError",
                         )
                         raw_result, normalized_result = None, None
+                except asyncio.CancelledError:
+                    await self._cancel_inflight_and_drain_async(test_case.test_id, future)
+                    raise
 
             summary.total += 1
 
@@ -1215,7 +1362,13 @@ class InferenceRunner:
                     )
                     break  # Success (or handled provider error) - exit retry loop
                 except TimeoutError:
-                    await self._cancel_inflight_and_drain_async(example_id, future)
+                    drained_outcome = await self._cancel_inflight_and_drain_async(example_id, future)
+                    if drained_outcome is not None and (
+                        not self._drained_outcome_is_retryable(drained_outcome)
+                        or timeout_attempt == self.timeout_retries
+                    ):
+                        raw_result, normalized_result, error_info = drained_outcome
+                        break
                     remaining = self.timeout_retries - timeout_attempt
                     if remaining > 0:
                         print(f"  Timeout after {self.per_file_timeout}s for {example_id}, retrying ({remaining} left)")
@@ -1232,6 +1385,9 @@ class InferenceRunner:
                             "TimeoutError",
                         )
                         raw_result, normalized_result = None, None
+                except asyncio.CancelledError:
+                    await self._cancel_inflight_and_drain_async(example_id, future)
+                    raise
 
             summary.total += 1
 
@@ -1454,14 +1610,16 @@ class InferenceRunner:
 
         # Create tasks
         tasks = [
-            self._process_with_semaphore(
-                semaphore,
-                pdf_path,
-                example_id_fn(pdf_path),
-                product_type,
-                summary,
-                progress,
-                task_id,
+            asyncio.create_task(
+                self._process_with_semaphore(
+                    semaphore,
+                    pdf_path,
+                    example_id_fn(pdf_path),
+                    product_type,
+                    summary,
+                    progress,
+                    task_id,
+                )
             )
             for pdf_path in pdf_files
         ]
@@ -1560,6 +1718,9 @@ class InferenceRunner:
                                     status_table,
                                 )
                             )
+                except asyncio.CancelledError:
+                    await self._cancel_child_tasks_and_wait(tasks)
+                    raise
                 finally:
                     # Cancel background UI update task
                     ui_update_task.cancel()
@@ -1582,17 +1743,21 @@ class InferenceRunner:
                 )
         else:
             # Fallback to simple processing
-            for coro in asyncio.as_completed(tasks):
-                try:
-                    await coro
-                except Exception as e:
-                    summary.failed += 1
-                    summary.errors.append(
-                        {
-                            "error": f"Task execution error: {str(e)}",
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                    )
+            try:
+                for coro in asyncio.as_completed(tasks):
+                    try:
+                        await coro
+                    except Exception as e:
+                        summary.failed += 1
+                        summary.errors.append(
+                            {
+                                "error": f"Task execution error: {str(e)}",
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
+            except asyncio.CancelledError:
+                await self._cancel_child_tasks_and_wait(tasks)
+                raise
 
         # Finalize summary
         summary.completed_at = datetime.now()
@@ -1714,13 +1879,15 @@ class InferenceRunner:
 
         # Create tasks
         tasks = [
-            self._process_test_case_with_semaphore(
-                semaphore,
-                test_case,
-                product_type,
-                summary,
-                progress,
-                task_id,
+            asyncio.create_task(
+                self._process_test_case_with_semaphore(
+                    semaphore,
+                    test_case,
+                    product_type,
+                    summary,
+                    progress,
+                    task_id,
+                )
             )
             for test_case in test_cases
         ]
@@ -1817,6 +1984,9 @@ class InferenceRunner:
                                     status_table,
                                 )
                             )
+                except asyncio.CancelledError:
+                    await self._cancel_child_tasks_and_wait(tasks)
+                    raise
                 finally:
                     # Cancel background UI update task
                     ui_update_task.cancel()
@@ -1847,37 +2017,41 @@ class InferenceRunner:
             # Print every 10% or every 10 items, whichever is more frequent
             progress_interval = max(10, total // 10)
 
-            for coro in asyncio.as_completed(tasks):
-                try:
-                    await coro
-                    completed_count += 1
+            try:
+                for coro in asyncio.as_completed(tasks):
+                    try:
+                        await coro
+                        completed_count += 1
 
-                    # Print progress periodically
-                    if completed_count - last_progress_print >= progress_interval or completed_count == total:
-                        percentage = (completed_count / total) * 100
-                        print(
-                            f"Progress: {completed_count}/{total} ({percentage:.1f}%) - "
-                            f"Successful: {summary.successful}, Failed: {summary.failed}"
+                        # Print progress periodically
+                        if completed_count - last_progress_print >= progress_interval or completed_count == total:
+                            percentage = (completed_count / total) * 100
+                            print(
+                                f"Progress: {completed_count}/{total} ({percentage:.1f}%) - "
+                                f"Successful: {summary.successful}, Failed: {summary.failed}"
+                            )
+                            last_progress_print = completed_count
+                    except Exception as e:
+                        summary.failed += 1
+                        completed_count += 1
+                        summary.errors.append(
+                            {
+                                "error": f"Task execution error: {str(e)}",
+                                "timestamp": datetime.now().isoformat(),
+                            }
                         )
-                        last_progress_print = completed_count
-                except Exception as e:
-                    summary.failed += 1
-                    completed_count += 1
-                    summary.errors.append(
-                        {
-                            "error": f"Task execution error: {str(e)}",
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                    )
 
-                    # Print progress on error too
-                    if completed_count - last_progress_print >= progress_interval or completed_count == total:
-                        percentage = (completed_count / total) * 100
-                        print(
-                            f"Progress: {completed_count}/{total} ({percentage:.1f}%) - "
-                            f"Successful: {summary.successful}, Failed: {summary.failed}"
-                        )
-                        last_progress_print = completed_count
+                        # Print progress on error too
+                        if completed_count - last_progress_print >= progress_interval or completed_count == total:
+                            percentage = (completed_count / total) * 100
+                            print(
+                                f"Progress: {completed_count}/{total} ({percentage:.1f}%) - "
+                                f"Successful: {summary.successful}, Failed: {summary.failed}"
+                            )
+                            last_progress_print = completed_count
+            except asyncio.CancelledError:
+                await self._cancel_child_tasks_and_wait(tasks)
+                raise
 
             # Print final summary
             print(f"\nCompleted processing {total} test cases:")

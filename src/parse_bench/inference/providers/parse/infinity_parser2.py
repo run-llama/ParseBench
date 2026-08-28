@@ -1,11 +1,10 @@
 """Provider for Infinity-Parser2 PARSE via infinity_parser2 SDK with vLLM server."""
 
-from datetime import datetime
 import json
-import logging
-from pathlib import Path
 import re
 import traceback
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from pdf2image import convert_from_path
@@ -17,8 +16,13 @@ from parse_bench.inference.providers.base import (
     ProviderPermanentError,
     ProviderTransientError,
 )
+from parse_bench.inference.providers.parse._multipage_image import (
+    close_derived_images,
+    normalize_pdf_pages,
+    run_pdf_pages,
+)
 from parse_bench.inference.providers.registry import register_provider
-from parse_bench.schemas.parse_output import ParseLayoutPageIR, ParseOutput, PageIR
+from parse_bench.schemas.parse_output import PageIR, ParseLayoutPageIR, ParseOutput
 from parse_bench.schemas.pipeline import PipelineSpec
 from parse_bench.schemas.pipeline_io import (
     InferenceRequest,
@@ -26,8 +30,6 @@ from parse_bench.schemas.pipeline_io import (
     RawInferenceResult,
 )
 from parse_bench.schemas.product import ProductType
-
-logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL_NAME = "infly/Infinity-Parser2-Flash"
 
@@ -72,6 +74,8 @@ class InfinityParser2Provider(Provider):
         - temperature (float, default=0.0): Sampling temperature
         - deep_parsing_mode (bool, default=True): Parse figure content.
     """
+
+    PDF_RENDER_DPI = 300
 
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         super().__init__(provider_name, base_config)
@@ -126,25 +130,30 @@ class InfinityParser2Provider(Provider):
                 parse_kwargs["temperature"] = self._temperature
 
             pil_image, page_width, page_height = load_image(file_path)
-            result = self._parser.parse(pil_image, **parse_kwargs)
+            try:
+                result = self._parser.parse(pil_image, **parse_kwargs)
 
-            if self._deep_parsing_mode:
-                result = self._apply_deep_parsing(result, pil_image)
+                if self._deep_parsing_mode:
+                    result = self._apply_deep_parsing(result, pil_image)
 
-            return {
-                "result": result,
-                "_config": {
-                    "model_name": self._model_name,
-                    "backend": "vllm-server",
-                    "api_url": self._api_url,
-                    "task_type": self._task_type,
-                    "output_format": self._output_format,
-                    "batch_size": self._batch_size,
-                    "page_width": page_width,
-                    "page_height": page_height,
-                },
-            }
+                return {
+                    "result": result,
+                    "_config": {
+                        "model_name": self._model_name,
+                        "backend": "vllm-server",
+                        "api_url": self._api_url,
+                        "task_type": self._task_type,
+                        "output_format": self._output_format,
+                        "batch_size": self._batch_size,
+                        "page_width": page_width,
+                        "page_height": page_height,
+                    },
+                }
+            finally:
+                pil_image.close()
 
+        except (ProviderPermanentError, ProviderTransientError, ProviderConfigError):
+            raise
         except Exception as e:
             error_str = str(e).lower()
             transient_keywords = ["timeout", "network", "connection", "cuda", "out of memory", "oom"]
@@ -153,6 +162,15 @@ class InfinityParser2Provider(Provider):
             raise ProviderPermanentError(f"Error parsing document: {e}") from e
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
+        multipage_result = run_pdf_pages(
+            pipeline,
+            request,
+            dpi=InfinityParser2Provider.PDF_RENDER_DPI,
+            run_single_image=self.run_inference,
+        )
+        if multipage_result is not None:
+            return multipage_result
+
         if request.product_type != ProductType.PARSE:
             raise ProviderPermanentError(
                 f"InfinityParser2Provider only supports PARSE product type, got {request.product_type}"
@@ -239,6 +257,27 @@ class InfinityParser2Provider(Provider):
             "layout_segments": [layout_seg],
         }
 
+    @staticmethod
+    def _decode_layout_elements(
+        result: Any,
+        *,
+        context: str,
+        allow_empty: bool = False,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(result, str) or not result.strip():
+            raise ProviderPermanentError(f"{context} is empty or is not JSON text")
+        try:
+            decoded = json.loads(result)
+        except json.JSONDecodeError as exc:
+            raise ProviderPermanentError(f"{context} is not valid JSON: {exc}") from exc
+        if not isinstance(decoded, list):
+            raise ProviderPermanentError(f"{context} must decode to a list of layout elements")
+        if not decoded and not allow_empty:
+            raise ProviderPermanentError(f"{context} contains no layout elements")
+        if any(not isinstance(element, dict) for element in decoded):
+            raise ProviderPermanentError(f"{context} contains a non-object layout element")
+        return decoded
+
     def _apply_deep_parsing(
         self,
         result: str,
@@ -250,46 +289,63 @@ class InfinityParser2Provider(Provider):
         ``pil_image``, re-parses the cropped images with a custom table-extraction prompt,
         and overwrites ``elem["text"]`` in place before serializing back to JSON.
 
-        Returns the (possibly modified) JSON string.
+        Returns the modified JSON string. Any configured deep-parsing failure
+        aborts inference rather than silently substituting the shallow result.
         """
         try:
-            elements: list[dict] = json.loads(result)
-            if not isinstance(elements, list):
+            elements = self._decode_layout_elements(
+                result,
+                context="InfinityParser2 deep-parsing input",
+                allow_empty=True,
+            )
+
+            if not elements:
                 return result
 
-            figure_elements = [
-                elem for elem in elements
-                if elem.get("category", "").strip().lower() == "figure"
-            ]
+            figure_elements = [elem for elem in elements if elem.get("category", "").strip().lower() == "figure"]
             if not figure_elements:
                 return result
 
-            pil_figure_images = [
-                pil_image.crop(
-                    (
-                        max(0, int(elem["bbox"][0])),
-                        max(0, int(elem["bbox"][1])),
-                        min(pil_image.width, int(elem["bbox"][2])),
-                        min(pil_image.height, int(elem["bbox"][3])),
+            with close_derived_images(pil_image) as track:
+                pil_figure_images = [
+                    track(
+                        pil_image.crop(
+                            (
+                                max(0, int(elem["bbox"][0])),
+                                max(0, int(elem["bbox"][1])),
+                                min(pil_image.width, int(elem["bbox"][2])),
+                                min(pil_image.height, int(elem["bbox"][3])),
+                            )
+                        )
                     )
-                )
-                for elem in figure_elements
-            ]
+                    for elem in figure_elements
+                ]
 
-            deep_parse_kwargs = {
-                "task_type": "custom",
-                "custom_prompt": "please convert the image to a markdown table",
-                "max_new_tokens": 2048,
-            }
-            deep_results = [self._parser.parse(img, **deep_parse_kwargs) for img in pil_figure_images]
-            for elem, deep_result in zip(figure_elements, deep_results):
-                elem["text"] = deep_result
+                deep_parse_kwargs = {
+                    "task_type": "custom",
+                    "custom_prompt": "please convert the image to a markdown table",
+                    "max_new_tokens": 2048,
+                }
+                for figure_index, (elem, figure_image) in enumerate(
+                    zip(figure_elements, pil_figure_images, strict=True), start=1
+                ):
+                    deep_result = self._parser.parse(figure_image, **deep_parse_kwargs)
+                    if not isinstance(deep_result, str) or not deep_result.strip():
+                        raise ProviderPermanentError(
+                            f"InfinityParser2 deep response for figure {figure_index} is empty or invalid"
+                        )
+                    elem["text"] = deep_result
 
             return json.dumps(elements)
 
-        except Exception:
-            logger.exception("Deep parsing pass failed; returning shallow parse result")
-            return result
+        except (ProviderPermanentError, ProviderTransientError, ProviderConfigError):
+            raise
+        except Exception as e:
+            error_str = str(e).lower()
+            transient_keywords = ["timeout", "network", "connection", "cuda", "out of memory", "oom"]
+            if any(keyword in error_str for keyword in transient_keywords):
+                raise ProviderTransientError(f"Error during deep parsing (GPU/memory): {e}") from e
+            raise ProviderPermanentError(f"Error during deep parsing: {e}") from e
 
     def _normalize(self, raw_result: RawInferenceResult) -> ParseOutput:
         """Normalize JSON layout result into ParseOutput with pages, layout_pages, and markdown."""
@@ -300,24 +356,23 @@ class InfinityParser2Provider(Provider):
         page_width = raw_result.raw_output["_config"]["page_width"]
         page_height = raw_result.raw_output["_config"]["page_height"]
 
-        # Load elements
-        try:
-            elements: list[dict] = json.loads(result_str)
-            if not isinstance(elements, list):
-                elements = []
-        except json.JSONDecodeError:
-            elements = []
+        elements = self._decode_layout_elements(
+            result_str,
+            context="InfinityParser2 result",
+            allow_empty=True,
+        )
 
         # Group elements by page
-        pages_dict: dict[int, list[dict]] = {}
-        for elem in elements:
+        pages_dict: dict[int, list[dict]] = {1: []} if not elements else {}
+        for element_index, elem in enumerate(elements):
             page_num = elem.get("page", 1)
+            if not isinstance(page_num, int) or isinstance(page_num, bool) or page_num < 1:
+                raise ProviderPermanentError(
+                    f"InfinityParser2 layout element {element_index} has invalid page: {page_num!r}"
+                )
             if page_num not in pages_dict:
                 pages_dict[page_num] = []
             pages_dict[page_num].append(elem)
-
-        if not pages_dict:
-            pages_dict = {1: []}
 
         if len(pages_dict) != 1:
             raise ProviderPermanentError(
@@ -386,12 +441,21 @@ class InfinityParser2Provider(Provider):
         )
 
     def normalize(self, raw_result: RawInferenceResult) -> InferenceResult:
+        multipage_result = normalize_pdf_pages(raw_result, normalize_single_image=self.normalize)
+        if multipage_result is not None:
+            return multipage_result
+
         if raw_result.product_type != ProductType.PARSE:
             raise ProviderPermanentError(
                 f"InfinityParser2Provider only supports PARSE product type, got {raw_result.product_type}"
             )
 
-        output = self._normalize(raw_result)
+        try:
+            output = self._normalize(raw_result)
+        except (ProviderPermanentError, ProviderTransientError, ProviderConfigError):
+            raise
+        except Exception as exc:
+            raise ProviderPermanentError(f"Invalid InfinityParser2 normalized result: {exc}") from exc
 
         return InferenceResult(
             request=raw_result.request,
@@ -416,12 +480,22 @@ def load_image(file_path: str) -> tuple[PILImage.Image, float, float]:
     """
     path = Path(file_path)
     if path.suffix.lower() == ".pdf":
-        images = convert_from_path(str(path), dpi=300, first_page=1, last_page=1)
+        images = convert_from_path(
+            str(path),
+            dpi=InfinityParser2Provider.PDF_RENDER_DPI,
+            first_page=1,
+            last_page=1,
+        )
         if not images:
             raise ProviderPermanentError(f"Failed to render PDF page: {file_path}")
-        pil_image = images[0].convert("RGB")
+        try:
+            pil_image = images[0].convert("RGB")
+        finally:
+            for image in images:
+                image.close()
     else:
-        pil_image = PILImage.open(str(path)).convert("RGB")
+        with PILImage.open(str(path)) as image:
+            pil_image = image.convert("RGB")
 
     width, height = pil_image.size
     return pil_image, float(width), float(height)
@@ -430,6 +504,7 @@ def load_image(file_path: str) -> tuple[PILImage.Image, float, float]:
 # =============================================================================
 # Postprocess for chart2table
 # =============================================================================
+
 
 def _is_valid_md_table(table_text: str) -> bool:
     """Check if a markdown table is valid (non-empty)."""
@@ -544,6 +619,7 @@ def _convert_nonstandard_table(text: str) -> str:
 # Postprocess for HTML table header
 # =============================================================================
 
+
 def _is_year_cell(text: str) -> bool:
     """Return True if text looks like a date/year (yyyy, yyyymm, yyyymmdd, etc.)."""
     text = text.strip()
@@ -582,8 +658,7 @@ def _determine_header_row_count(rows: list) -> int:
         return 0
 
     def non_empty_cells(row):
-        return [td.get_text(strip=True) for td in row.find_all("td", recursive=False)
-                if td.get_text(strip=True)]
+        return [td.get_text(strip=True) for td in row.find_all("td", recursive=False) if td.get_text(strip=True)]
 
     def stats(row_list):
         """Return (pure_text_count, pure_number_count, total) for a list of rows."""
@@ -623,15 +698,15 @@ def _determine_header_row_count(rows: list) -> int:
     best_i = -1
     best_score = -1.0
     for i in range(3):
-        header_rows = rows[:i + 1]
-        data_rows = rows[i + 1:]
+        header_rows = rows[: i + 1]
+        data_rows = rows[i + 1 :]
         if not header_rows or not data_rows:
             continue
         header_text, header_num, header_total = stats(header_rows)
         data_text, data_num, data_total = stats(data_rows)
         if header_total == 0 or data_total == 0:
             continue
-        if (header_text / header_total >= 0.5 and data_num / data_total >= 0.5):
+        if header_text / header_total >= 0.5 and data_num / data_total >= 0.5:
             score = header_text / header_total + data_num / data_total
             if score > best_score:
                 best_score = score

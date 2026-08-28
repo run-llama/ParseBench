@@ -30,6 +30,11 @@ def register_provider(provider_name: str) -> Callable[[type[Provider]], type[Pro
     return decorator
 
 
+def registered_providers() -> dict[str, type[Provider]]:
+    """Return a snapshot of the authoritative runtime provider registry."""
+    return dict(_PROVIDER_REGISTRY)
+
+
 def create_provider(pipeline: PipelineSpec) -> Provider:
     """
     Instantiate a Provider for the given PipelineSpec.

@@ -17,6 +17,7 @@ from parse_bench.inference.providers.base import (
     ProviderPermanentError,
     ProviderTransientError,
 )
+from parse_bench.inference.providers.parse._multipage_image import normalize_pdf_pages, run_pdf_pages
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import ParseOutput
 from parse_bench.schemas.pipeline import PipelineSpec
@@ -57,6 +58,8 @@ class PaddleOCRProvider(Provider):
         - dpi (int, default=150): DPI for PDF to image conversion
     """
 
+    PDF_RENDER_DPI = 150
+
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         """
         Initialize the PaddleOCR provider.
@@ -84,7 +87,7 @@ class PaddleOCRProvider(Provider):
             raise ProviderConfigError(f"Invalid task '{self._task}'. Must be one of: {list(TASK_PROMPTS.keys())}")
 
         self._timeout = self.base_config.get("timeout", 600)
-        self._dpi = self.base_config.get("dpi", 150)
+        self._dpi = self.base_config.get("dpi", self.PDF_RENDER_DPI)
 
         # Model name sent to the vLLM server. Defaults to the 1.5 model; override
         # via the ``served_model_name`` key for other releases (e.g. PaddleOCR-VL-1.6-0.9B).
@@ -261,6 +264,10 @@ class PaddleOCRProvider(Provider):
         :return: Raw inference result
         :raises ProviderError: For any provider-related failures
         """
+        multipage_result = run_pdf_pages(pipeline, request, dpi=self._dpi, run_single_image=self.run_inference)
+        if multipage_result is not None:
+            return multipage_result
+
         if request.product_type != ProductType.PARSE:
             raise ProviderPermanentError(
                 f"PaddleOCRProvider only supports PARSE product type, got {request.product_type}"
@@ -285,53 +292,26 @@ class PaddleOCRProvider(Provider):
             )
 
         try:
-            # Run async inference
             raw_output = asyncio.run(self._run_inference_async(image_bytes))
+        except (ProviderPermanentError, ProviderTransientError):
+            raise
+        except (TimeoutError, aiohttp.ClientError) as exc:
+            raise ProviderTransientError(f"PaddleOCR request failed: {exc}") from exc
+        except Exception as exc:
+            raise ProviderPermanentError(f"Unexpected error during PaddleOCR inference: {exc}") from exc
 
-            completed_at = datetime.now()
-            latency_ms = int((completed_at - started_at).total_seconds() * 1000)
-
-            return RawInferenceResult(
-                request=request,
-                pipeline=pipeline,
-                pipeline_name=pipeline.pipeline_name,
-                product_type=request.product_type,
-                raw_output=raw_output,
-                started_at=started_at,
-                completed_at=completed_at,
-                latency_in_ms=latency_ms,
-            )
-
-        except (TimeoutError, ProviderPermanentError, ProviderTransientError, Exception) as e:
-            # Return empty result with error info instead of failing
-            # This allows workflow to continue while tracking the error
-            completed_at = datetime.now()
-            latency_ms = int((completed_at - started_at).total_seconds() * 1000)
-
-            error_msg = str(e)
-            if isinstance(e, asyncio.TimeoutError):
-                error_msg = f"Request timed out after {self._timeout} seconds"
-
-            return RawInferenceResult(
-                request=request,
-                pipeline=pipeline,
-                pipeline_name=pipeline.pipeline_name,
-                product_type=request.product_type,
-                raw_output={
-                    "markdown": "",
-                    "_error": error_msg,
-                    "_error_type": type(e).__name__,
-                    "_config": {
-                        "server_url": self._server_url,
-                        "api_format": self._api_format,
-                        "task": self._task,
-                        "dpi": self._dpi,
-                    },
-                },
-                started_at=started_at,
-                completed_at=completed_at,
-                latency_in_ms=latency_ms,
-            )
+        completed_at = datetime.now()
+        latency_ms = int((completed_at - started_at).total_seconds() * 1000)
+        return RawInferenceResult(
+            request=request,
+            pipeline=pipeline,
+            pipeline_name=pipeline.pipeline_name,
+            product_type=request.product_type,
+            raw_output=raw_output,
+            started_at=started_at,
+            completed_at=completed_at,
+            latency_in_ms=latency_ms,
+        )
 
     @staticmethod
     def _sanitize_html_attributes(markdown: str) -> str:
@@ -461,6 +441,10 @@ class PaddleOCRProvider(Provider):
         :return: Inference result with both raw and normalized outputs
         :raises ProviderError: For any normalization failures
         """
+        multipage_result = normalize_pdf_pages(raw_result, normalize_single_image=self.normalize)
+        if multipage_result is not None:
+            return multipage_result
+
         if raw_result.product_type != ProductType.PARSE:
             raise ProviderPermanentError(
                 f"PaddleOCRProvider only supports PARSE product type, got {raw_result.product_type}"

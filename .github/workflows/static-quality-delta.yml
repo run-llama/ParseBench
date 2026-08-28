@@ -1,0 +1,35 @@
+name: Static quality delta
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  static-quality-delta:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install quality tooling and provider dependencies
+        run: uv sync --extra dev --extra runners
+
+      - name: Fetch baseline
+        run: git fetch --no-tags origin main:refs/remotes/origin/main
+
+      - name: Enforce static quality delta
+        run: uv run python scripts/check_static_quality_delta.py --baseline origin/main

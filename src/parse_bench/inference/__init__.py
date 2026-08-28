@@ -11,9 +11,10 @@ from parse_bench.inference.providers.base import (
     ProviderError,
     ProviderPermanentError,
     ProviderRateLimitError,
+    ProviderRetryExhaustedError,
     ProviderTransientError,
 )
-from parse_bench.inference.providers.registry import create_provider, register_provider
+from parse_bench.inference.providers.registry import create_provider, register_provider, registered_providers
 from parse_bench.inference.runner import InferenceRunner, RunSummary
 
 __all__ = [
@@ -22,9 +23,11 @@ __all__ = [
     "ProviderError",
     "ProviderPermanentError",
     "ProviderRateLimitError",
+    "ProviderRetryExhaustedError",
     "ProviderTransientError",
     "create_provider",
     "register_provider",
+    "registered_providers",
     "InferenceRunner",
     "RunSummary",
     "get_pipeline",

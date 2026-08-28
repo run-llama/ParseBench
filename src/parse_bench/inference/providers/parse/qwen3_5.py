@@ -28,6 +28,7 @@ from parse_bench.inference.providers.base import (
     ProviderPermanentError,
     ProviderTransientError,
 )
+from parse_bench.inference.providers.parse._multipage_image import normalize_pdf_pages, run_pdf_pages
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import (
     LayoutItemIR,
@@ -137,6 +138,8 @@ class Qwen35Provider(Provider):
         - api_key_env (str, default="VLLM_API_KEY"): Env var for API key
     """
 
+    PDF_RENDER_DPI = 150
+
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         super().__init__(provider_name, base_config)
 
@@ -148,7 +151,7 @@ class Qwen35Provider(Provider):
         self._model = self.base_config.get("model", DEFAULT_SERVED_MODEL_NAME)
         self._prompt_mode = self.base_config.get("prompt_mode", "parse")
         self._timeout = self.base_config.get("timeout", 600)
-        self._dpi = self.base_config.get("dpi", 150)
+        self._dpi = self.base_config.get("dpi", self.PDF_RENDER_DPI)
         self._max_tokens = self.base_config.get("max_tokens", 16384)
         self._temperature = self.base_config.get("temperature", 0.1)
 
@@ -183,8 +186,8 @@ class Qwen35Provider(Provider):
         from PIL import Image
 
         try:
-            img = Image.open(file_path)
-            w, h = img.size
+            with Image.open(file_path) as img:
+                w, h = img.size
             return file_path.read_bytes(), w, h
         except Exception as e:
             raise ProviderPermanentError(f"Error reading image file: {e}") from e
@@ -334,6 +337,10 @@ class Qwen35Provider(Provider):
             }
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
+        multipage_result = run_pdf_pages(pipeline, request, dpi=self._dpi, run_single_image=self.run_inference)
+        if multipage_result is not None:
+            return multipage_result
+
         if request.product_type != ProductType.PARSE:
             raise ProviderPermanentError(f"Qwen35Provider only supports PARSE, got {request.product_type}")
 
@@ -463,6 +470,10 @@ class Qwen35Provider(Provider):
     # ------------------------------------------------------------------
 
     def normalize(self, raw_result: RawInferenceResult) -> InferenceResult:
+        multipage_result = normalize_pdf_pages(raw_result, normalize_single_image=self.normalize)
+        if multipage_result is not None:
+            return multipage_result
+
         if raw_result.product_type != ProductType.PARSE:
             raise ProviderPermanentError(f"Qwen35Provider only supports PARSE, got {raw_result.product_type}")
 

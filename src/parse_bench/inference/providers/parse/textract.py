@@ -2,14 +2,20 @@
 
 import os
 from datetime import datetime
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from parse_bench.inference.providers.base import (
     Provider,
     ProviderConfigError,
     ProviderPermanentError,
+    ProviderRetryExhaustedError,
     ProviderTransientError,
+)
+from parse_bench.inference.providers.parse._multipage_image import (
+    open_document_page_images,
+    run_page_with_retries,
 )
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import (
@@ -55,6 +61,8 @@ class TextractProvider(Provider):
     Tables are converted to HTML to preserve their visual structure.
     """
 
+    PDF_RENDER_DPI = 300
+
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         """
         Initialize the provider.
@@ -92,6 +100,7 @@ class TextractProvider(Provider):
         # Initialize boto3 client
         try:
             import boto3
+            from botocore.config import Config
         except ImportError as e:
             raise ProviderConfigError("boto3 package not installed. Run: pip install boto3") from e
 
@@ -100,6 +109,7 @@ class TextractProvider(Provider):
             aws_access_key_id=self._aws_access_key_id,
             aws_secret_access_key=self._aws_secret_access_key,
             region_name=self._aws_region,
+            config=Config(retries={"total_max_attempts": 1, "mode": "standard"}),
         )
 
     # Textract synchronous API limits
@@ -122,35 +132,56 @@ class TextractProvider(Provider):
 
         from PIL import Image
 
-        # Step 1: Resize if dimensions exceed limit
-        width, height = image.size
-        if width > self._MAX_DIMENSION or height > self._MAX_DIMENSION:
-            scale = min(self._MAX_DIMENSION / width, self._MAX_DIMENSION / height)
-            new_width = int(width * scale)
-            new_height = int(height * scale)
-            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        original = image
+        base = image
+        candidate = None
+        try:
+            # Step 1: Resize if dimensions exceed limit
+            width, height = base.size
+            if width > self._MAX_DIMENSION or height > self._MAX_DIMENSION:
+                scale = min(self._MAX_DIMENSION / width, self._MAX_DIMENSION / height)
+                new_width = int(width * scale)
+                new_height = int(height * scale)
+                base = base.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
-        # Step 2: Try PNG first
-        img_buffer = io.BytesIO()
-        image.save(img_buffer, format="PNG", optimize=True)
-        img_bytes = img_buffer.getvalue()
-
-        # Step 3: If still too large, progressively reduce size
-        scale = 0.9
-        while len(img_bytes) > self._TARGET_BYTES and scale > 0.3:
-            new_width = int(image.size[0] * scale)
-            new_height = int(image.size[1] * scale)
-            resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-
+            # Step 2: Try PNG first
             img_buffer = io.BytesIO()
-            resized.save(img_buffer, format="PNG", optimize=True)
+            base.save(img_buffer, format="PNG", optimize=True)
             img_bytes = img_buffer.getvalue()
 
-            if len(img_bytes) <= self._TARGET_BYTES:
-                break
-            scale *= 0.9
+            # Step 3: If still too large, progressively reduce size
+            scale = 0.9
+            while len(img_bytes) > self._TARGET_BYTES and scale > 0.3:
+                if candidate is not None:
+                    candidate.close()
+                    candidate = None
+                new_width = int(base.size[0] * scale)
+                new_height = int(base.size[1] * scale)
+                resized = base.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                try:
+                    img_buffer = io.BytesIO()
+                    resized.save(img_buffer, format="PNG", optimize=True)
+                    img_bytes = img_buffer.getvalue()
+                except Exception:
+                    resized.close()
+                    raise
 
-        return img_bytes
+                candidate = resized
+
+                if len(img_bytes) <= self._TARGET_BYTES:
+                    break
+                scale *= 0.9
+
+            if len(img_bytes) > self._MAX_BYTES:
+                raise ProviderPermanentError(
+                    f"Textract image remains above the {self._MAX_BYTES}-byte API limit after resizing"
+                )
+            return img_bytes
+        finally:
+            if candidate is not None:
+                candidate.close()
+            if base is not original:
+                base.close()
 
     def _analyze_document(self, file_path: str) -> dict[str, Any]:
         """
@@ -214,7 +245,7 @@ class TextractProvider(Provider):
         except Exception as e:
             raise ProviderTransientError(f"Unexpected error calling Textract: {e}") from e
 
-    def _analyze_multipage_document(self, file_path: str) -> dict[str, Any]:
+    def _analyze_multipage_document(self, file_path: str) -> tuple[dict[str, Any], list[dict[str, object]]]:
         """
         Analyze a multi-page document using AWS Textract async API.
 
@@ -230,66 +261,86 @@ class TextractProvider(Provider):
 
         # For images, use direct synchronous API
         if suffix in {".png", ".jpg", ".jpeg", ".tiff", ".tif"}:
-            return self._analyze_document(file_path)
-
-        # For PDFs, convert each page to image and process
-        try:
-            from pdf2image import convert_from_path
-        except ImportError as e:
-            raise ProviderConfigError("pdf2image package not installed. Run: pip install pdf2image") from e
-
-        try:
-            images = convert_from_path(file_path, dpi=300)
-        except Exception as e:
-            raise ProviderPermanentError(f"Failed to convert PDF to images: {e}") from e
+            direct_attempts: list[dict[str, object]] = []
+            response = run_page_with_retries(
+                partial(self._analyze_document, file_path),
+                provider_name="textract",
+                page_number=1,
+                attempt_ledger=direct_attempts,
+            )
+            return response, direct_attempts
 
         all_blocks: list[dict[str, Any]] = []
+        api_attempts: list[dict[str, object]] = []
         current_page = 0
 
-        for page_num, image in enumerate(images):
-            # Convert PIL image to bytes, resizing if needed for Textract limits
-            img_bytes = self._resize_image_for_textract(image)
-
-            # Analyze this page
-            feature_types = ["LAYOUT"]
-            if self._detect_tables:
-                feature_types.append("TABLES")
-            if self._detect_forms:
-                feature_types.append("FORMS")
+        def analyze_page(img_bytes: bytes, feature_types: list[str]) -> dict[str, Any]:
+            from botocore.exceptions import BotoCoreError, ClientError
 
             try:
-                from botocore.exceptions import ClientError
-
                 if feature_types:
-                    response = self._textract_client.analyze_document(
-                        Document={"Bytes": img_bytes},
-                        FeatureTypes=feature_types,
+                    return cast(
+                        dict[str, Any],
+                        self._textract_client.analyze_document(
+                            Document={"Bytes": img_bytes},
+                            FeatureTypes=feature_types,
+                        ),
                     )
-                else:
-                    response = self._textract_client.detect_document_text(Document={"Bytes": img_bytes})
+                return cast(
+                    dict[str, Any],
+                    self._textract_client.detect_document_text(Document={"Bytes": img_bytes}),
+                )
+            except ClientError as exc:
+                error_code = exc.response.get("Error", {}).get("Code", "")
+                error_message = exc.response.get("Error", {}).get("Message", str(exc))
 
-                # Add page number to blocks and accumulate
+                if error_code in ("ThrottlingException", "ProvisionedThroughputExceededException"):
+                    raise ProviderTransientError(f"Rate limit exceeded: {error_message}") from exc
+                if error_code in ("InvalidParameterException", "UnsupportedDocumentException"):
+                    raise ProviderPermanentError(f"Invalid document: {error_message}") from exc
+                raise ProviderTransientError(f"AWS Textract error: {error_message}") from exc
+            except BotoCoreError as exc:
+                raise ProviderTransientError(f"AWS Textract transport error: {exc}") from exc
+
+        with open_document_page_images(path, dpi=self.PDF_RENDER_DPI) as images:
+            for page_num, image in enumerate(images):
+                # Convert PIL image to bytes, resizing if needed for Textract limits
+                img_bytes = self._resize_image_for_textract(image)
+
+                # Analyze this page
+                feature_types = ["LAYOUT"]
+                if self._detect_tables:
+                    feature_types.append("TABLES")
+                if self._detect_forms:
+                    feature_types.append("FORMS")
+
+                attempts: list[dict[str, object]] = []
+                try:
+                    response = run_page_with_retries(
+                        partial(analyze_page, img_bytes, feature_types),
+                        provider_name="textract",
+                        page_number=page_num + 1,
+                        attempt_ledger=attempts,
+                    )
+                except ProviderRetryExhaustedError as error:
+                    payload = dict(error.debug_payload or {})
+                    payload["attempts"] = [*api_attempts, *attempts]
+                    error.debug_payload = payload
+                    raise
+                api_attempts.extend(attempts)
                 for block in response.get("Blocks", []):
                     block["Page"] = page_num + 1
                     all_blocks.append(block)
 
                 current_page = page_num + 1
 
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                error_message = e.response.get("Error", {}).get("Message", str(e))
-
-                if error_code in ("ThrottlingException", "ProvisionedThroughputExceededException"):
-                    raise ProviderTransientError(f"Rate limit exceeded: {error_message}") from e
-                elif error_code in ("InvalidParameterException", "UnsupportedDocumentException"):
-                    raise ProviderPermanentError(f"Invalid document: {error_message}") from e
-                else:
-                    raise ProviderTransientError(f"AWS Textract error: {error_message}") from e
-
-        return {
-            "Blocks": all_blocks,
-            "DocumentMetadata": {"Pages": current_page},
-        }
+        return (
+            {
+                "Blocks": all_blocks,
+                "DocumentMetadata": {"Pages": current_page},
+            },
+            api_attempts,
+        )
 
     def _convert_to_markdown(self, textract_response: dict[str, Any]) -> dict[str, Any]:
         """
@@ -354,7 +405,7 @@ class TextractProvider(Provider):
             )
 
         # Build full document markdown
-        full_markdown = "\n\n".join(page["markdown"] for page in pages_data if page["markdown"])  # type: ignore[misc]
+        full_markdown = "\n\n".join(page["markdown"] for page in pages_data)  # type: ignore[misc]
 
         return {
             "pages": pages_data,
@@ -439,7 +490,7 @@ class TextractProvider(Provider):
 
         try:
             # Analyze the document
-            textract_response = self._analyze_multipage_document(str(source_path))
+            textract_response, api_attempts = self._analyze_multipage_document(str(source_path))
 
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -451,6 +502,8 @@ class TextractProvider(Provider):
                 product_type=request.product_type,
                 raw_output={
                     "textract_response": textract_response,
+                    "num_api_calls": len(api_attempts),
+                    "api_attempts": api_attempts,
                     "config": {
                         "output_tables_as_html": self._output_tables_as_html,
                         "detect_tables": self._detect_tables,
@@ -501,7 +554,7 @@ class TextractProvider(Provider):
 
         # Build layout_pages for layout cross-evaluation
         blocks = textract_response.get("Blocks", [])
-        layout_pages = _build_layout_pages(blocks)
+        layout_pages = _build_layout_pages(blocks, num_pages=markdown_result.get("num_pages", 0))
 
         output = ParseOutput(
             task_type="parse",
@@ -524,7 +577,7 @@ class TextractProvider(Provider):
         )
 
 
-def _build_layout_pages(blocks: list[dict[str, Any]]) -> list[ParseLayoutPageIR]:
+def _build_layout_pages(blocks: list[dict[str, Any]], *, num_pages: int | None = None) -> list[ParseLayoutPageIR]:
     """Build layout_pages from Textract LAYOUT_* blocks for layout cross-evaluation.
 
     Groups LAYOUT_* blocks by page and converts each block's normalized [0,1]
@@ -547,6 +600,13 @@ def _build_layout_pages(blocks: list[dict[str, Any]]) -> list[ParseLayoutPageIR]
         if block_type in TEXTRACT_LABEL_MAP:
             page_num = block.get("Page", 1)
             pages_blocks[page_num].append(block)
+
+    if num_pages is None:
+        num_pages = max(pages_blocks, default=0)
+    if not isinstance(num_pages, int) or isinstance(num_pages, bool) or num_pages < 0:
+        raise ProviderPermanentError("Textract page count must be a non-negative integer")
+    for page_num in range(1, num_pages + 1):
+        pages_blocks.setdefault(page_num, [])
 
     layout_pages: list[ParseLayoutPageIR] = []
     for page_num in sorted(pages_blocks.keys()):

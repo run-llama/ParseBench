@@ -7,11 +7,18 @@ regress them.
 
 from __future__ import annotations
 
+import json
 import unittest
+from datetime import datetime
+from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from bs4 import BeautifulSoup
 
+from parse_bench.inference.providers.base import ProviderPermanentError
 from parse_bench.inference.providers.parse.infinity_parser2 import (
+    InfinityParser2Provider,
     _convert_nonstandard_table,
     _convert_table_header,
     _determine_header_row_count,
@@ -22,6 +29,107 @@ from parse_bench.inference.providers.parse.infinity_parser2 import (
     _is_pure_text_cell,
     _is_year_cell,
 )
+from parse_bench.schemas.pipeline import PipelineSpec
+from parse_bench.schemas.pipeline_io import InferenceRequest, RawInferenceResult
+from parse_bench.schemas.product import ProductType
+
+
+def _provider() -> InfinityParser2Provider:
+    provider = object.__new__(InfinityParser2Provider)
+    provider._base_config = {}
+    return provider
+
+
+def _raw_result(raw_output: dict[str, object]) -> RawInferenceResult:
+    now = datetime.now()
+    pipeline = PipelineSpec(
+        pipeline_name="infinity-test",
+        provider_name="infinity_parser2",
+        product_type=ProductType.PARSE,
+    )
+    request = InferenceRequest(
+        example_id="document",
+        source_file_path=str(Path("document.pdf")),
+        product_type=ProductType.PARSE,
+    )
+    return RawInferenceResult(
+        request=request,
+        pipeline=pipeline,
+        pipeline_name=pipeline.pipeline_name,
+        product_type=ProductType.PARSE,
+        raw_output=raw_output,
+        started_at=now,
+        completed_at=now,
+        latency_in_ms=1,
+    )
+
+
+def _page_output(result: str) -> dict[str, object]:
+    return {
+        "result": result,
+        "_config": {"page_width": 100, "page_height": 200},
+    }
+
+
+def test_structured_empty_layout_normalizes_as_blank_page() -> None:
+    output = _provider()._normalize(_raw_result(_page_output("[]")))
+
+    assert [(page.page_index, page.markdown) for page in output.pages] == [(0, "")]
+    assert [(page.page_number, page.items) for page in output.layout_pages] == [(1, [])]
+    assert output.markdown == ""
+
+
+def test_blank_middle_page_preserves_document_page_identities() -> None:
+    page_one = json.dumps([{"page": 1, "category": "text", "bbox": [0, 0, 10, 10], "text": "one"}])
+    page_three = json.dumps([{"page": 1, "category": "text", "bbox": [0, 0, 10, 10], "text": "three"}])
+    raw_result = _raw_result(
+        {
+            "_parse_bench_multipage": {
+                "version": 1,
+                "num_pages": 3,
+                "pages": [
+                    {"page_index": 0, "raw_output": _page_output(page_one)},
+                    {"page_index": 1, "raw_output": _page_output("[]")},
+                    {"page_index": 2, "raw_output": _page_output(page_three)},
+                ],
+            }
+        }
+    )
+
+    output = _provider().normalize(raw_result).output
+
+    assert [page.page_index + 1 for page in output.pages] == [1, 2, 3]
+    assert [page.page_number for page in output.layout_pages] == [1, 2, 3]
+    assert [page.markdown for page in output.pages] == ["one", "", "three"]
+    assert output.markdown == "one\n\n\n\nthree"
+
+
+@pytest.mark.parametrize(
+    ("raw_output", "message"),
+    [
+        ({"_config": {"page_width": 100, "page_height": 200}}, "Empty result"),
+        (_page_output(""), "Empty result"),
+        (_page_output("not json"), "not valid JSON"),
+        (_page_output(json.dumps({"error": "model diagnostic"})), "must decode to a list"),
+        (_page_output(json.dumps(["bad element"])), "non-object layout element"),
+    ],
+    ids=["missing", "empty-text", "malformed-json", "diagnostic-dict", "invalid-element"],
+)
+def test_empty_and_malformed_results_remain_distinct_from_blank_layout(
+    raw_output: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(ProviderPermanentError, match=message):
+        _provider()._normalize(_raw_result(raw_output))
+
+
+def test_deep_parsing_passes_through_structured_blank_layout() -> None:
+    provider = _provider()
+    provider._parser = SimpleNamespace(parse=lambda *args, **kwargs: pytest.fail("blank page must not deep-parse"))
+    from PIL import Image
+
+    with Image.new("RGB", (8, 8), "white") as image:
+        assert provider._apply_deep_parsing("[]", image) == "[]"
 
 
 class TestCellClassifiers(unittest.TestCase):
@@ -132,12 +240,7 @@ class TestConvertTableHeader(unittest.TestCase):
     """End-to-end: <td> in detected header rows is rewritten to <th>."""
 
     def test_td_to_th_in_header_row(self) -> None:
-        html = (
-            "<table>"
-            "<tr><td>2022</td><td>2023</td></tr>"
-            "<tr><td>10</td><td>20</td></tr>"
-            "</table>"
-        )
+        html = "<table><tr><td>2022</td><td>2023</td></tr><tr><td>10</td><td>20</td></tr></table>"
         out = _convert_table_header(html)
         soup = BeautifulSoup(out, "html.parser")
         rows = soup.find_all("tr")

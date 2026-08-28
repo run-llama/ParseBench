@@ -15,6 +15,7 @@ https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-li
 import io
 import os
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -35,6 +36,15 @@ from parse_bench.inference.providers.parse._layout_utils import (
     extract_layout_blocks_lenient,
     items_to_markdown,
     parse_layout_blocks,
+    validated_sorted_page_records,
+)
+from parse_bench.inference.providers.parse._multipage_image import (
+    annotate_attempt_costs,
+    append_attempt_usages,
+    attempt_usages_complete,
+    close_derived_images,
+    open_document_page_images,
+    run_page_with_retries,
 )
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import PageIR, ParseLayoutPageIR, ParseOutput
@@ -100,6 +110,8 @@ class AmazonNovaProvider(Provider):
     the markdown and the per-element bounding boxes.
     """
 
+    PDF_RENDER_DPI = 150
+
     # Nova image-understanding limits: 8,000 x 8,000 px, 25 MB total request
     # payload. Images are base64-encoded on the wire, so the raw byte budget is
     # 3/4 of the payload cap.
@@ -131,7 +143,7 @@ class AmazonNovaProvider(Provider):
 
         self._model: str = self.base_config.get("model", "us.amazon.nova-2-lite-v1:0")
         self._region: str = self.base_config.get("region") or os.environ.get("AWS_REGION") or "us-east-1"
-        self._dpi = self.base_config.get("dpi", 150)
+        self._dpi = self.base_config.get("dpi", self.PDF_RENDER_DPI)
         self._max_tokens = self.base_config.get("max_tokens", 8192)
         self._timeout = self.base_config.get("timeout", 300)
         self._reasoning_effort = self.base_config.get("reasoning_effort", None)
@@ -169,7 +181,9 @@ class AmazonNovaProvider(Provider):
                 config=Config(
                     read_timeout=self._timeout,
                     connect_timeout=30,
-                    retries={"max_attempts": 3, "mode": "standard"},
+                    # run_page_with_retries owns the complete retry budget for
+                    # each billable page; botocore performs one HTTP attempt.
+                    retries={"total_max_attempts": 1, "mode": "standard"},
                 ),
             )
         except ImportError as e:
@@ -182,10 +196,10 @@ class AmazonNovaProvider(Provider):
                 return self._model[len(prefix) :]
         return self._model
 
-    def _get_pricing(self) -> tuple[float, float]:
-        """Return (input_rate, output_rate) in USD per million tokens."""
+    def _get_pricing(self) -> tuple[float, float] | None:
+        """Return known (input_rate, output_rate) in USD per million tokens."""
         table = _NOVA_GLOBAL_PRICING_PER_M if self._model.startswith("global.") else _NOVA_PRICING_PER_M
-        return table.get(self._base_model_id(), (0.0, 0.0))
+        return table.get(self._base_model_id())
 
     def _raise_bedrock_error(self, e: Exception) -> NoReturn:
         """Classify a Bedrock/botocore exception as transient, rate-limited or permanent."""
@@ -213,16 +227,20 @@ class AmazonNovaProvider(Provider):
         separately, so ``thinking_tokens`` is always 0 — the spend is already
         inside ``output_tokens``.
         """
-        usage = response.get("usage") or {}
-        input_tok = int(usage.get("inputTokens", 0) or 0)
-        output_tok = int(usage.get("outputTokens", 0) or 0)
-        total_tok = int(usage.get("totalTokens", 0) or 0) or (input_tok + output_tok)
-        return {
-            "input_tokens": input_tok,
-            "output_tokens": output_tok,
-            "thinking_tokens": 0,
-            "total_tokens": total_tok,
-        }
+        usage = response.get("usage")
+        if not isinstance(usage, dict):
+            return {}
+        result = {"thinking_tokens": 0}
+        for key, source_key in (("input_tokens", "inputTokens"), ("output_tokens", "outputTokens")):
+            value = usage.get(source_key)
+            if value is not None:
+                result[key] = int(value)
+        total_value = usage.get("totalTokens")
+        if total_value is not None:
+            result["total_tokens"] = int(total_value)
+        elif "input_tokens" in result and "output_tokens" in result:
+            result["total_tokens"] = result["input_tokens"] + result["output_tokens"]
+        return result
 
     @staticmethod
     def _extract_text(response: dict[str, Any]) -> str:
@@ -247,54 +265,41 @@ class AmazonNovaProvider(Provider):
 
     def _image_to_jpeg_bytes(self, image: Image.Image) -> bytes:
         """Encode a PIL image as JPEG bytes within Nova's payload budget."""
-        image = self._prepare_image_for_api(image)
+        with close_derived_images(image) as track:
+            image = track(self._prepare_image_for_api(image))
 
-        if image.mode in ("RGBA", "P"):
-            image = image.convert("RGB")
+            if image.mode in ("RGBA", "P"):
+                image = track(image.convert("RGB"))
 
-        quality = 85
-        min_quality = 20
+            quality = 85
+            min_quality = 20
 
-        while quality >= min_quality:
-            buffer = io.BytesIO()
-            image.save(buffer, format="JPEG", quality=quality)
-            data = buffer.getvalue()
-            if len(data) <= self.MAX_IMAGE_SIZE_BYTES:
-                return data
-            quality -= 10
+            while quality >= min_quality:
+                buffer = io.BytesIO()
+                image.save(buffer, format="JPEG", quality=quality)
+                data = buffer.getvalue()
+                if len(data) <= self.MAX_IMAGE_SIZE_BYTES:
+                    return data
+                quality -= 10
 
-        while True:
-            width, height = image.size
-            new_width, new_height = int(width * 0.8), int(height * 0.8)
-            if new_width < 100 or new_height < 100:
-                break
+            while True:
+                width, height = image.size
+                new_width, new_height = int(width * 0.8), int(height * 0.8)
+                if new_width < 100 or new_height < 100:
+                    break
 
-            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                image = track(image.resize((new_width, new_height), Image.Resampling.LANCZOS))
+                buffer = io.BytesIO()
+                image.save(buffer, format="JPEG", quality=min_quality)
+                data = buffer.getvalue()
+                if len(data) <= self.MAX_IMAGE_SIZE_BYTES:
+                    return data
+
             buffer = io.BytesIO()
             image.save(buffer, format="JPEG", quality=min_quality)
-            data = buffer.getvalue()
-            if len(data) <= self.MAX_IMAGE_SIZE_BYTES:
-                return data
+            return buffer.getvalue()
 
-        buffer = io.BytesIO()
-        image.save(buffer, format="JPEG", quality=min_quality)
-        return buffer.getvalue()
-
-    def _pdf_to_images(self, pdf_path: str) -> list[Image.Image]:
-        """Convert PDF pages to images."""
-        try:
-            from pdf2image import convert_from_path
-        except ImportError as e:
-            raise ProviderConfigError("pdf2image package not installed. Run: pip install pdf2image") from e
-
-        try:
-            return convert_from_path(pdf_path, dpi=self._dpi)
-        except Exception as e:
-            raise ProviderPermanentError(f"Failed to convert PDF to images: {e}") from e
-
-    def _converse(
-        self, image: Image.Image, system_prompt: str, user_prompt: str
-    ) -> tuple[str, dict[str, int], str]:
+    def _converse(self, image: Image.Image, system_prompt: str, user_prompt: str) -> tuple[str, dict[str, int], str]:
         """Send one page image to Bedrock Converse and return (text, usage, stop_reason)."""
         image_bytes = self._image_to_jpeg_bytes(image)
 
@@ -330,6 +335,7 @@ class AmazonNovaProvider(Provider):
 
         stop_reason = str(response.get("stopReason", ""))
         text = self._extract_text(response)
+        usage = self._extract_usage(response)
 
         # Bedrock's built-in content filter returns HTTP 200 with a canned
         # notice in the text block ("The generated text has been blocked by our
@@ -339,21 +345,33 @@ class AmazonNovaProvider(Provider):
         # responses — and a page that stays blocked surfaces as a failed doc
         # rather than as an empty parse.
         if stop_reason == "content_filtered":
-            raise ProviderTransientError(f"Bedrock content filter blocked the response (stopReason={stop_reason})")
+            raise ProviderTransientError(
+                f"Bedrock content filter blocked the response (stopReason={stop_reason})",
+                attempt_stats=usage,
+            )
         if not text.strip():
-            raise ProviderTransientError(f"Bedrock Converse returned no text (stopReason={stop_reason or 'unknown'})")
+            raise ProviderTransientError(
+                f"Bedrock Converse returned no text (stopReason={stop_reason or 'unknown'})",
+                attempt_stats=usage,
+            )
 
-        return text, self._extract_usage(response), stop_reason
+        return text, usage, stop_reason
 
-    def _parse_image_with_layout(
-        self, image: Image.Image
-    ) -> tuple[list[dict[str, Any]], str, dict[str, int], str]:
+    def _parse_image_with_layout(self, image: Image.Image) -> tuple[list[dict[str, Any]], str, dict[str, int], str]:
         """Parse a page image to layout-annotated markdown blocks."""
         text, usage, stop_reason = self._converse(image, SYSTEM_PROMPT_LAYOUT, USER_PROMPT_LAYOUT)
         # Prefer the lenient reader (Nova uses <TABLE>/<p> wrappers and leaves
         # them unclosed); fall back to the strict shared parser if it finds
         # nothing, so this can never score worse than the default path.
-        items = extract_layout_blocks_lenient(text) or parse_layout_blocks(text)
+        if text.strip() == "[]":
+            items: list[dict[str, Any]] = []
+        else:
+            items = extract_layout_blocks_lenient(text) or parse_layout_blocks(text)
+            if not items:
+                raise ProviderTransientError(
+                    "Bedrock Converse returned malformed non-empty layout output",
+                    attempt_stats=usage,
+                )
         return close_open_ended_bands(items), text, usage, stop_reason
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
@@ -383,38 +401,67 @@ class AmazonNovaProvider(Provider):
 
         try:
             page_usages: list[dict[str, int]] = []
-
-            if source_path.suffix.lower() == ".pdf":
-                images = self._pdf_to_images(str(source_path))
-            else:
-                images = [Image.open(source_path)]
+            api_attempts: list[dict[str, object]] = []
 
             pages: list[dict[str, Any]] = []
-            for page_index, image in enumerate(images):
-                items, raw_content, usage, stop_reason = self._parse_image_with_layout(image)
-                page_usages.append(usage)
-                pages.append(
-                    {
-                        "page_index": page_index,
-                        "items": items,
-                        "raw_content": raw_content,
-                        "stop_reason": stop_reason,
-                        "width": image.width,
-                        "height": image.height,
-                    }
-                )
-            num_pages = len(images)
+            with open_document_page_images(source_path, dpi=self._dpi) as images:
+                for page_index, image in enumerate(images):
+                    attempts: list[dict[str, object]] = []
+                    items, raw_content, usage, stop_reason = run_page_with_retries(
+                        partial(self._parse_image_with_layout, image),
+                        provider_name=pipeline.provider_name,
+                        page_number=page_index + 1,
+                        attempt_ledger=attempts,
+                        prior_attempt_ledger=api_attempts,
+                    )
+                    api_attempts.extend(attempts)
+                    append_attempt_usages(page_usages, attempts)
+                    pages.append(
+                        {
+                            "page_index": page_index,
+                            "items": items,
+                            "raw_content": raw_content,
+                            "stop_reason": stop_reason,
+                            "width": image.width,
+                            "height": image.height,
+                        }
+                    )
+                num_pages = len(images)
 
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 
-            total_input = sum(u["input_tokens"] for u in page_usages)
-            total_output = sum(u["output_tokens"] for u in page_usages)
-            total_thinking = sum(u["thinking_tokens"] for u in page_usages)
-            total_all = sum(u["total_tokens"] for u in page_usages)
-
-            input_rate, output_rate = self._get_pricing()
-            cost = (total_input * input_rate + (total_output + total_thinking) * output_rate) / 1_000_000
+            usage_summary: dict[str, int | float] = {}
+            if attempt_usages_complete(page_usages):
+                total_input = sum(u["input_tokens"] for u in page_usages)
+                total_output = sum(u["output_tokens"] for u in page_usages)
+                total_thinking = sum(u["thinking_tokens"] for u in page_usages)
+                total_all = sum(u["total_tokens"] for u in page_usages)
+                usage_summary.update(
+                    {
+                        "input_tokens": total_input,
+                        "output_tokens": total_output,
+                        "thinking_tokens": total_thinking,
+                        "total_tokens": total_all,
+                        "input_tokens_per_page": total_input / num_pages if num_pages > 0 else 0.0,
+                        "output_tokens_per_page": total_output / num_pages if num_pages > 0 else 0.0,
+                    }
+                )
+            pricing = self._get_pricing()
+            if pricing is not None and attempt_usages_complete(page_usages):
+                input_rate, output_rate = pricing
+                annotate_attempt_costs(
+                    api_attempts,
+                    input_rate_per_million=input_rate,
+                    output_rate_per_million=output_rate,
+                )
+                cost = (total_input * input_rate + (total_output + total_thinking) * output_rate) / 1_000_000
+                usage_summary.update(
+                    {
+                        "cost_usd": cost,
+                        "cost_per_page_usd": cost / num_pages if num_pages > 0 else 0.0,
+                    }
+                )
 
             config_info: dict[str, Any] = {
                 "dpi": self._dpi,
@@ -433,14 +480,9 @@ class AmazonNovaProvider(Provider):
                 "num_pages": num_pages,
                 "model": self._model,
                 "config": config_info,
-                "input_tokens": total_input,
-                "output_tokens": total_output,
-                "thinking_tokens": total_thinking,
-                "total_tokens": total_all,
-                "cost_usd": cost,
-                "cost_per_page_usd": cost / num_pages if num_pages > 0 else 0.0,
-                "input_tokens_per_page": total_input / num_pages if num_pages > 0 else 0.0,
-                "output_tokens_per_page": total_output / num_pages if num_pages > 0 else 0.0,
+                **usage_summary,
+                "num_api_calls": len(api_attempts),
+                "api_attempts": api_attempts,
             }
 
             return RawInferenceResult(
@@ -475,7 +517,7 @@ class AmazonNovaProvider(Provider):
         page_markdowns: list[str] = []
         layout_pages: list[ParseLayoutPageIR] = []
 
-        for page_data in raw_result.raw_output.get("pages", []):
+        for page_data in validated_sorted_page_records(raw_result.raw_output.get("pages", [])):
             page_index = page_data.get("page_index", 0)
 
             items = page_data.get("items", [])
@@ -495,7 +537,6 @@ class AmazonNovaProvider(Provider):
             pages.append(PageIR(page_index=page_index, markdown=markdown))
             page_markdowns.append(markdown)
 
-        pages.sort(key=lambda p: p.page_index)
         full_markdown = "\n\n".join(page_markdowns)
 
         output = ParseOutput(
