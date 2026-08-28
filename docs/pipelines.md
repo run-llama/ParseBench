@@ -272,6 +272,14 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 |---|---|---|
 | `surya2_sdk` | Surya OCR 2 SDK server (full-page OCR + layout) | `SURYA2_SERVER_URL` |
 
+### florin-parser-nano
+
+Fine-tune of KDL-Frontier-Parser-nano ([florin-inc/florin-parser-nano](https://huggingface.co/florin-inc/florin-parser-nano)); served identically to the base model and driven by the same two-stage pipeline, with markdown-emission fixes (see the provider module docstring for the exact `vllm serve` command).
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `florin_parser_nano` | vLLM OpenAI-compatible endpoint (layout + per-region recognition) | `FLORIN_NANO_ENDPOINT_URL` |
+
 ---
 
 ## Local Pipelines (No API key needed)

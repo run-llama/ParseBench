@@ -19,6 +19,7 @@ _PROVIDER_MODULES = [
     "dots_ocr",
     "extend_parse",
     "falconocr",
+    "florin_parser_nano",
     "gemma4",
     "google",
     "google_docai",

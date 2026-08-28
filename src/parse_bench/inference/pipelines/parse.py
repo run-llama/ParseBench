@@ -62,6 +62,23 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    register_fn(
+        PipelineSpec(
+            pipeline_name="llamaparse_agentic_granular_bboxes_staging",
+            provider_name="llamaparse",
+            product_type=ProductType.PARSE,
+            config={
+                "use_staging": True,
+                "tier": "agentic",
+                "version": "latest",
+                "disable_cache": True,
+                "output_options": {
+                    "granular_bboxes": ["word"],
+                },
+            },
+        )
+    )
+
     # =========================================================================
     # Extend AI Parse Pipelines
     # =========================================================================
@@ -2077,6 +2094,25 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             config={
                 "endpoint_url": "",  # via KDL_NANO_ENDPOINT_URL
                 "model": "",         # via KDL_NANO_MODEL (default kdl-frontier-parser-nano)
+                "dpi": 144,
+                "timeout": 900,
+            },
+        )
+    )
+
+    # =========================================================================
+    # florin-parser-nano (florin-inc/florin-parser-nano, fine-tune of
+    # KDLAI/KDL-Frontier-Parser-nano; same serving requirements)
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="florin_parser_nano",
+            provider_name="florin_parser_nano",
+            product_type=ProductType.PARSE,
+            config={
+                "endpoint_url": "",  # via FLORIN_NANO_ENDPOINT_URL
+                "model": "",         # via FLORIN_NANO_MODEL (default florin-parser-nano)
                 "dpi": 144,
                 "timeout": 900,
             },
