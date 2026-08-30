@@ -288,6 +288,14 @@ Fine-tune of KDL-Frontier-Parser-nano ([florin-inc/florin-parser-nano](https://h
 |---|---|---|
 | `florin_parser_nano` | vLLM OpenAI-compatible endpoint (layout + per-region recognition) | `FLORIN_NANO_ENDPOINT_URL` |
 
+### rakedoc-nano
+
+Fine-tune of florin-parser-nano ([cloudraker/rakedoc-nano](https://huggingface.co/cloudraker/rakedoc-nano)); served identically to the parent models and driven by the same two-stage pipeline and markdown emission (see the provider module docstring for the exact `vllm serve` command).
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `rakedoc_nano` | vLLM OpenAI-compatible endpoint (layout + per-region recognition) | `RAKEDOC_NANO_ENDPOINT_URL` |
+
 ---
 
 ## Local Pipelines (No API key needed)

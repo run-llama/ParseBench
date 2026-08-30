@@ -2160,6 +2160,25 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # =========================================================================
+    # rakedoc-nano (cloudraker/rakedoc-nano, fine-tune of
+    # florin-inc/florin-parser-nano; same serving requirements)
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="rakedoc_nano",
+            provider_name="rakedoc_nano",
+            product_type=ProductType.PARSE,
+            config={
+                "endpoint_url": "",  # via RAKEDOC_NANO_ENDPOINT_URL
+                "model": "",  # via RAKEDOC_NANO_MODEL (default rakedoc-nano)
+                "dpi": 144,
+                "timeout": 900,
+            },
+        )
+    )
+
     register_fn(
         PipelineSpec(
             pipeline_name="mineru25_vllm",

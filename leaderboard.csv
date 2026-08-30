@@ -82,6 +82,7 @@ Qwen3.5-2B,VLM - Open Weight,27.3,0,0.1,87.2,31.1,18.3,,,,,,Qwen/Qwen3.5-2B
 GLM-OCR,VLM - Open Weight,29.6,66.1,1.7,78,2.3,0,,,,,,zai-org/GLM-OCR
 KDL-Frontier-Parser-nano,VLM - Open Weight,76.36,85.56,63.41,87.19,66.81,78.84,,,,,,KDLAI/KDL-Frontier-Parser-nano
 florin-parser-nano,VLM - Open Weight,76.69,86.10,65.19,87.37,70.64,74.14,,,,,,florin-inc/florin-parser-nano
+rakedoc-nano,VLM - Open Weight,77.23,86.44,64.89,88.84,71.68,74.28,,,,,,cloudraker/rakedoc-nano
 MarkItDown,Open Source - Local,18.63,15.77,2.02,64.54,0.91,9.90,,,,,,
 OpenDataLoader,Open Source - Local,29.40,35.18,0.92,66.06,34.07,10.77,,,,,,
 PyMuPDF4LLM,Open Source - Local,53.49,72.00,2.19,79.34,52.04,61.89,,,,,,

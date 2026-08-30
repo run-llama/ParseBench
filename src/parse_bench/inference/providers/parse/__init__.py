@@ -33,6 +33,7 @@ _PROVIDER_MODULES = [
     "opendataloader",
     "pdf_inspector",
     "pymupdf4llm",
+    "rakedoc_nano",
     "llamaparse",
     "llamaparse_v2_normalization",
     "mineru25",

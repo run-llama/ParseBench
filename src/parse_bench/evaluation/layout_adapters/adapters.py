@@ -2879,7 +2879,7 @@ class DatabricksAiParseLayoutAdapter(LayoutAdapter):
         )
 
 
-@register_layout_adapter("kdl_frontier_nano", "florin_parser_nano", priority=90)
+@register_layout_adapter("kdl_frontier_nano", "florin_parser_nano", "rakedoc_nano", priority=90)
 class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
     """Extract LayoutOutput from the kdl_frontier_nano provider's
     ParseOutput.layout_pages.
