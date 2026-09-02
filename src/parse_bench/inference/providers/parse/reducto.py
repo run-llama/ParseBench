@@ -81,6 +81,8 @@ class ReductoProvider(Provider):
               (default: [])
             - `advanced_chart_agent`: Enable advanced chart agent for figure agentic scope
               to convert charts/graphs to tabular format (default: False)
+            - `model`: Reducto parse model to select via ``settings.model`` (e.g. "r-1").
+              Omitted by default.
         """
         super().__init__(provider_name, base_config)
 
@@ -98,6 +100,7 @@ class ReductoProvider(Provider):
         self._table_output_format = self.base_config.get("table_output_format", "html")
         self._formatting_include = self.base_config.get("formatting_include", [])
         self._advanced_chart_agent = self.base_config.get("advanced_chart_agent", False)
+        self._model = self.base_config.get("model")
 
     def _is_pdf_file(self, file_path: str) -> bool:
         """
@@ -169,10 +172,12 @@ class ReductoProvider(Provider):
             if self._formatting_include:
                 formatting_config["include"] = self._formatting_include
 
-            settings_config = {
+            settings_config: dict[str, Any] = {
                 "ocr_system": self._ocr_system,
                 # Don't specify page_range - process all pages
             }
+            if self._model:
+                settings_config["model"] = self._model
 
             # Parse the document (run in executor since SDK is synchronous)
             # Build kwargs dynamically — only include enhance if non-empty,
@@ -225,6 +230,7 @@ class ReductoProvider(Provider):
                 "table_output_format": self._table_output_format,
                 "formatting_include": self._formatting_include,
                 "advanced_chart_agent": self._advanced_chart_agent,
+                "model": self._model,
                 "total_pages": num_pages,
             }
 

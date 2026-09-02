@@ -132,6 +132,7 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 |---|---|---|
 | **`reducto`** | Default Reducto (In paper: *Reducto*) | `REDUCTO_API_KEY` |
 | **`reducto_agentic`** | Agentic mode (In paper: *Reducto (Agentic)*) | `REDUCTO_API_KEY` |
+| **`reducto_r1`** | r-1 model, `settings.model="r-1"` (In paper: *Reducto (r-1)*) | `REDUCTO_API_KEY` |
 
 ### Pulse
 

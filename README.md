@@ -86,6 +86,7 @@ A **pipeline** is a document parsing tool or configuration that you want to eval
 | `google_docai_layout` | Google Cloud Document AI |
 | `reducto` | Reducto |
 | `reducto_agentic` | Reducto (Agentic) |
+| `reducto_r1` | Reducto (r-1) |
 | `extend_parse` | Extend |
 | `landingai_parse` | LandingAI |
 | `qwen3_5_4b_vllm_parse` | Qwen 3 VL |
