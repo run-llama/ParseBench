@@ -147,11 +147,15 @@ class ExtractEvaluator(BaseEvaluator):
         # doesn't emit (e.g. ``client_id``) still appear in expected_output.
         # That drop is a correct signal, not noise — if scalar coverage
         # matters, run a per_doc pipeline instead. See list_unwrap.py.
-        if test_case.expected_output:
+        if test_case.expected_output is not None:
             expected_output = test_case.expected_output
 
             # Calculate overall accuracy using the metric
-            accuracy_metric = self._accuracy_metric.compute(expected=expected_output, actual=extracted_data)
+            accuracy_metric = self._accuracy_metric.compute(
+                expected=expected_output,
+                actual=extracted_data,
+                data_schema=test_case.data_schema,
+            )
             metrics.append(accuracy_metric)
 
             # Calculate field-level accuracy if both are dicts

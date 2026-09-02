@@ -55,6 +55,17 @@ class LayoutItemIR(BaseModel):
         default_factory=list,
         validation_alias=AliasChoices("layout_segments", "layoutAwareBbox"),
     )
+    # Populated by layout-detection providers; left default for parse providers.
+    score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Detector confidence in [0,1]. None for parse-pipeline items.",
+    )
+    attributes: dict[str, str] = Field(
+        default_factory=dict,
+        description="Semantic attributes (e.g. scope=mark, picture_type=chart).",
+    )
 
     @field_validator("type", mode="before")
     @classmethod

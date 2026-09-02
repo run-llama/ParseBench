@@ -40,6 +40,14 @@ with this version.
 - Formatting rules: emphasis is resolved with a delimiter-run pairer instead of regex,
   typographic and ASCII quotes are folded, and `<strong>/<em>/<mark>/<sup>/<sub>` with
   attributes are recognised.
+- Visual grounding: the LlamaParse V2 `code` item type is mapped (code blocks were
+  silently dropped); LlamaParse attribution is restricted to layout-aware segments
+  rather than falling back to coarse item bboxes; Docling attribution blocks no longer
+  fall back to the item bbox.
+- Extract accuracy: a missing object or array is weighted by its leaf count instead of 1;
+  date normalization handles `MM/DD/YY`, missing spaces after commas and out-of-range
+  years; keyless lists are aligned order-invariantly; nullable numeric fields treat `0`
+  and `null` as equal when the schema allows null.
 - `ParseTestCase` accepts layout and extract-field rules on `test_rules` and carries `metadata`.
 - Rule schemas and classes for `table_marker_cells`, `text_color`, `absent_unless_strikeout`,
   `present_as_strikeout`, `is_not_latex` and the extended `form_field` rule (`label` list,

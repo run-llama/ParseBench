@@ -57,6 +57,7 @@ class JsonSubsetMatchMetric(Metric):
         cosine_similarity = kwargs.get("cosine_similarity", self._cosine_similarity)
         normalize_dates = kwargs.get("normalize_dates", self._normalize_dates)
         weighted = kwargs.get("weighted", self._weighted)
+        data_schema = kwargs.get("data_schema")
 
         score = json_subset_match_score(
             expected=expected,
@@ -65,6 +66,7 @@ class JsonSubsetMatchMetric(Metric):
             cosine_similarity=cosine_similarity,
             normalize_dates=normalize_dates,
             weighted=weighted,
+            data_schema=data_schema,
         )
 
         return MetricValue(
