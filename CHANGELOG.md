@@ -61,6 +61,8 @@ with this version.
   tokens are priced. `parse-bench inference renormalize` re-prices saved runs via
   `Provider.recompute_cost` without re-running inference.
 - Leaderboard: the *LiteParse (no OCR)* row was re-run with LiteParse 2.14.3 and this release's scoring (overall 32.8 -> 36.9; visual grounding 10.7 -> 31.8 now that layout blocks are scored).
+- Aggregation: `micro_*` aggregates are emitted for standalone F1, accuracy and pass-rate
+  metrics; fractional `passed` counts are no longer dropped from `total_*` metrics.
 - `ParseTestCase` accepts layout and extract-field rules on `test_rules` and carries `metadata`.
 - Rule schemas and classes for `table_marker_cells`, `text_color`, `absent_unless_strikeout`,
   `present_as_strikeout`, `is_not_latex` and the extended `form_field` rule (`label` list,
@@ -81,7 +83,11 @@ with this version.
 - New pipelines: Reducto change-tracking / agentic table / agentic chart, GPT-5.4
   reasoning-none, Sonnet 5 parse-with-layout, Gemini 3.6 / 3.7 / 3.1 Flash Lite
   layout variants, Mistral OCR 4.1, Nemotron Omni vLLM, Qwen3.8 Flash Next.
-- `parse_bench_version` is recorded in `_metadata.json`.
+- Evaluation worker pool: a hung document is now killed and retried once instead of
+  blocking the run forever; `*.images/` artifact directories are skipped.
+- Comparison reports pick the primary metric from an ordered candidate chain and read
+  predictions from `layout_pages`; run labels keep their dataset suffix.
+- `parse_bench_version` is recorded in `_metadata.json` and `_evaluation_report.json`.
 - CI (lint, tests, wheel smoke test) and a tag-driven PyPI publish workflow.
 
 ### Changed

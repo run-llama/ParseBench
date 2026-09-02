@@ -7,13 +7,14 @@ import json
 import os
 import sys
 import unicodedata
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from concurrent.futures import (
+    FIRST_COMPLETED,
+    Future,
     ProcessPoolExecutor,
-    as_completed,
 )
 from concurrent.futures import (
-    TimeoutError as FuturesTimeoutError,
+    wait as futures_wait,
 )
 from datetime import datetime
 from pathlib import Path
@@ -314,6 +315,108 @@ def _scale_layout_output_coordinates(
     )
 
 
+# --- Eval pool stall handling -------------------------------------------------
+# Longest an eval batch may go with NOTHING completing before the collector gives
+# up on the workers still in flight. A hung worker cannot be cancelled once it is
+# running, so this is the only cap that exists: without it a single pathological
+# document (measured 2026-08-19: one document out of 411 stuck in a network wait
+# inside the LLM-judge calls, workers at ~0% CPU) holds the whole run open
+# indefinitely. Generous enough that a legitimately slow document is never cut
+# off while its peers keep finishing -- the window restarts on every completion,
+# so it only elapses when the pool has genuinely stopped making progress.
+_EVAL_WORKER_STALL_TIMEOUT_SECONDS = 8 * 60
+# Grace period for a SIGTERMed eval worker to die before we stop waiting on it.
+_EVAL_WORKER_KILL_JOIN_SECONDS = 5
+# ProcessPoolExecutor keeps its call queue pre-fed, so the tasks sitting in the
+# pipe behind a hung worker are already flagged RUNNING and are indistinguishable
+# from it in the parent -- a stall would zero-score up to a poolful of documents
+# that never actually ran. Give a timed-out task one more shot on the fresh pool
+# when there was queued work to blame; the genuinely hung one dies on the second
+# strike, so this is bounded and the batch always shrinks.
+_EVAL_WORKER_MAX_ATTEMPTS = 2
+
+
+def _drain_eval_futures(
+    futures: Iterable[Future],
+    timeout: float,
+    on_done: Callable[[Future], None],
+) -> tuple[set[Future], set[Future]]:
+    """Hand every finished future to ``on_done``, bailing out on a stalled pool.
+
+    Returns ``(timed_out, unstarted)``: the futures that were still *running*
+    when ``timeout`` seconds passed with nothing completing, and the ones that
+    had not started yet and were therefore cancelled cleanly. Both sets are
+    empty on the normal path, where every future is drained.
+
+    This is deliberately NOT ``for f in as_completed(futures): f.result(timeout=...)``
+    -- that idiom looks like a per-worker cap but is a no-op, because
+    ``as_completed`` only ever yields futures that are already done, so the
+    ``result()`` timeout can never elapse. ``wait(..., FIRST_COMPLETED)`` puts
+    the deadline where the blocking actually happens.
+
+    The window is measured from the last completion rather than from each task's
+    start, because a ProcessPool gives the parent no way to see when a queued
+    task begins running. Measuring it against progress is the conservative
+    reading: a slow document is only ever cut off once it is the thing holding
+    the batch up, and a task that is merely queued behind a hung one is never
+    mistaken for a hung task itself.
+    """
+    pending = set(futures)
+    while pending:
+        done, pending = futures_wait(pending, timeout=timeout, return_when=FIRST_COMPLETED)
+        for future in done:
+            on_done(future)
+        if not done:
+            # Nothing finished inside the window: the pool has stalled. Split
+            # what is left into "running (unreclaimable, give up on it)" and
+            # "never started (cancel and re-run on a fresh pool)". A future can
+            # still finish in the gap between the wait timing out and this
+            # sweep, so check for that first rather than failing a completed
+            # evaluation.
+            timed_out: set[Future] = set()
+            unstarted: set[Future] = set()
+            for future in pending:
+                if future.done():
+                    on_done(future)
+                elif future.cancel():
+                    unstarted.add(future)
+                else:
+                    timed_out.add(future)
+            return timed_out, unstarted
+    return set(), set()
+
+
+def _shutdown_eval_pool(executor: ProcessPoolExecutor, *, force: bool) -> None:
+    """Tear the eval pool down, killing stuck workers when ``force`` is set.
+
+    On the normal path this is just a blocking ``shutdown``. On the stall path a
+    blocking shutdown would re-create the very hang the timeout exists to escape
+    (``shutdown(wait=True)`` waits on the hung worker), and there is no public
+    API for evicting a running task -- so SIGTERM the worker processes and only
+    then wait. That breaks the executor, which is fine: the caller has already
+    cancelled everything still queued and re-submits it to a fresh pool.
+    """
+    if not force:
+        executor.shutdown(wait=True)
+        return
+    # Snapshot before shutdown; the executor drops its process map on teardown.
+    # Private attribute by necessity -- ProcessPoolExecutor exposes no way to
+    # reach its workers -- so tolerate it being absent or reshaped.
+    processes = list((getattr(executor, "_processes", None) or {}).values())
+    executor.shutdown(wait=False, cancel_futures=True)
+    for proc in processes:
+        try:
+            if proc.is_alive():
+                proc.terminate()
+        except (OSError, ValueError):  # already reaped
+            pass
+    for proc in processes:
+        try:
+            proc.join(timeout=_EVAL_WORKER_KILL_JOIN_SECONDS)
+        except (OSError, ValueError, AssertionError):
+            pass
+
+
 class EvaluationRunner:
     """
     Runs evaluation on saved inference results.
@@ -403,6 +506,12 @@ class EvaluationRunner:
         result_files = []
         # Look for .result.json files (normalized results)
         for result_file in output_dir.rglob("*.result.json"):
+            relative_parts = result_file.relative_to(output_dir).parts[:-1]
+            # Inline-image crop parsing writes its own normalized artifacts to
+            # ``<document>.images/``. They are dependencies of the parent Parse
+            # result, not benchmark examples, and must never enter evaluation.
+            if any(part.endswith(".images") for part in relative_parts):
+                continue
             result_files.append(result_file)
         return sorted(result_files)
 
@@ -1015,43 +1124,102 @@ class EvaluationRunner:
                         )
                     )
 
-                # Use ProcessPoolExecutor for true parallelism (bypasses GIL)
-                with ProcessPoolExecutor(max_workers=num_workers) as executor:
-                    # Submit all tasks
-                    futures = [executor.submit(_evaluate_single_worker, *task) for task in worker_tasks]
+                worker_timeout = _EVAL_WORKER_STALL_TIMEOUT_SECONDS
 
-                    # Per-worker timeout: 8 minutes per evaluation
-                    worker_timeout = 8 * 60
+                # Collect results as they complete
+                completed = 0
 
-                    # Collect results as they complete
-                    completed = 0
-                    for future in as_completed(futures):
-                        try:
-                            result_dict = future.result(timeout=worker_timeout)
-                            eval_result = EvaluationResult.model_validate(result_dict)
-                            evaluation_results.append(eval_result)
+                def _note_completed() -> None:
+                    """Advance the shared progress bar by one finished document."""
+                    nonlocal completed
+                    completed += 1
+                    if progress and total_task_id is not None:
+                        progress.update(total_task_id, completed=completed)  # type: ignore[arg-type]
 
-                            if eval_result.success:
-                                successful += 1
-                                log_progress(eval_result.test_id, "OK")
-                            elif _is_skipped_result(eval_result):
-                                skipped += 1
-                                log_progress(eval_result.test_id, "skipped (no layout data)")
-                            else:
-                                failed += 1
-                                log_progress(eval_result.test_id, "FAILED")
-                        except FuturesTimeoutError:
+                # (task, progress label, attempts so far). Consumed a batch at a
+                # time: a stalled pool is torn down and whatever it did not
+                # finish is re-submitted to a fresh one, so a hung document
+                # costs its own evaluation and nothing else's.
+                TaskEntry = tuple[tuple[Any, ...], str, int]
+                pending_tasks: list[TaskEntry] = [
+                    (task, str(task[1].get("test_id") or "unknown"), 0) for task in worker_tasks
+                ]
+                # Refilled per batch (cleared + updated, never reassigned, so the
+                # handler below closes over a stable mapping).
+                future_tasks: dict[Future, TaskEntry] = {}
+
+                def _handle_future(future: Future) -> None:
+                    nonlocal successful, failed, skipped
+                    try:
+                        result_dict = future.result()
+                        eval_result = EvaluationResult.model_validate(result_dict)
+                        evaluation_results.append(eval_result)
+
+                        if eval_result.success:
+                            successful += 1
+                            log_progress(eval_result.test_id, "OK")
+                        elif _is_skipped_result(eval_result):
+                            skipped += 1
+                            log_progress(eval_result.test_id, "skipped (no layout data)")
+                        else:
                             failed += 1
-                            log_progress("unknown", f"FAILED (worker timed out after {worker_timeout}s)")
-                        except Exception:
-                            # Worker process error
-                            failed += 1
-                            log_progress("unknown", "FAILED (worker error)")
+                            log_progress(eval_result.test_id, "FAILED")
+                    except Exception:
+                        # Worker process error
+                        failed += 1
+                        log_progress("unknown", "FAILED (worker error)")
 
-                        # Update progress (can't do this in worker due to separate processes)
-                        completed += 1
-                        if progress and total_task_id is not None:
-                            progress.update(total_task_id, completed=completed)  # type: ignore[arg-type]
+                    # Update progress (can't do this in worker due to separate processes)
+                    _note_completed()
+
+                def _fail_timed_out(entry: TaskEntry) -> None:
+                    nonlocal failed
+                    failed += 1
+                    log_progress(entry[1], f"FAILED (worker timed out after {worker_timeout}s)")
+                    _note_completed()
+
+                while pending_tasks:
+                    # Use ProcessPoolExecutor for true parallelism (bypasses GIL)
+                    executor = ProcessPoolExecutor(max_workers=num_workers)
+                    stalled = False
+                    try:
+                        # Submit all tasks
+                        futures = [
+                            executor.submit(_evaluate_single_worker, *task) for task, _label, _n in pending_tasks
+                        ]
+                        future_tasks.clear()
+                        future_tasks.update(zip(futures, pending_tasks, strict=True))
+
+                        timed_out, unstarted = _drain_eval_futures(futures, worker_timeout, _handle_future)
+                        stalled = bool(timed_out or unstarted)
+
+                        # Keep submission order so a retried batch behaves like
+                        # the original one.
+                        retry: list[TaskEntry] = []
+                        for future, entry in future_tasks.items():
+                            if future in unstarted:
+                                retry.append(entry)
+                            elif future in timed_out:
+                                entry_task, label, attempts = entry
+                                # Only worth a re-run if something was queued behind
+                                # this batch: that is the case where the pool's
+                                # pre-fed call queue makes a never-started task look
+                                # like a running one. With nothing queued, a RUNNING
+                                # future really was running, so blame it directly.
+                                if unstarted and attempts + 1 < _EVAL_WORKER_MAX_ATTEMPTS:
+                                    retry.append((entry_task, label, attempts + 1))
+                                else:
+                                    _fail_timed_out(entry)
+                        if not timed_out and len(retry) == len(future_tasks):
+                            # The batch stalled without a single task completing or
+                            # even starting -- a pool that never came up. Retrying
+                            # the identical batch would spin forever, so fail it.
+                            for entry in retry:
+                                _fail_timed_out(entry)
+                            retry = []
+                        pending_tasks = retry
+                    finally:
+                        _shutdown_eval_pool(executor, force=stalled)
 
             # Process QA evaluations concurrently
             if qa_evaluation_tasks:
@@ -1135,7 +1303,8 @@ class EvaluationRunner:
         # Collect all metric values by metric name
         metric_values: dict[str, list[float]] = {}
         # Also collect counts from metadata (for rules, etc.)
-        metric_counts: dict[str, list[tuple[int, int]]] = {}  # (passed, total) pairs
+        metric_counts: dict[str, list[tuple[float, float]]] = {}  # (score sum, denominator) pairs
+        metric_numerator_labels: dict[str, str] = {}
         metric_prf_counts: dict[str, list[tuple[int, int, int]]] = {}  # (tp, fp, fn) triples
         metric_score_sums: dict[str, list[tuple[float, float]]] = {}  # (score_sum, score_count)
         weighted_metric_values: dict[str, list[tuple[float, float]]] = {}  # (weighted_value, weight)
@@ -1184,8 +1353,16 @@ class EvaluationRunner:
                         metric_counts[metric.metric_name] = []
                     passed = metric.metadata.get("passed", 0)
                     total = metric.metadata.get("total", 0)
-                    if isinstance(passed, int) and isinstance(total, int):
-                        metric_counts[metric.metric_name].append((passed, total))
+                    if (
+                        isinstance(passed, int | float)
+                        and not isinstance(passed, bool)
+                        and isinstance(total, int | float)
+                        and not isinstance(total, bool)
+                    ):
+                        metric_counts[metric.metric_name].append((float(passed), float(total)))
+                        numerator_label = metric.metadata.get("numerator_label")
+                        if numerator_label in {"passed", "score"}:
+                            metric_numerator_labels[metric.metric_name] = numerator_label
 
                 if metric.metadata and "count" in metric.metadata:
                     count = metric.metadata.get("count")
@@ -1260,11 +1437,12 @@ class EvaluationRunner:
             total_passed = sum(passed for passed, _ in count_pairs)
             total_rules = sum(total for _, total in count_pairs)
             if total_rules > 0:
-                aggregate[f"total_{metric_name}_passed"] = float(total_passed)
+                numerator_label = metric_numerator_labels.get(metric_name, "passed")
+                aggregate[f"total_{metric_name}_{numerator_label}"] = float(total_passed)
                 aggregate[f"total_{metric_name}_evaluated"] = float(total_rules)
                 aggregate[f"micro_{metric_name}"] = total_passed / total_rules
 
-        add_precision_recall_f1_aggregates(aggregate, metric_prf_counts)
+        add_precision_recall_f1_aggregates(aggregate, metric_prf_counts, counted_metric_names=metric_counts)
 
         for metric_name, score_pairs in metric_score_sums.items():
             score_sum = sum(item[0] for item in score_pairs)

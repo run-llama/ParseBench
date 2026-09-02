@@ -394,3 +394,154 @@ def test_layout_case_without_annotations_is_not_scored_as_zero(tmp_path: Path, m
     # Unscorable GT (no annotations) is a data issue, not a provider failure
     assert summary.failed == 0
     assert summary.per_example_results == []
+
+
+# ---------------------------------------------------------------------------
+# metric_counts: float partial credit and numerator labels
+# ---------------------------------------------------------------------------
+
+
+def test_float_passed_totals_are_pooled_into_micro_and_total_aggregates() -> None:
+    """A metric emitting fractional ``passed`` (partial credit) must still pool
+    into ``total_*`` / ``micro_*`` — the old int-only guard silently dropped it."""
+    runner = EvaluationRunner(output_dir=Path("/tmp/unused"))
+    results = [
+        _success("a", [MetricValue(metric_name="qa_anls_star", value=0.5, metadata={"passed": 1.5, "total": 3})]),
+        _success("b", [MetricValue(metric_name="qa_anls_star", value=1.0, metadata={"passed": 2.0, "total": 2})]),
+    ]
+
+    aggregate = runner._aggregate_metrics(results)
+
+    assert aggregate["micro_qa_anls_star"] == pytest.approx(3.5 / 5)
+    assert aggregate["total_qa_anls_star_passed"] == 3.5
+    assert aggregate["total_qa_anls_star_evaluated"] == 5.0
+
+
+def test_numerator_label_renames_the_total_key_for_score_sums() -> None:
+    runner = EvaluationRunner(output_dir=Path("/tmp/unused"))
+    results = [
+        _success(
+            "a",
+            [
+                MetricValue(
+                    metric_name="qa_anls_star",
+                    value=0.75,
+                    metadata={"passed": 1.5, "total": 2, "numerator_label": "score"},
+                )
+            ],
+        ),
+    ]
+
+    aggregate = runner._aggregate_metrics(results)
+
+    assert aggregate["total_qa_anls_star_score"] == 1.5
+    assert "total_qa_anls_star_passed" not in aggregate
+    assert aggregate["micro_qa_anls_star"] == pytest.approx(0.75)
+
+
+def test_bool_passed_totals_are_ignored() -> None:
+    runner = EvaluationRunner(output_dir=Path("/tmp/unused"))
+    results = [
+        _success("a", [MetricValue(metric_name="rule_pass_rate", value=1.0, metadata={"passed": True, "total": True})]),
+    ]
+
+    aggregate = runner._aggregate_metrics(results)
+
+    assert "micro_rule_pass_rate" not in aggregate
+    assert aggregate["avg_rule_pass_rate"] == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Pooled micro aggregates for standalone tp/fp/fn metrics
+# ---------------------------------------------------------------------------
+
+
+def test_record_metrics_report_macro_and_micro_aggregates() -> None:
+    """Each metric pools from its own tp/fp/fn; ``*accuracy`` gets tp/(tp+fp+fn)."""
+    runner = EvaluationRunner(output_dir=Path("/tmp/unused"))
+    results = [
+        _success(
+            "a",
+            [
+                MetricValue(metric_name="record_precision", value=1.0, metadata={"tp": 1, "fp": 0, "fn": 9}),
+                MetricValue(metric_name="record_recall", value=0.1, metadata={"tp": 1, "fp": 0, "fn": 9}),
+                MetricValue(metric_name="record_f1", value=0.1818, metadata={"tp": 1, "fp": 0, "fn": 9}),
+                MetricValue(metric_name="record_accuracy", value=0.1, metadata={"tp": 1, "fp": 0, "fn": 9}),
+            ],
+            product_type="extract",
+        ),
+        _success(
+            "b",
+            [
+                MetricValue(metric_name="record_precision", value=0.5, metadata={"tp": 1, "fp": 1, "fn": 0}),
+                MetricValue(metric_name="record_recall", value=1.0, metadata={"tp": 1, "fp": 1, "fn": 0}),
+                MetricValue(metric_name="record_f1", value=0.6667, metadata={"tp": 1, "fp": 1, "fn": 0}),
+                MetricValue(metric_name="record_accuracy", value=0.5, metadata={"tp": 1, "fp": 1, "fn": 0}),
+            ],
+            product_type="extract",
+        ),
+    ]
+
+    summary = runner._aggregate_metrics(results)
+
+    assert summary["avg_record_precision"] == pytest.approx(0.75)
+    assert summary["avg_record_recall"] == pytest.approx(0.55)
+    assert summary["avg_record_f1"] == pytest.approx((0.1818 + 0.6667) / 2)
+    assert summary["avg_record_accuracy"] == pytest.approx(0.3)
+    assert summary["micro_record_precision"] == pytest.approx(2 / 3)
+    assert summary["micro_record_recall"] == pytest.approx(2 / 11)
+    assert summary["micro_record_f1"] == pytest.approx(2 * (2 / 3) * (2 / 11) / ((2 / 3) + (2 / 11)))
+    assert summary["micro_record_accuracy"] == pytest.approx(2 / 12)
+
+
+def test_standalone_f1_and_pass_rate_get_micro_without_the_trio() -> None:
+    """A lone ``*_f1`` or ``*pass_rate`` with tp/fp/fn (no precision/recall
+    siblings, no passed/total) still gets a pooled micro value."""
+    runner = EvaluationRunner(output_dir=Path("/tmp/unused"))
+    results = [
+        _success(
+            "a",
+            [
+                MetricValue(metric_name="picture_f1", value=1.0, metadata={"tp": 2, "fp": 0, "fn": 0}),
+                MetricValue(metric_name="extract_field_pass_rate", value=1.0, metadata={"tp": 2, "fp": 0, "fn": 0}),
+            ],
+        ),
+        _success(
+            "b",
+            [
+                MetricValue(metric_name="picture_f1", value=0.0, metadata={"tp": 0, "fp": 1, "fn": 1}),
+                MetricValue(metric_name="extract_field_pass_rate", value=0.0, metadata={"tp": 0, "fp": 1, "fn": 1}),
+            ],
+        ),
+    ]
+
+    summary = runner._aggregate_metrics(results)
+
+    # tp=2 fp=1 fn=1 -> precision 2/3, recall 2/3, f1 2/3
+    assert summary["micro_picture_f1"] == pytest.approx(2 / 3)
+    assert summary["total_picture_f1_tp"] == 2.0
+    # pass_rate pooled as tp / (tp + fp + fn)
+    assert summary["micro_extract_field_pass_rate"] == pytest.approx(2 / 4)
+
+
+def test_pass_rate_with_passed_total_keeps_the_rule_count_micro() -> None:
+    """When a pass-rate metric carries both passed/total and tp/fp/fn, the
+    rule-count denominator wins so the micro value is not silently redefined."""
+    runner = EvaluationRunner(output_dir=Path("/tmp/unused"))
+    results = [
+        _success(
+            "a",
+            [
+                MetricValue(
+                    metric_name="extract_element_pass_rate",
+                    value=0.5,
+                    metadata={"passed": 1, "total": 2, "tp": 1, "fp": 5, "fn": 5},
+                )
+            ],
+        ),
+    ]
+
+    summary = runner._aggregate_metrics(results)
+
+    assert summary["micro_extract_element_pass_rate"] == pytest.approx(0.5)
+    assert summary["total_extract_element_pass_rate_tp"] == 1.0

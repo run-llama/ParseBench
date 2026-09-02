@@ -32,12 +32,25 @@ class PipelineComparison:
         self.pipeline_b_dir = Path(pipeline_b_dir)
         self.test_cases_dir = Path(test_cases_dir) if test_cases_dir else None
 
-    # Metric mapping for different product types
-    METRIC_MAP: dict[str, str] = {
-        "extract": "accuracy",
-        "parse": "rule_pass_rate",
-        "layout_detection": "mAP@[.50:.95]",
+    # Ordered metric-name candidates per product type. The first name present
+    # in an evaluation result wins. Parse carries a fallback chain because
+    # layout-only parse runs (test cases with only ``LayoutTestRule`` entries)
+    # emit table-only metrics such as ``grits_trm_composite`` or layout-only
+    # metrics such as ``mAP@[.50:.95]`` instead of ``rule_pass_rate``.
+    #
+    # MUST stay in sync with
+    # ``comparison_core.py::COMPARISON_METRIC_CANDIDATES`` — enforced by
+    # ``tests/.../test_comparison_consistency.py``. ``rule_pass_rate`` is the
+    # canonical parse metric (pass/fail rule semantics from
+    # ``ParseEvaluator``); ``grits_trm_composite`` is the primary table-only
+    # parse metric. ``normalized_text_score`` is a secondary text-similarity
+    # signal and intentionally absent here.
+    METRIC_CANDIDATES: dict[str, tuple[str, ...]] = {
+        "extract": ("accuracy",),
+        "parse": ("rule_pass_rate", "grits_trm_composite", "mAP@[.50:.95]"),
+        "layout_detection": ("mAP@[.50:.95]",),
     }
+    DEFAULT_METRIC: str = "accuracy"
 
     def _detect_product_type(self, summary: EvaluationSummary) -> str:
         """Detect product type from evaluation results."""
@@ -60,8 +73,10 @@ class PipelineComparison:
         # Get the parent directory name (the run/experiment folder)
         parent_name = pipeline_dir.parent.name
 
-        # Try to extract a run ID pattern (e.g., run-21391181794)
-        run_id_match = re.search(r"run-(\d+)", parent_name)
+        # Try to extract a run ID pattern (e.g., run-21391181794). Matrix-leg
+        # dirs append a dataset suffix (run-<id>-<dataset-slug>) — keep it, or
+        # two legs of the same parent run would get identical labels.
+        run_id_match = re.search(r"run-(\d+(?:-[A-Za-z0-9._-]+)?)", parent_name)
         if run_id_match:
             return f"run-{run_id_match.group(1)}"
 
@@ -128,14 +143,34 @@ class PipelineComparison:
                 return metric.value
         return None
 
-    def _get_comparison_metric(self, eval_result: EvaluationResult, product_type: str) -> float | None:
-        """Get the primary comparison metric based on product type."""
-        target_metric = self.METRIC_MAP.get(product_type, "accuracy")
+    def _candidate_metric_names(self, product_type: str) -> tuple[str, ...]:
+        return self.METRIC_CANDIDATES.get(product_type, (self.DEFAULT_METRIC,))
 
-        for metric in eval_result.metrics:
-            if metric.metric_name == target_metric:
-                return metric.value
+    def _get_comparison_metric(self, eval_result: EvaluationResult, product_type: str) -> float | None:
+        """Return the first candidate metric emitted by ``eval_result``.
+
+        Parse emits ``rule_pass_rate`` *or* ``mAP@[.50:.95]`` depending on
+        whether the test case carries parse rules or only layout rules.
+        """
+        available = {m.metric_name: m.value for m in eval_result.metrics}
+        for name in self._candidate_metric_names(product_type):
+            if name in available:
+                return available[name]
         return None
+
+    def _resolve_comparison_metric_name(self, summary: EvaluationSummary, product_type: str) -> str:
+        """Pick the metric-name label used in stats/output headers.
+
+        Scans per-example results and returns the first candidate that at
+        least one example emitted; falls back to the first candidate so
+        empty summaries still get a sane label.
+        """
+        candidates = self._candidate_metric_names(product_type)
+        emitted = {m.metric_name for r in summary.per_example_results for m in r.metrics}
+        for name in candidates:
+            if name in emitted:
+                return name
+        return candidates[0]
 
     def _get_predictions(self, inference: InferenceResult | None) -> list[dict] | None:
         """Extract predictions as list of dicts for JSON serialization."""
@@ -195,7 +230,7 @@ class PipelineComparison:
 
         # Detect product type
         product_type = self._detect_product_type(summary_a)
-        comparison_metric = self.METRIC_MAP.get(product_type, "accuracy")
+        comparison_metric = self._resolve_comparison_metric_name(summary_a, product_type)
 
         # Create mapping of test_id -> EvaluationResult
         results_a = {r.test_id: r for r in summary_a.per_example_results}
