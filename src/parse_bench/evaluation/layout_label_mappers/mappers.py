@@ -292,3 +292,26 @@ class DotsOcrLabelMapper(LayoutLabelMapper):
         if mapped is None:
             raise UnknownRawLayoutLabelError(f"Unknown dots.ocr raw layout label '{label}'")
         return mapped.canonical_class
+
+
+@register_layout_label_mapper(
+    "liteparse",
+    "model:liteparse_layout",
+    priority=90,
+)
+class LiteParseLabelMapper(LayoutLabelMapper):
+    """LiteParse blocks are emitted with canonical labels already; validate them."""
+
+    _BY_LOWER: dict[str, CanonicalLabel] = {label.value.lower(): label for label in CanonicalLabel}
+
+    def to_canonical(
+        self,
+        label: str,
+        prediction: LayoutPrediction,
+        context: MappingContext,
+    ) -> CanonicalLabel:
+        del prediction, context
+        canonical = self._BY_LOWER.get(label.strip().lower())
+        if canonical is None:
+            raise UnknownRawLayoutLabelError(f"Unknown LiteParse layout label '{label}'")
+        return canonical

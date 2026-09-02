@@ -130,6 +130,17 @@ def _resized_size(width: int, height: int, max_edge: int, max_tokens: int) -> tu
     return (lo, max(round(lo / aspect_ratio), 1))
 
 
+def anthropic_cache_aware_cost_usd(usage: dict[str, int], input_rate: float, output_rate: float) -> float:
+    """USD cost using Anthropic cache multipliers (write 1.25x, read 0.1x)."""
+    n_in = float(usage.get("input", 0) or 0)
+    n_out = float(usage.get("output", 0) or 0)
+    read = float(usage.get("cache_read", 0) or 0)
+    write = float(usage.get("cache_write", 0) or 0)
+    in_cost = (n_in + 1.25 * write + 0.1 * read) / 1_000_000.0 * input_rate
+    out_cost = n_out / 1_000_000.0 * output_rate
+    return in_cost + out_cost
+
+
 @register_provider("anthropic")
 class AnthropicProvider(Provider):
     """
@@ -233,9 +244,18 @@ class AnthropicProvider(Provider):
         """Extract token counts from an Anthropic API response."""
         usage = getattr(response, "usage", None)
         if usage is None:
-            return {"input_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "total_tokens": 0}
+            return {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 0,
+                "thinking_tokens": 0,
+                "total_tokens": 0,
+            }
         input_tok = getattr(usage, "input_tokens", 0) or 0
         output_tok = getattr(usage, "output_tokens", 0) or 0
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
         # With extended thinking, output_tokens includes thinking tokens.
         # Try to count thinking tokens from content blocks for reporting.
         thinking_tok = 0
@@ -243,10 +263,12 @@ class AnthropicProvider(Provider):
             if getattr(block, "type", None) == "thinking":
                 # Token count not directly available; use output_tokens as-is.
                 break
-        total_tok = input_tok + output_tok
+        total_tok = input_tok + output_tok + cache_read + cache_write
         return {
             "input_tokens": input_tok,
             "output_tokens": output_tok,
+            "cache_read_tokens": cache_read,
+            "cache_write_tokens": cache_write,
             "thinking_tokens": thinking_tok,
             "total_tokens": total_tok,
         }
@@ -733,14 +755,25 @@ class AnthropicProvider(Provider):
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 
             # Aggregate token usage across pages
-            total_input = sum(u["input_tokens"] for u in page_usages)
-            total_output = sum(u["output_tokens"] for u in page_usages)
-            total_thinking = sum(u["thinking_tokens"] for u in page_usages)
-            total_all = sum(u["total_tokens"] for u in page_usages)
+            total_input = sum(u.get("input_tokens", 0) for u in page_usages)
+            total_output = sum(u.get("output_tokens", 0) for u in page_usages)
+            total_cache_read = sum(u.get("cache_read_tokens", 0) for u in page_usages)
+            total_cache_write = sum(u.get("cache_write_tokens", 0) for u in page_usages)
+            total_thinking = sum(u.get("thinking_tokens", 0) for u in page_usages)
+            total_all = sum(u.get("total_tokens", 0) for u in page_usages)
 
-            # Compute cost
+            # Compute cost (Anthropic cache multipliers when cache tokens present)
             input_rate, output_rate = self._get_pricing()
-            cost = (total_input * input_rate + (total_output + total_thinking) * output_rate) / 1_000_000
+            cost = anthropic_cache_aware_cost_usd(
+                {
+                    "input": total_input,
+                    "output": total_output + total_thinking,
+                    "cache_read": total_cache_read,
+                    "cache_write": total_cache_write,
+                },
+                input_rate,
+                output_rate,
+            )
 
             raw_output = {
                 "pages": pages,
@@ -755,6 +788,8 @@ class AnthropicProvider(Provider):
                 },
                 "input_tokens": total_input,
                 "output_tokens": total_output,
+                "cache_read_tokens": total_cache_read,
+                "cache_write_tokens": total_cache_write,
                 "thinking_tokens": total_thinking,
                 "total_tokens": total_all,
                 "cost_usd": cost,

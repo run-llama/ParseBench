@@ -2,6 +2,8 @@
 
 import asyncio
 import os
+from collections import defaultdict
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,7 @@ from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import (
     LayoutItemIR,
     LayoutSegmentIR,
+    PageIR,
     ParseLayoutPageIR,
     ParseOutput,
 )
@@ -81,8 +84,9 @@ class ReductoProvider(Provider):
               (default: [])
             - `advanced_chart_agent`: Enable advanced chart agent for figure agentic scope
               to convert charts/graphs to tabular format (default: False)
-            - `model`: Reducto parse model to select via ``settings.model`` (e.g. "r-1").
-              Omitted by default.
+            - `model`: Reducto parse model to select via ``settings.model`` (e.g.
+              ``"r-1"``). Omitted by default, which runs legacy Parse. See
+              https://docs.reducto.ai/parse/r-1
         """
         super().__init__(provider_name, base_config)
 
@@ -100,6 +104,7 @@ class ReductoProvider(Provider):
         self._table_output_format = self.base_config.get("table_output_format", "html")
         self._formatting_include = self.base_config.get("formatting_include", [])
         self._advanced_chart_agent = self.base_config.get("advanced_chart_agent", False)
+        # Reducto parse model selector (``settings.model``). None => legacy Parse.
         self._model = self.base_config.get("model")
 
     def _is_pdf_file(self, file_path: str) -> bool:
@@ -176,6 +181,9 @@ class ReductoProvider(Provider):
                 "ocr_system": self._ocr_system,
                 # Don't specify page_range - process all pages
             }
+            # r-1 (and any future named model) is opt-in via settings.model; the
+            # SDK forwards unknown settings keys verbatim, so this reaches the
+            # V3 API even though 0.22.0's SettingsParam has no `model` field yet.
             if self._model:
                 settings_config["model"] = self._model
 
@@ -319,42 +327,59 @@ class ReductoProvider(Provider):
                 f"ReductoProvider only supports PARSE product type, got {raw_result.product_type}"
             )
 
-        # Convert to ParseOutput
-        # Reducto response structure: result.chunks[] with blocks[] that have bbox.page
-        # According to docs: https://docs.reducto.ai/parsing/response-format
-        # Similar to run_reducto.py, we use the first chunk's content
+        # Convert to ParseOutput. Reducto returns inline chunks for normal-sized
+        # documents and a URL for large results. The latter has appeared both as
+        # a bare chunk list and as a complete response envelope, so unwrap it
+        # before iterating rather than treating mapping keys as chunks.
+        # See https://docs.reducto.ai/parse/response-format.
         result_obj = raw_result.raw_output.get("result", {})
-        chunks = result_obj.get("chunks", [])
+        if not isinstance(result_obj, Mapping):
+            raise ProviderPermanentError("Reducto response field 'result' must be an object")
+
+        chunks_payload: Any = result_obj.get("chunks", [])
 
         # Handle URL-based results for large documents (>~6MB response)
         # When result.type == "url", chunks are not inline — fetch from URL
-        if result_obj.get("type") == "url" and not chunks:
+        if result_obj.get("type") == "url" and not chunks_payload:
             import requests
 
-            result_url = result_obj.get("url", "")
-            if result_url:
-                try:
-                    resp = requests.get(result_url, timeout=120)
-                    resp.raise_for_status()
-                    chunks = resp.json()
-                except Exception as e:
-                    raise ProviderPermanentError(f"Failed to fetch URL-based result from Reducto: {e}") from e
+            result_url = result_obj.get("url")
+            if not isinstance(result_url, str) or not result_url:
+                raise ProviderPermanentError("Reducto URL result did not include a usable 'url'")
+            try:
+                resp = requests.get(result_url, timeout=120)
+                resp.raise_for_status()
+                chunks_payload = resp.json()
+            except Exception as e:
+                raise ProviderPermanentError(f"Failed to fetch URL-based result from Reducto: {e}") from e
 
-        # Extract content from first chunk
-        # Similar to run_reducto.py: result.result.chunks[0].content
-        markdown = ""
-        if chunks and len(chunks) > 0:
-            markdown = chunks[0].get("content", "")
+        chunks = _coerce_chunks(chunks_payload)
+
+        # Build the document-level markdown by joining ALL chunks. The previous
+        # implementation only used ``chunks[0].content``, which silently dropped
+        # pages 2+ on multi-page documents under default ``chunk_mode="variable"``
+        # (chunks of 250-1500 chars). Joining preserves chunk-level formatting
+        # (HTML tables, lists, etc.) for the full document.
+        markdown_parts: list[str] = []
+        for chunk in chunks:
+            content = chunk.get("content", "")
+            if content:
+                markdown_parts.append(content)
+        markdown = "\n\n".join(markdown_parts)
+
+        # Build per-page markdown so that page-scoped rules
+        # (``_scope_to_page`` in rules_form.py) match against the correct page
+        # instead of falling back to full-document content.
+        pages = _build_pages(chunks)
 
         # Build layout_pages from block-level bboxes for layout cross-evaluation
         layout_pages = _build_layout_pages(chunks)
 
-        # Populate document-level markdown, leave pages empty
         output = ParseOutput(
             task_type="parse",
             example_id=raw_result.request.example_id,
             pipeline_name=raw_result.pipeline_name,
-            pages=[],  # Leave pages empty
+            pages=pages,
             layout_pages=layout_pages,
             markdown=markdown,
         )
@@ -371,14 +396,85 @@ class ReductoProvider(Provider):
         )
 
 
+def _coerce_chunks(payload: Any) -> list[dict[str, Any]]:
+    """Return Reducto chunks from an inline list or an external-result envelope.
+
+    Normal inline Parse responses expose ``result.chunks`` directly. Large
+    document URLs generally return a list, but some Reducto result URLs return
+    a response envelope (``{"chunks": [...]}`` or ``{"result": {"chunks":
+    [...]}}``). Treating that mapping as an iterable yields its string keys and
+    crashes later on ``chunk.get``. This boundary normalizes both supported
+    shapes while rejecting malformed payloads with an actionable provider
+    error.
+    """
+
+    chunks_value = payload
+    if isinstance(payload, Mapping):
+        chunks_value = payload.get("chunks")
+        if chunks_value is None:
+            nested_result = payload.get("result")
+            if isinstance(nested_result, Mapping):
+                chunks_value = nested_result.get("chunks")
+
+    if not isinstance(chunks_value, list):
+        raise ProviderPermanentError("Reducto result chunks must be a list or an object containing a 'chunks' list")
+
+    chunks: list[dict[str, Any]] = []
+    for index, chunk in enumerate(chunks_value):
+        if not isinstance(chunk, Mapping):
+            raise ProviderPermanentError(f"Reducto chunk at index {index} must be an object")
+        chunks.append(dict(chunk))
+    return chunks
+
+
+def _build_pages(chunks: list[dict[str, Any]]) -> list[PageIR]:
+    """Build per-page markdown from Reducto chunks/blocks.
+
+    Reducto exposes ``bbox.page`` (1-indexed) on every block. We aggregate
+    block-level ``content`` per page so that page-scoped rules can match
+    against the right page's text instead of the whole document.
+
+    Block content is concatenated with ``\\n\\n`` to preserve a markdown-ish
+    layout. This loses some chunk-level formatting niceties (e.g. surrounding
+    section headers added by Reducto's chunker), but is consistent across
+    chunking modes - including the default ``chunk_mode="variable"`` where a
+    chunk can span multiple pages.
+
+    Blocks with non-positive or unparseable page numbers are dropped from the
+    per-page output (``PageIR.page_index`` requires ``ge=0``). Their content
+    still reaches the document-level ``markdown`` because that is built from
+    chunk-level content in :py:meth:`ReductoProvider.normalize`.
+    """
+    pages_blocks: dict[int, list[str]] = defaultdict(list)
+    for chunk in chunks:
+        for block in chunk.get("blocks", []):
+            bbox_data = block.get("bbox", {}) or {}
+            try:
+                page_num = int(bbox_data.get("page", 1))
+            except (TypeError, ValueError):
+                page_num = 1
+            if page_num < 1:
+                # Defensive: 0-indexed or negative page values would produce
+                # PageIR.page_index < 0 and fail Pydantic validation.
+                continue
+            content = block.get("content", "") or ""
+            if content:
+                pages_blocks[page_num].append(content)
+
+    pages: list[PageIR] = []
+    for page_num in sorted(pages_blocks.keys()):
+        page_md = "\n\n".join(pages_blocks[page_num])
+        # Reducto pages are 1-indexed; PageIR.page_index is 0-indexed.
+        pages.append(PageIR(page_index=page_num - 1, markdown=page_md))
+    return pages
+
+
 def _build_layout_pages(chunks: list[dict[str, Any]]) -> list[ParseLayoutPageIR]:
     """Build layout_pages from Reducto chunks/blocks for layout cross-evaluation.
 
     Groups blocks by page number and converts each block's normalized [0,1] bbox
     into a LayoutSegmentIR with canonical label mapping.
     """
-    from collections import defaultdict
-
     # Group blocks by page
     pages_blocks: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for chunk in chunks:

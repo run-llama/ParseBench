@@ -1,6 +1,8 @@
 """Provider for LiteParse PARSE."""
 
 import json as _json
+import os
+import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -12,7 +14,7 @@ from parse_bench.inference.providers.base import (
     ProviderPermanentError,
 )
 from parse_bench.inference.providers.registry import register_provider
-from parse_bench.schemas.parse_output import PageIR, ParseOutput
+from parse_bench.schemas.parse_output import LayoutItemIR, LayoutSegmentIR, PageIR, ParseLayoutPageIR, ParseOutput
 from parse_bench.schemas.pipeline import PipelineSpec
 from parse_bench.schemas.pipeline_io import (
     InferenceRequest,
@@ -21,10 +23,10 @@ from parse_bench.schemas.pipeline_io import (
 )
 from parse_bench.schemas.product import ProductType
 
-# Hardcoded path to the workspace `lit` release binary. ParseBench lives at
-# <workspace>/ParseBench/src/parse_bench/inference/providers/parse/liteparse.py,
-# so parents[6] is the workspace root.
-_LIT_BIN = Path(__file__).resolve().parents[6] / "target" / "release" / "lit"
+# Path to the `lit` CLI binary. Resolution order: ``LITEPARSE_BIN`` env var,
+# then ``lit`` on ``PATH``. Falls back to a plain ``lit`` so the error message
+# below still names the binary when neither is set.
+_LIT_BIN = Path(os.environ.get("LITEPARSE_BIN") or shutil.which("lit") or "lit")
 
 # Kwargs accepted in base_config that map directly to CLI flags.
 _CLI_FLAG_MAP: dict[str, str] = {
@@ -35,6 +37,100 @@ _CLI_FLAG_MAP: dict[str, str] = {
     "num_workers": "--num-workers",
     "image_mode": "--image-mode",
 }
+
+# ``lit --extract-blocks`` block kinds -> LayoutItemIR.type. Kinds with no
+# visual region of their own (``rule``) are skipped. Labels are the benchmark's
+# canonical names so the layout label mapper is a straight lookup.
+_BLOCK_KIND_TO_LABEL: dict[str, str] = {
+    "heading": "Section-header",
+    "paragraph": "Text",
+    "list_item": "List-item",
+    "table": "Table",
+    "grid_fallback": "Table",
+    "figure": "Picture",
+    "code": "Code",
+}
+
+
+def _block_text(block: dict[str, Any]) -> str:
+    """Best-effort text for a block: ``text`` for prose, cell text for tables."""
+    text = block.get("text")
+    if isinstance(text, str) and text:
+        return text
+    if block.get("kind") in {"table", "grid_fallback"}:
+        rows = []
+        header = block.get("header")
+        if isinstance(header, list):
+            rows.append(header)
+        rows.extend(r for r in (block.get("rows") or []) if isinstance(r, list))
+        lines = []
+        for row in rows:
+            cells = [str(c.get("text", "") if isinstance(c, dict) else c) for c in row]
+            lines.append(" | ".join(cells))
+        return "\n".join(lines)
+    if block.get("kind") == "code":
+        lines = block.get("lines")
+        if isinstance(lines, list):
+            return "\n".join(str(line) for line in lines)
+    return ""
+
+
+def _build_layout_pages(pages_raw: list[dict[str, Any]]) -> list[ParseLayoutPageIR]:
+    """Convert ``lit --extract-blocks`` output into normalized layout pages.
+
+    Block bboxes are ``{x, y, width, height}`` in PDF points on the page's own
+    coordinate system; they are normalized by the page size to the [0, 1]
+    frame ``LayoutSegmentIR`` expects.
+    """
+    layout_pages: list[ParseLayoutPageIR] = []
+    for page_data in pages_raw:
+        blocks = page_data.get("blocks") or []
+        width = page_data.get("width")
+        height = page_data.get("height")
+        if not blocks or not isinstance(width, int | float) or not isinstance(height, int | float):
+            continue
+        if width <= 0 or height <= 0:
+            continue
+        items: list[LayoutItemIR] = []
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            label = _BLOCK_KIND_TO_LABEL.get(str(block.get("kind", "")))
+            bbox = block.get("bbox")
+            if label is None or not isinstance(bbox, dict):
+                continue
+            try:
+                x = float(bbox["x"]) / width
+                y = float(bbox["y"]) / height
+                w = float(bbox["width"]) / width
+                h = float(bbox["height"]) / height
+            except (KeyError, TypeError, ValueError):
+                continue
+            if w <= 0 or h <= 0:
+                continue
+            segment = LayoutSegmentIR(x=x, y=y, w=w, h=h, confidence=1.0, label=label)
+            text = _block_text(block)
+            items.append(
+                LayoutItemIR(
+                    type=label,
+                    value=text,
+                    md=text,
+                    bbox=segment,
+                    layout_segments=[segment],
+                )
+            )
+        if not items:
+            continue
+        layout_pages.append(
+            ParseLayoutPageIR(
+                page_number=int(page_data.get("page_index", 0)) + 1,
+                width=float(width),
+                height=float(height),
+                md=page_data.get("text", "") or "",
+                items=items,
+            )
+        )
+    return layout_pages
 
 
 @register_provider("liteparse")
@@ -61,10 +157,15 @@ class LiteParseProvider(Provider):
         self._output_format = self.base_config.get("output_format", "markdown")
         self._ocr_enabled = self.base_config.get("ocr_enabled", True)
         self._preserve_small_text = self.base_config.get("preserve_very_small_text", False)
+        self._extract_blocks = bool(self.base_config.get("extract_blocks", True))
         self._flag_kwargs = {k: v for k, v in self.base_config.items() if k in _CLI_FLAG_MAP and v is not None}
 
     def _build_cli_args(self, pdf_path: str, fmt: str) -> list[str]:
         args: list[str] = [str(_LIT_BIN), "parse", pdf_path, "--format", fmt, "--quiet"]
+        if fmt == "json" and self._extract_blocks:
+            # Layout blocks (kind + bbox in points) feed ParseOutput.layout_pages
+            # so the Visual Grounding metrics can score LiteParse.
+            args.append("--extract-blocks")
         # Ground truth uses plain text (no markdown link syntax), so disable
         # hyperlink extraction for benchmark parity.
         args.append("--no-links")
@@ -88,7 +189,8 @@ class LiteParseProvider(Provider):
         except FileNotFoundError as e:
             raise ProviderConfigError(
                 f"liteparse CLI binary not found at {_LIT_BIN}. "
-                f"Build it with `cargo build --release --bin lit` from the workspace root."
+                f"Install it with `pip install liteparse` (or `parse-bench[liteparse]`), "
+                f"or point LITEPARSE_BIN at a `lit` binary."
             ) from e
         if proc.returncode != 0:
             raise ProviderPermanentError(
@@ -109,6 +211,9 @@ class LiteParseProvider(Provider):
             {
                 "page_index": (p.get("page", 1) - 1) if isinstance(p.get("page"), int) and p["page"] > 0 else 0,
                 "text": p.get("text", "") or "",
+                "width": p.get("width"),
+                "height": p.get("height"),
+                "blocks": p.get("blocks") or [],
             }
             for p in pages_raw
         ]
@@ -229,6 +334,7 @@ class LiteParseProvider(Provider):
             example_id=raw_result.request.example_id,
             pipeline_name=raw_result.pipeline_name,
             pages=pages,
+            layout_pages=_build_layout_pages(raw_result.raw_output.get("pages", [])),
             markdown=full_text,
         )
 

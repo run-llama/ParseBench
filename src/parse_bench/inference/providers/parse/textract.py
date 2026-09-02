@@ -41,9 +41,26 @@ TEXTRACT_LABEL_MAP: dict[str, str] = {
     "LAYOUT_KEY_VALUE": "Key-Value Region",
 }
 
+# Textract SELECTION_ELEMENT SelectionStatus -> Canonical17 checkbox label.
+# SELECTION_ELEMENT blocks are only emitted when the FORMS feature is enabled.
+TEXTRACT_SELECTION_LABEL_MAP: dict[str, str] = {
+    "SELECTED": "Checkbox-Selected",
+    "NOT_SELECTED": "Checkbox-Unselected",
+}
+
 # Virtual page dimensions for normalized coordinate conversion.
 # Textract BoundingBox is already [0,1], so these cancel out during evaluation.
 _VIRTUAL_PAGE_DIM = 1000.0
+
+# Textract per-page pricing (USD), first 1M pages/month tier, US West (Oregon).
+# Keyed by (detect_tables, detect_forms). Source: https://aws.amazon.com/textract/pricing/
+# Layout is included free when combined with Tables; when used alone it has its own tier.
+_TEXTRACT_COST_PER_PAGE_USD: dict[tuple[bool, bool], float] = {
+    (False, False): 0.004,  # AnalyzeDocument - Layout only
+    (True, False): 0.015,  # AnalyzeDocument - Tables (Layout free with Tables)
+    (False, True): 0.050,  # AnalyzeDocument - Forms
+    (True, True): 0.065,  # AnalyzeDocument - Tables + Forms
+}
 
 
 @register_provider("textract")
@@ -66,7 +83,10 @@ class TextractProvider(Provider):
             - `aws_region`: AWS region (default: "us-east-1", or use AWS_REGION env var)
             - `output_tables_as_html`: Whether to output tables as HTML (default: True)
             - `detect_tables`: Whether to detect tables (default: True)
-            - `detect_forms`: Whether to detect forms/key-value pairs (default: False)
+            - `detect_forms`: Whether to detect forms/key-value pairs and checkbox
+              selection elements (default: False). Required for Checkbox-Selected /
+              Checkbox-Unselected layout predictions. Note that enabling FORMS
+              roughly ~5x the AWS per-page price vs. LAYOUT-only.
         """
         super().__init__(provider_name, base_config)
 
@@ -444,19 +464,28 @@ class TextractProvider(Provider):
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 
+            raw_output: dict[str, Any] = {
+                "textract_response": textract_response,
+                "config": {
+                    "output_tables_as_html": self._output_tables_as_html,
+                    "detect_tables": self._detect_tables,
+                    "detect_forms": self._detect_forms,
+                },
+            }
+
+            num_pages = int(textract_response.get("DocumentMetadata", {}).get("Pages", 0) or 0)
+            if num_pages > 0:
+                cost_per_page = _TEXTRACT_COST_PER_PAGE_USD[(self._detect_tables, self._detect_forms)]
+                raw_output["num_pages"] = num_pages
+                raw_output["cost_per_page_usd"] = cost_per_page
+                raw_output["cost_usd"] = cost_per_page * num_pages
+
             return RawInferenceResult(
                 request=request,
                 pipeline=pipeline,
                 pipeline_name=pipeline.pipeline_name,
                 product_type=request.product_type,
-                raw_output={
-                    "textract_response": textract_response,
-                    "config": {
-                        "output_tables_as_html": self._output_tables_as_html,
-                        "detect_tables": self._detect_tables,
-                        "detect_forms": self._detect_forms,
-                    },
-                },
+                raw_output=raw_output,
                 started_at=started_at,
                 completed_at=completed_at,
                 latency_in_ms=latency_ms,
@@ -548,9 +577,21 @@ def _build_layout_pages(blocks: list[dict[str, Any]]) -> list[ParseLayoutPageIR]
             page_num = block.get("Page", 1)
             pages_blocks[page_num].append(block)
 
+    # Group SELECTION_ELEMENT blocks (checkboxes) by page
+    pages_selection_blocks: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for block in blocks:
+        if block.get("BlockType") != "SELECTION_ELEMENT":
+            continue
+        status = block.get("SelectionStatus", "")
+        if status not in TEXTRACT_SELECTION_LABEL_MAP:
+            continue
+        page_num = block.get("Page", 1)
+        pages_selection_blocks[page_num].append(block)
+
     layout_pages: list[ParseLayoutPageIR] = []
-    for page_num in sorted(pages_blocks.keys()):
-        page_blocks = pages_blocks[page_num]
+    all_page_nums = sorted(set(pages_blocks.keys()) | set(pages_selection_blocks.keys()))
+    for page_num in all_page_nums:
+        page_blocks = pages_blocks.get(page_num, [])
         items: list[LayoutItemIR] = []
 
         for block in page_blocks:
@@ -592,6 +633,34 @@ def _build_layout_pages(blocks: list[dict[str, Any]]) -> list[ParseLayoutPageIR]
                 LayoutItemIR(
                     type=item_type,
                     value=content,
+                    bbox=seg,
+                    layout_segments=[seg],
+                )
+            )
+
+        for block in pages_selection_blocks.get(page_num, []):
+            status = block.get("SelectionStatus", "")
+            canonical_label = TEXTRACT_SELECTION_LABEL_MAP[status]
+
+            bbox = block.get("Geometry", {}).get("BoundingBox", {})
+            left = float(bbox.get("Left", 0.0))
+            top = float(bbox.get("Top", 0.0))
+            width = float(bbox.get("Width", 0.0))
+            height = float(bbox.get("Height", 0.0))
+            confidence = float(block.get("Confidence", 100.0)) / 100.0
+
+            seg = LayoutSegmentIR(
+                x=left,
+                y=top,
+                w=width,
+                h=height,
+                confidence=confidence,
+                label=canonical_label,
+            )
+            items.append(
+                LayoutItemIR(
+                    type="text",
+                    value="",
                     bbox=seg,
                     layout_segments=[seg],
                 )

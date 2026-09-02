@@ -3016,7 +3016,7 @@ class _NanoEngine:
     """Per-document pipeline against one OpenAI-compatible vLLM endpoint."""
 
     def __init__(self, endpoint_url: str, model: str, max_concurrent: int,
-                 timeout_s: float):
+                 timeout_s: float, api_key: str | None = None):
         base = endpoint_url.rstrip("/")
         self._url = (
             base + "/chat/completions"
@@ -3026,11 +3026,12 @@ class _NanoEngine:
         self._model = model
         self._max_concurrent = max_concurrent
         self._timeout_s = timeout_s
+        self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
     async def parse_pages(self, page_images: List[Image.Image]) -> dict:
         semaphore = asyncio.Semaphore(self._max_concurrent)
         elements: List[Dict[str, Any]] = []
-        async with httpx.AsyncClient(timeout=self._timeout_s) as client:
+        async with httpx.AsyncClient(timeout=self._timeout_s, headers=self._headers) as client:
             for page_no, image in enumerate(page_images, start=1):
                 image = normalize_image_mode(image, "RGB")
                 page_elements = await self._parse_page(client, semaphore, image, page_no)
@@ -3194,6 +3195,8 @@ class KdlFrontierNanoProvider(Provider):
             self.base_config.get("max_pages", os.getenv("KDL_NANO_MAX_PAGES", "400"))
         )
         self._max_concurrent = int(os.getenv("KDL_NANO_MAX_CONCURRENT", "8"))
+        api_key_env = self.base_config.get("api_key_env", "VLLM_API_KEY")
+        self._api_key = self.base_config.get("api_key") or os.getenv(api_key_env, "")
 
     def _load_page_images(self, source_path: Path) -> List[Image.Image]:
         if source_path.suffix.lower() in (".png", ".jpg", ".jpeg", ".jfif"):
@@ -3230,7 +3233,8 @@ class KdlFrontierNanoProvider(Provider):
             raise ProviderPermanentError("Document rendered to zero pages.")
 
         engine = _NanoEngine(
-            self._endpoint_url, self._model, self._max_concurrent, self._timeout
+            self._endpoint_url, self._model, self._max_concurrent, self._timeout,
+            api_key=self._api_key,
         )
         try:
             raw_output = self.run_async_from_sync(engine.parse_pages(page_images))

@@ -9,6 +9,7 @@ import json
 import os
 import time
 from collections import defaultdict
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -247,9 +248,12 @@ class PulseProvider(Provider):
         url_resp = requests.get(raw["url"], timeout=self._request_timeout)
         self._classify_bad_response(url_resp, f"{context} large-result fetch")
         try:
-            url_result = url_resp.json()
+            url_result_raw = url_resp.json()
         except ValueError as e:
             raise ProviderPermanentError(f"Pulse large-result fetch returned non-JSON response: {e}") from e
+        if not isinstance(url_result_raw, dict):
+            raise ProviderPermanentError("Pulse large-result fetch returned a non-object response")
+        url_result: dict[str, Any] = url_result_raw
         if "plan_info" in raw or "plan-info" in raw:
             url_result["plan_info"] = raw.get("plan_info", raw.get("plan-info"))
         return url_result
@@ -408,14 +412,14 @@ class PulseProvider(Provider):
         if self._use_tables_endpoint:
             raw_output["_tables_endpoint_applied"] = "_tables_result" in raw_output
 
-        plan_info = raw_output.get("plan-info", raw_output.get("plan_info", {}))
-        pages_used = None
-        if isinstance(plan_info, dict):
-            pages_used = plan_info.get("pages_used")
-        if pages_used is None:
-            pages_used = raw_output.get("page_count", raw_output.get("num_pages"))
+        # Per-document page count for cost. Pulse's `plan-info.pages_used` is the
+        # ACCOUNT-cumulative page counter (grows across every request on the key),
+        # not this document's pages, so it must never feed cost — using it made
+        # every doc report an identical, ever-growing cost_usd. Read the document's
+        # own `page_count` (fallback `num_pages`).
+        pages_used = raw_output.get("page_count", raw_output.get("num_pages"))
         try:
-            pages_used_float = float(pages_used)
+            pages_used_float = float(str(pages_used))
         except (TypeError, ValueError):
             pages_used_float = 0.0
         if pages_used_float > 0:
@@ -689,7 +693,7 @@ def _extract_grouped_table(elem: dict[str, Any]) -> tuple[Any, Any, Any, str]:
     return coords, page_num, conf_raw, str(content or "")
 
 
-def _iter_bbox_elements(bounding_boxes: Any):
+def _iter_bbox_elements(bounding_boxes: Any) -> Iterator[tuple[Any, Any]]:
     """Yield normalized raw bbox entries from grouped or flat Pulse outputs."""
     if isinstance(bounding_boxes, list):
         for elem in bounding_boxes:
@@ -734,7 +738,8 @@ def _build_layout_pages(bounding_boxes: Any) -> list[ParseLayoutPageIR]:
             )
             page_num = elem.get("page_number", elem.get("page", 1))
             conf_raw = elem.get("average_word_confidence", elem.get("confidence"))
-            content = elem.get("original_content", elem.get("content", elem.get("text", "")))
+            content_raw = elem.get("original_content", elem.get("content", elem.get("text", "")))
+            content = str(content_raw) if content_raw is not None else ""
 
         normalized = _normalize_coords(coords)
         if normalized is None:

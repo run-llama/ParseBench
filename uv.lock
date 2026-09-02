@@ -1617,6 +1617,21 @@ wheels = [
 ]
 
 [[package]]
+name = "liteparse"
+version = "2.14.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/93/e1/0d25e967be5a53e60ed8f780adf8453fc18ed85c819498351aace61ea7ad/liteparse-2.14.3.tar.gz", hash = "sha256:94f2922c912b92361f1e2d67bf0647dfe7a4aba8c20c5e188de2b41a9c6a5aa1", size = 511902, upload-time = "2026-09-01T23:16:36.009Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/64/6e/c9a06a46272212ca680adc7a67a7d96910b0c95262cad1751f533e0bf2c3/liteparse-2.14.3-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:e175884c76dec5393ce768a968552270c0d88de7e120d7cf909fcf5ebbf6eb81", size = 12629297, upload-time = "2026-09-01T23:16:21.454Z" },
+    { url = "https://files.pythonhosted.org/packages/55/3f/8e2a59938ab71b9318820c245cb68211dd65b75102c40615cc142dc5adfb/liteparse-2.14.3-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:72c607755c29e2a14a65a09acac210e1030266c4b4f4b993db7b1500022d5260", size = 12040653, upload-time = "2026-09-01T23:16:23.468Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/18/642cf351af04d891a896b9efbe2c75c2a91aabd03fe7952479e5217550a6/liteparse-2.14.3-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:4303b34a956a678019f3c97ecfe1991d1f46c6daff02b30fbc49f2975b701407", size = 13546960, upload-time = "2026-09-01T23:16:25.339Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/6c/702bcf21d88ebb69c40fbf4f06c33a8e2a5d51d89e5bf9a2de5ae5bb7239/liteparse-2.14.3-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:1295746b341f386c30263700a8ec59fb9ec1fc4ad70267fc3b19c109e21ab8b0", size = 13840638, upload-time = "2026-09-01T23:16:27.897Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/83/fe58ffed7dd6487555acbf2cf846780659c670866edf47fc0114bd1fc735/liteparse-2.14.3-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:f5a33c506e4653f835aace9d047d0aeef279e692a8ede53c60a291bb7bd581f0", size = 17028025, upload-time = "2026-09-01T23:16:29.999Z" },
+    { url = "https://files.pythonhosted.org/packages/25/46/57b60b1615bd09c75efa8528a0b7daa55ec0a04c56f3139c15309619d598/liteparse-2.14.3-cp310-abi3-win_amd64.whl", hash = "sha256:1f32bbde292ee01f7a58d8be4b6291d428388b7cfcedad35a5d4fa547b741266", size = 12048078, upload-time = "2026-09-01T23:16:31.888Z" },
+    { url = "https://files.pythonhosted.org/packages/32/33/cf78097d16cf1cebb0f43f2f280f4a456b6b01acde00d4eaa85855b56f05/liteparse-2.14.3-cp310-abi3-win_arm64.whl", hash = "sha256:abd441359d0d16fc8ab9068807a72ffe59b8936162c36b4db651886df395729c", size = 11371246, upload-time = "2026-09-01T23:16:34.102Z" },
+]
+
+[[package]]
 name = "llama-cloud"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2620,6 +2635,9 @@ google = [
 landingai = [
     { name = "landingai-ade" },
 ]
+liteparse = [
+    { name = "liteparse" },
+]
 llamaparse = [
     { name = "httpx" },
     { name = "llama-cloud" },
@@ -2709,6 +2727,7 @@ requires-dist = [
     { name = "infinity-parser2", marker = "extra == 'runners'", specifier = ">=0.3.0" },
     { name = "landingai-ade", marker = "extra == 'landingai'", specifier = ">=1.4.0" },
     { name = "landingai-ade", marker = "extra == 'runners'", specifier = ">=1.4.0" },
+    { name = "liteparse", marker = "extra == 'liteparse'", specifier = ">=2.14.3" },
     { name = "llama-cloud", marker = "extra == 'llamaparse'", specifier = ">=1.4.1" },
     { name = "llama-cloud", marker = "extra == 'runners'", specifier = ">=1.4.1" },
     { name = "lxml", specifier = ">=5.0.0" },
@@ -2759,7 +2778,7 @@ requires-dist = [
     { name = "unstructured-client", marker = "extra == 'unstructured'", specifier = ">=0.26.0" },
     { name = "warp-ingest", extras = ["ocr"], marker = "extra == 'runners'", specifier = ">=2.0.1" },
 ]
-provides-extras = ["anthropic", "aws", "azure", "chunkr", "datalab", "dev", "docling", "extend", "fast", "google", "landingai", "llamaparse", "local", "openai", "pymupdf4llm", "reducto", "runners", "unstructured"]
+provides-extras = ["anthropic", "aws", "azure", "chunkr", "datalab", "dev", "docling", "extend", "fast", "google", "landingai", "liteparse", "llamaparse", "local", "openai", "pymupdf4llm", "reducto", "runners", "unstructured"]
 
 [[package]]
 name = "partial-json-parser"

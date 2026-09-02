@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Sequence
 from typing import Any, Literal
 
@@ -25,8 +26,12 @@ from llama_cloud.types.parsing_get_response import (
     ParsingGetResponse,
     Text,
 )
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from parse_bench.layout_label_mapping import (
+    LLAMAPARSE_PICTURE_TYPE_LABELS,
+    normalize_picture_type,
+)
 from parse_bench.schemas.parse_output import (
     LayoutSegmentIR,
     PageIR,
@@ -37,6 +42,35 @@ from parse_bench.schemas.parse_output import (
 JsonItem = HeaderItem | FooterItem | TableItem | ListItem | CodeItem | HeadingItem | ImageItem | LinkItem | TextItem
 
 logger = logging.getLogger(__name__)
+
+# LlamaParse figure classification lands in the markdown as
+# ``![label: image description](path)`` alt-text prefixes; signatures use the
+# linkless ``[signature: legible text]`` form.
+_IMAGE_ALT_TEXT_RE = re.compile(r"!\[([^\][]*)\]\([^)]*\)")
+_SIGNATURE_MARKDOWN_RE = re.compile(r"(?<!!)\[\s*signature\s*:", re.IGNORECASE)
+
+
+def extract_picture_type_from_markdown(markdown: str) -> str | None:
+    """Extract the normalized figure-classifier label from item markdown.
+
+    Reads the first image's ``label: description`` alt-text prefix. A colonless
+    alt text is treated as a plain description unless it is exactly a known
+    classifier label; ``[signature: ...]`` spans map to ``signature``.
+    """
+    if not markdown:
+        return None
+    alt_match = _IMAGE_ALT_TEXT_RE.search(markdown)
+    if alt_match:
+        alt_text = alt_match.group(1)
+        if ":" in alt_text:
+            return normalize_picture_type(alt_text.split(":", 1)[0])
+        bare_label = normalize_picture_type(alt_text)
+        if bare_label is not None and alt_text.strip().lower().replace(" ", "_") in LLAMAPARSE_PICTURE_TYPE_LABELS:
+            return bare_label
+        return None
+    if _SIGNATURE_MARKDOWN_RE.search(markdown):
+        return "signature"
+    return None
 
 
 class StructuredResultPage(BaseModel):
@@ -71,6 +105,12 @@ class MarkdownPage(BaseModel):
     header: str = Field(default="", alias="pageHeaderMarkdown")
     footer: str = Field(default="", alias="pageFooterMarkdown")
     printed_page_number: str = Field(default="", alias="printedPageNumber")
+
+    @field_validator("markdown", "header", "footer", "printed_page_number", mode="before")
+    @classmethod
+    def coalesce_nullable_page_text(cls, value: Any) -> Any:
+        """V2 emits JSON null for absent optional page text fields."""
+        return "" if value is None else value
 
 
 class MarkdownResult(BaseModel):
@@ -521,6 +561,8 @@ def build_layout_pages_from_pages_payload(pages_payload: Any) -> list[ParseLayou
 
 def layout_pages_to_legacy_pages_payload(
     layout_pages: Sequence[ParseLayoutPageIR],
+    *,
+    include_bbox_segment_fallback: bool = True,
 ) -> list[dict[str, Any]]:
     """Convert typed layout pages into legacy pages payload consumed by layout extractors."""
     legacy_pages: list[dict[str, Any]] = []
@@ -561,7 +603,7 @@ def layout_pages_to_legacy_pages_payload(
                 item_data["layoutAwareBbox"] = [
                     _segment_to_legacy_bbox(segment, include_span=True) for segment in item.layout_segments
                 ]
-            elif item.bbox is not None:
+            elif include_bbox_segment_fallback and item.bbox is not None:
                 # Preserve legacy fallback behavior where a single bBox can act as segment.
                 item_data["layoutAwareBbox"] = [_segment_to_legacy_bbox(item.bbox, include_span=True)]
             items.append(item_data)

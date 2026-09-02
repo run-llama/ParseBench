@@ -88,6 +88,7 @@ chunkr = ["chunkr-ai>=0.0.43"]
 extend = ["extend-ai>=1.16.0"]
 docling = ["docling-core>=2.71.0", "httpx>=0.28.0"]
 local = ["pymupdf>=1.24.0", "pypdf>=6.4.0", "pytesseract>=0.3.10", "pdf2image>=1.16.0", "pillow>=10.0.0"]
+liteparse = ["liteparse>=2.14.3"]
 pymupdf4llm = [
     "pymupdf4llm==1.28.2",
     "rapidocr==3.9.2",

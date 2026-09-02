@@ -7,6 +7,7 @@ regress them.
 
 from __future__ import annotations
 
+import json
 import unittest
 
 from bs4 import BeautifulSoup
@@ -150,3 +151,77 @@ class TestConvertTableHeader(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# =============================================================================
+# Multi-page rendering
+# =============================================================================
+
+
+def _infinity_provider(monkeypatch, parser):
+    """Build an InfinityParser2Provider with the SDK replaced by ``parser``."""
+    import sys
+    import types
+
+    from parse_bench.inference.providers.parse.infinity_parser2 import InfinityParser2Provider
+
+    stub = types.ModuleType("infinity_parser2")
+    stub.InfinityParser2 = lambda **_kwargs: parser  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "infinity_parser2", stub)
+    return InfinityParser2Provider("infinity_parser2", {"deep_parsing_mode": False})
+
+
+class _FakeParser:
+    def __init__(self) -> None:
+        self.calls: list = []
+
+    def parse(self, image, **kwargs):
+        self.calls.append(image)
+        number = len(self.calls)
+        return json.dumps([{"category": "text", "bbox": [0, 0, 10, 10], "text": f"page {number}", "page": 1}])
+
+
+def test_infinity_parser2_default_timeout_is_900(monkeypatch) -> None:
+    provider = _infinity_provider(monkeypatch, _FakeParser())
+    assert provider._timeout == 900
+
+
+def test_infinity_parser2_runs_pdf_pages_in_order_and_normalizes_each_page(tmp_path, monkeypatch) -> None:
+    import parse_bench.inference.providers.parse.infinity_parser2 as mod
+    from parse_bench.schemas.pipeline import PipelineSpec
+    from parse_bench.schemas.pipeline_io import InferenceRequest
+    from parse_bench.schemas.product import ProductType
+
+    parser = _FakeParser()
+    provider = _infinity_provider(monkeypatch, parser)
+
+    source_pdf = tmp_path / "source.pdf"
+    source_pdf.write_bytes(b"%PDF-1.7\n")
+    monkeypatch.setattr(mod, "load_images", lambda _path: [("img1", 100.0, 200.0), ("img2", 300.0, 400.0)])
+
+    pipeline = PipelineSpec(
+        pipeline_name="infinity_parser2", provider_name="infinity_parser2", product_type=ProductType.PARSE, config={}
+    )
+    request = InferenceRequest(
+        example_id="infinity-multipage", source_file_path=str(source_pdf), product_type=ProductType.PARSE
+    )
+
+    raw = provider.run_inference(pipeline, request)
+    normalized = provider.normalize(raw)
+
+    assert parser.calls == ["img1", "img2"]
+    assert len(raw.raw_output["page_results"]) == 2
+    assert raw.raw_output["_config"]["page_width"] == 100.0
+    assert raw.raw_output["page_results"][1]["_config"]["page_height"] == 400.0
+
+    assert normalized.output.markdown == "page 1\n\npage 2"
+    assert [p.page_index for p in normalized.output.pages] == [0, 1]
+    assert [lp.page_number for lp in normalized.output.layout_pages] == [1, 2]
+    assert [(lp.width, lp.height) for lp in normalized.output.layout_pages] == [(100.0, 200.0), (300.0, 400.0)]
+
+    # Single page keeps the legacy raw shape.
+    parser.calls.clear()
+    single = provider._parse_pages([("only", 5.0, 6.0)])
+    assert parser.calls == ["only"]
+    assert "page_results" not in single
+    assert single["_config"]["page_width"] == 5.0

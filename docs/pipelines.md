@@ -50,6 +50,8 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | **`openai_gpt5_mini_reasoning_minimal_parse_with_layout_file`** | GPT-5 Mini, minimal reasoning + layout, file (In paper: *OpenAI GPT-5 Mini (Reasoning Minimal)*) | `OPENAI_API_KEY` |
 | `openai_gpt_5_4_parse` | GPT-5.4, image mode | `OPENAI_API_KEY` |
 | `openai_gpt_5_4_parse_file` | GPT-5.4, PDF file mode | `OPENAI_API_KEY` |
+| `openai_gpt_5_4_reasoning_none_parse` | GPT-5.4, reasoning disabled, image mode | `OPENAI_API_KEY` |
+| `openai_gpt_5_4_reasoning_none_parse_file` | GPT-5.4, reasoning disabled, PDF file mode | `OPENAI_API_KEY` |
 | **`openai_gpt_5_4_parse_with_layout_file`** | GPT-5.4, parse + layout, file mode (In paper: *OpenAI GPT-5.4*) | `OPENAI_API_KEY` |
 
 ### Anthropic Claude
@@ -65,6 +67,7 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | `anthropic_opus_4_6_parse_file` | Claude Opus 4.6, PDF file mode | `ANTHROPIC_API_KEY` |
 | **`anthropic_opus_4_6_parse_with_layout_file`** | Claude Opus 4.6, parse + layout, file mode (In paper: *Anthropic Opus 4.6*) | `ANTHROPIC_API_KEY` |
 | **`anthropic_opus_4_8_parse_with_layout_file`** | Claude Opus 4.8, parse + layout, file mode (In paper: *Anthropic Opus 4.8*) | `ANTHROPIC_API_KEY` |
+| `anthropic_sonnet_5_parse_with_layout` | Claude Sonnet 5, adaptive thinking + layout, image mode | `ANTHROPIC_API_KEY` |
 | `anthropic_sonnet_5_parse_with_layout_file` | Claude Sonnet 5, adaptive thinking + layout, file mode | `ANTHROPIC_API_KEY` |
 | `anthropic_fable_5_parse_with_layout_file` | Claude Fable 5, parse + layout, file mode | `ANTHROPIC_API_KEY` |
 | `anthropic_fable_5_1_parse_with_layout_file` | Claude Fable 5.1, parse + layout, file mode | `ANTHROPIC_API_KEY` |
@@ -88,6 +91,7 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | `google_gemini_3_flash_thinking_high_parse_with_layout_agentic_vision` | Agentic vision, high thinking | `GOOGLE_GEMINI_API_KEY` |
 | `google_gemini_3_1_flash_lite_parse` | Gemini 3.1 Flash Lite | `GOOGLE_GEMINI_API_KEY` |
 | `google_gemini_3_1_flash_lite_thinking_high_parse` | Gemini 3.1 Flash Lite, high thinking | `GOOGLE_GEMINI_API_KEY` |
+| `google_gemini_3_1_flash_lite_thinking_high_parse_with_layout_file` | Gemini 3.1 Flash Lite, high thinking + layout, file mode | `GOOGLE_GEMINI_API_KEY` |
 | `google_gemini_3_1_pro_parse` | Gemini 3.1 Pro, default thinking | `GOOGLE_GEMINI_API_KEY` |
 | **`google_gemini_3_1_pro_parse_with_layout_file`** | Gemini 3.1 Pro, parse + layout, file mode (In paper: *Google Gemini 3.1 Pro*) | `GOOGLE_GEMINI_API_KEY` |
 | `google_gemini_3_5_flash_parse_with_layout` | Gemini 3.5 Flash, default thinking + layout | `GOOGLE_GEMINI_API_KEY` |
@@ -97,6 +101,9 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | **`google_gemini_3_5_flash_lite_parse_with_layout_file`** | Gemini 3.5 Flash Lite, layout + file mode (In paper: *Google Gemini 3.5 Flash Lite*) | `GOOGLE_GEMINI_API_KEY` |
 | **`google_gemini_3_6_flash_parse_with_layout_file`** | Gemini 3.6 Flash, default thinking + layout, file mode (In paper: *Google Gemini 3.6 Flash (Thinking Medium)*) | `GOOGLE_GEMINI_API_KEY` |
 | **`google_gemini_3_6_flash_no_thinking_parse_with_layout_file`** | Gemini 3.6 Flash, minimal thinking + layout, file mode (In paper: *Google Gemini 3.6 Flash (Thinking Minimal)*) | `GOOGLE_GEMINI_API_KEY` |
+| `google_gemini_3_6_flash_parse_with_layout` | Gemini 3.6 Flash, default thinking + layout, image mode | `GOOGLE_GEMINI_API_KEY` |
+| `google_gemini_3_6_flash_no_thinking_parse_with_layout` | Gemini 3.6 Flash, minimal thinking + layout, image mode | `GOOGLE_GEMINI_API_KEY` |
+| `google_gemini_3_7_flash_thinking_high_parse_with_layout_file` | Gemini 3.7 Flash, high thinking + layout, file mode | `GOOGLE_GEMINI_API_KEY` |
 
 ### GLM (z.ai)
 
@@ -133,6 +140,18 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | **`reducto`** | Default Reducto (In paper: *Reducto*) | `REDUCTO_API_KEY` |
 | **`reducto_agentic`** | Agentic mode (In paper: *Reducto (Agentic)*) | `REDUCTO_API_KEY` |
 | **`reducto_r1`** | r-1 model, `settings.model="r-1"` (In paper: *Reducto (r-1)*) | `REDUCTO_API_KEY` |
+| `reducto_nonagentic_change_tracking` | Non-agentic with `formatting_include=["change_tracking"]` | `REDUCTO_API_KEY` |
+| `reducto_agentic_table` | Agentic on text + table scopes | `REDUCTO_API_KEY` |
+| `reducto_agentic_chart` | Agentic on text + table + figure scopes with advanced chart agent | `REDUCTO_API_KEY` |
+
+### Mistral OCR
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `mistral_ocr_4` | Mistral OCR 4.0 | `MISTRAL_API_KEY` |
+| `mistral_ocr_4_annotation` | Mistral OCR 4.0 with bbox annotation (Document AI) | `MISTRAL_API_KEY` |
+| `mistral_ocr_4_1` | Mistral OCR 4.1 | `MISTRAL_API_KEY` |
+| `mistral_ocr_4_1_annotation` | Mistral OCR 4.1 with bbox annotation (Document AI) | `MISTRAL_API_KEY` |
 
 ### Pulse
 
@@ -210,6 +229,8 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 | **`qwen3_5_4b_vllm_layout`** | Layout mode, JSON with bboxes (In paper: *Qwen 3 VL*) | `QWEN35_SERVER_URL` |
 | `qwen3_8_27b_parse_with_layout` | Qwen3.8-27B-FP8, parse + layout | `QWEN3_8_27B_SERVER_URL` |
 | `qwen3_8_27b_thinking_parse_with_layout` | Qwen3.8-27B-FP8, parse + layout with thinking | `QWEN3_8_27B_SERVER_URL` |
+| `qwen3_8_flash_next_parse_with_layout` | Qwen3.8-Flash-Next-FP8, parse + layout | `QWEN3_8_FLASH_NEXT_SERVER_URL` |
+| `qwen3_8_flash_next_thinking_parse_with_layout` | Qwen3.8-Flash-Next-FP8, parse + layout with thinking | `QWEN3_8_FLASH_NEXT_SERVER_URL` |
 
 ### Chandra OCR 2
 
@@ -273,6 +294,7 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 
 | Pipeline | Description | Env Var |
 |---|---|---|
+| `nemotron_omni_30b_vllm` | Nemotron-3-Nano-Omni 30B-A3B Reasoning, thinking disabled | `NEMOTRON_OMNI_SERVER_URL` |
 | `nemotron_omni_30b_vllm_thinking` | Nemotron-3-Nano-Omni 30B-A3B Reasoning, thinking enabled | `NEMOTRON_OMNI_SERVER_URL` |
 
 ### Surya OCR 2
@@ -308,6 +330,8 @@ These run entirely locally and do not require API keys.
 | `pypdf_baseline` | PyPDF text extraction | None |
 | `pymupdf_text` | PyMuPDF text extraction | None |
 | `pymupdf_html` | PyMuPDF HTML extraction | None |
+| `liteparse_markdown` | LiteParse Markdown (no OCR; layout blocks via `--extract-blocks`; the leaderboard's *LiteParse (no OCR)* row) | `pip install "parse-bench[liteparse]"` (or `LITEPARSE_BIN=/path/to/lit`) |
+| `liteparse_text` | LiteParse plain text (no OCR) | same as above |
 | `pymupdf4llm_markdown` | PyMuPDF4LLM Markdown with native HTML tables and RapidOCR at 150 DPI | Python 3.12, `pymupdf4llm==1.28.2`, and `rapidocr==3.9.2` |
 | `warp_ingest` | Warp-Ingest local parser | `warp-ingest[ocr]>=2.0.1` installed |
 | `tesseract_eng` | Tesseract OCR (English) | `tesseract` installed |

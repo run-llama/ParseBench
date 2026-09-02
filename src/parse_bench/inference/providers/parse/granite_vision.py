@@ -102,6 +102,7 @@ class GraniteVisionProvider(Provider):
             if t not in TASK_PROMPTS:
                 raise ProviderConfigError(f"Invalid task '{t}'. Must be one of: {list(TASK_PROMPTS.keys())}")
         self._tasks: list[str] = tasks
+        # Preserve the original config value for raw_output traceability.
         self._task = task_cfg
 
         self._timeout = self.base_config.get("timeout", 600)
@@ -112,16 +113,20 @@ class GraniteVisionProvider(Provider):
         api_key_env = self.base_config.get("api_key_env", "VLLM_API_KEY")
         self._api_key = os.environ.get(api_key_env, "")
 
-    def _pdf_to_image(self, pdf_path: Path) -> bytes:
+    def _pdf_to_images(self, pdf_path: Path) -> list[bytes]:
+        """Render every PDF page to PNG bytes in source order."""
         try:
             from pdf2image import convert_from_path
 
             images = convert_from_path(pdf_path, dpi=self._dpi)
             if not images:
                 raise ProviderPermanentError(f"No pages found in PDF: {pdf_path}")
-            buf = io.BytesIO()
-            images[0].save(buf, format="PNG")
-            return buf.getvalue()
+            page_images: list[bytes] = []
+            for image in images:
+                buf = io.BytesIO()
+                image.save(buf, format="PNG")
+                page_images.append(buf.getvalue())
+            return page_images
         except ImportError as e:
             raise ProviderPermanentError("pdf2image is required. Install with: pip install pdf2image") from e
         except Exception as e:
@@ -225,7 +230,8 @@ class GraniteVisionProvider(Provider):
                 # Run each task tag in parallel and concatenate. Granite Vision
                 # task tags are mutually-exclusive output formats, so a list
                 # like ["tables_html", "chart2csv"] means: extract tables AND
-                # extract chart data, glue them together.
+                # extract chart data, glue them together. Downstream metrics
+                # find their content in the relevant section.
                 results = await asyncio.gather(
                     *[self._call_openai_api(session, image_b64, t) for t in self._tasks],
                     return_exceptions=True,
@@ -233,6 +239,8 @@ class GraniteVisionProvider(Provider):
                 parts: list[str] = []
                 for r in results:
                     if isinstance(r, Exception):
+                        # Treat single-task failure as empty for that section
+                        # rather than failing the whole image.
                         continue
                     if r:
                         parts.append(str(r))
@@ -251,6 +259,16 @@ class GraniteVisionProvider(Provider):
             },
         }
 
+    async def _run_inference_pages_async(self, pages: list[bytes]) -> dict[str, Any]:
+        """Run each input page in order, retaining the legacy one-page shape."""
+        results = [await self._run_inference_async(page) for page in pages]
+        first = results[0]
+        if len(results) == 1:
+            return first
+        merged = dict(first)
+        merged["page_results"] = results
+        return merged
+
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         if request.product_type != ProductType.PARSE:
             raise ProviderPermanentError(
@@ -265,16 +283,16 @@ class GraniteVisionProvider(Provider):
 
         suffix = file_path.suffix.lower()
         if suffix == ".pdf":
-            image_bytes = self._pdf_to_image(file_path)
+            page_images = self._pdf_to_images(file_path)
         elif suffix in (".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp"):
-            image_bytes = self._read_image(file_path)
+            page_images = [self._read_image(file_path)]
         else:
             raise ProviderPermanentError(
                 f"Unsupported file type: {suffix}. Supported: .pdf, .png, .jpg, .jpeg, .webp, .tiff, .bmp"
             )
 
         try:
-            raw_output = asyncio.run(self._run_inference_async(image_bytes))
+            raw_output = asyncio.run(self._run_inference_pages_async(page_images))
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 
@@ -343,7 +361,11 @@ class GraniteVisionProvider(Provider):
 
         Granite Vision's <chart2csv> tag outputs CSV data, often inside a
         ```csv code fence. The chart_data_point and TEDS/GriTS metrics expect
-        HTML <table> markup to locate cells by row/column.
+        HTML <table> markup to locate cells by row/column. This pass parses
+        each ```csv ... ``` block (and bare CSV chunks following <chart2csv>)
+        and rewrites them as HTML, treating row 1 as <thead>.
+
+        Non-CSV content is left untouched.
         """
         import csv
         import io
@@ -377,6 +399,7 @@ class GraniteVisionProvider(Provider):
             parts.extend(["</tbody>", "</table>"])
             return "".join(parts)
 
+        # Replace fenced ```csv ... ``` blocks first (most reliable signal).
         fenced = re.compile(r"```\s*csv\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
 
         def _fence_replace(m: re.Match) -> str:
@@ -385,6 +408,9 @@ class GraniteVisionProvider(Provider):
 
         out = fenced.sub(_fence_replace, content)
 
+        # If no fenced CSV was found and the content has no HTML/markdown
+        # table markup but looks like raw CSV (>=2 rows, commas), convert as
+        # a whole. Skip if there's any <table> already.
         if out == content and "<table" not in out.lower() and "|" not in out:
             stripped = out.strip()
             if "," in stripped and stripped.count("\n") >= 1:
@@ -451,14 +477,23 @@ class GraniteVisionProvider(Provider):
                 f"GraniteVisionProvider only supports PARSE product type, got {raw_result.product_type}"
             )
 
-        markdown = raw_result.raw_output.get("markdown", "")
-        if markdown:
-            # <chart2csv> output is CSV (often fenced) -- convert to HTML
-            # tables so chart_data_point / TEDS / GriTS can locate cells.
-            markdown = self._convert_csv_to_html(markdown)
-            # Convert any markdown pipe tables to HTML so GriTS/TEDS can score them
-            markdown = self._convert_md_tables_to_html(markdown)
-            markdown = self._sanitize_html_attributes(markdown)
+        page_results = raw_result.raw_output.get("page_results")
+        if not isinstance(page_results, list) or not page_results:
+            page_results = [raw_result.raw_output]
+
+        page_markdowns: list[str] = []
+        for page_raw in page_results:
+            markdown = page_raw.get("markdown", "")
+            if markdown:
+                # <chart2csv> output is CSV (often fenced) -- convert to HTML
+                # tables so chart_data_point / TEDS / GriTS can locate cells.
+                markdown = self._convert_csv_to_html(markdown)
+                # Convert markdown pipe tables to HTML so GriTS/TEDS can score them.
+                markdown = self._convert_md_tables_to_html(markdown)
+                markdown = self._sanitize_html_attributes(markdown)
+            page_markdowns.append(markdown)
+
+        markdown = "\n\n".join(page_markdowns)
 
         output = ParseOutput(
             task_type="parse",

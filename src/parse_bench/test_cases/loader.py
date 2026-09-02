@@ -25,7 +25,95 @@ from parse_bench.test_cases.schema import (
 logger = logging.getLogger(__name__)
 
 # Supported file extensions for input files
-SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".jfif", ".docx"}
+# Supported file extensions for input files. A file whose suffix is missing here is
+# invisible to discovery — it does not error, the dataset just comes up empty — so keep
+# the image list in step with the image types Parse accepts (SupportedFileTypes).
+SUPPORTED_EXTENSIONS = {
+    ".pdf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".jfif",
+    ".tif",
+    ".tiff",
+    ".bmp",
+    ".gif",
+    ".webp",
+    ".docx",
+}
+
+# When several supported files share one stem in the same directory (an input plus
+# derived artifacts saved alongside it, e.g. `<sha>.pdf` and `<sha>.xlsx`), they
+# collide on test_id AND on `<stem>.test.json`, so every downstream layer that keys
+# on test_id — result files, stage checkpoints, evaluation — silently races on which
+# twin's parse wins. layout_attribution/v1.4 carried such twins for months: the race
+# was benign while the slower PDF parse always overwrote last, then the stage-
+# checkpoint refactor made the first twin's artifact win and every pipeline started
+# scoring a parse of the sibling spreadsheet (2026-08-07 core_benchmark alert).
+# Discovery therefore keeps exactly one file per stem, by this priority (lower index
+# wins): document formats first, images next, table formats last — sibling artifacts
+# are usually saved as spreadsheets.
+_STEM_TWIN_PRIORITY = (
+    ".pdf",
+    ".docx",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".jfif",
+    ".tif",
+    ".tiff",
+    ".bmp",
+    ".gif",
+    ".webp",
+    ".xlsx",
+    ".xls",
+    ".csv",
+)
+
+
+def _dedupe_stem_twins(files: list[Path]) -> list[Path]:
+    """Keep one file per (parent, stem), preferring canonical input formats.
+
+    ``files`` must already be filtered to supported, non-test.json candidates.
+    Preserves the input order of surviving files; warns whenever twins are
+    dropped so a dataset carrying sibling artifacts is visible in run logs.
+    """
+    by_stem: dict[tuple[Path, str], list[Path]] = {}
+    order: list[tuple[Path, str]] = []
+    for f in files:
+        key = (f.parent, f.stem)
+        if key not in by_stem:
+            by_stem[key] = []
+            order.append(key)
+        by_stem[key].append(f)
+
+    def priority(f: Path) -> tuple[int, str]:
+        suffix = f.suffix.lower()
+        rank = _STEM_TWIN_PRIORITY.index(suffix) if suffix in _STEM_TWIN_PRIORITY else len(_STEM_TWIN_PRIORITY)
+        return (rank, f.name)
+
+    kept: list[Path] = []
+    for key in order:
+        twins = by_stem[key]
+        if len(twins) > 1:
+            twins = sorted(twins, key=priority)
+            skipped = ", ".join(f.name for f in twins[1:])
+            print(
+                f"  WARNING: {len(twins)} files share stem '{key[1]}' in {key[0].name}/ - "
+                f"using {twins[0].name}, ignoring {skipped}"
+            )
+        kept.append(twins[0])
+    return kept
+
+
+def _is_artifact_dir(path: Path) -> bool:
+    # `.v2.screenshots` is the legacy flat screenshot twin; `.parse` is the per-doc
+    # parse bundle (`<stem>.parse/`); and `.images` contains inline-image crops emitted
+    # by LlamaParse (`<stem>.pdf.images/`). They are per-doc artifacts, not test-group
+    # dirs — without this guard a flat dataset that gains one flips `has_group_dirs`
+    # and corrupts test_id grouping.
+    name = path.name
+    return name.endswith((".v2.screenshots", ".parse", ".images"))
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -440,30 +528,25 @@ def load_test_cases(
             return test_cases
 
     # Check if directory has group subdirectories or is flat
-    has_group_dirs = any(item.is_dir() for item in root_dir.iterdir())
+    has_group_dirs = any(item.is_dir() and not _is_artifact_dir(item) for item in root_dir.iterdir())
 
     # If we have group subdirectories, use structured loading
     if has_group_dirs:
         # Scan for supported files in group subdirectories
         for group_dir in root_dir.iterdir():
-            if not group_dir.is_dir():
+            if not group_dir.is_dir() or _is_artifact_dir(group_dir):
                 continue
 
             group_name = group_dir.name
 
-            # Find all supported files in this group
-            for file_path in group_dir.iterdir():
-                if not file_path.is_file():
-                    continue
-
-                # Check if file extension is supported
-                if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-                    continue
-
-                # Skip test.json files themselves
-                if file_path.name.endswith(".test.json"):
-                    continue
-
+            # Find all supported files in this group — one per stem, so a
+            # sibling artifact can never shadow the canonical input.
+            candidates = [
+                f
+                for f in sorted(group_dir.iterdir())
+                if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS and not f.name.endswith(".test.json")
+            ]
+            for file_path in _dedupe_stem_twins(candidates):
                 # Try to load test case
                 try:
                     result = load_test_case(file_path, product_type_hint=product_type)
@@ -512,19 +595,14 @@ def load_test_cases(
         # Use root directory name as group, or "root" if it's a path
         group_name = root_dir.name if root_dir.name else "root"
 
-        # Find all supported files in root directory
-        for file_path in root_dir.iterdir():
-            if not file_path.is_file():
-                continue
-
-            # Check if file extension is supported
-            if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-                continue
-
-            # Skip test.json files themselves
-            if file_path.name.endswith(".test.json"):
-                continue
-
+        # Find all supported files in root directory — one per stem, matching
+        # the group-dir path above.
+        candidates = [
+            f
+            for f in sorted(root_dir.iterdir())
+            if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS and not f.name.endswith(".test.json")
+        ]
+        for file_path in _dedupe_stem_twins(candidates):
             # Try to load test case
             try:
                 result = load_test_case(file_path, product_type_hint=product_type)

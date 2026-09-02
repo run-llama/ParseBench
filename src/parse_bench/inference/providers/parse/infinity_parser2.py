@@ -64,7 +64,8 @@ class InfinityParser2Provider(Provider):
         - model_name (str, default="infly/Infinity-Parser2-Flash"): Model name (must match server)
         - api_url (str, default="http://localhost:8000/v1/chat/completions"): vLLM server endpoint
         - api_key (str, default="EMPTY"): API key for the server
-        - timeout (int, default=300): Request timeout in seconds
+        - timeout (int, default=900): Request timeout in seconds (the pro model can
+          exceed 300 s on dense pages)
         - task_type (str, default="doc2json"): Parse task type
         - output_format (str, default="json"): Output format (json returns per-element layout with bboxes)
         - batch_size (int, default=4): Batch size for processing
@@ -79,7 +80,7 @@ class InfinityParser2Provider(Provider):
         self._model_name = self.base_config.get("model_name", DEFAULT_MODEL_NAME)
         self._api_url = self.base_config.get("api_url", "http://localhost:8000/v1/chat/completions")
         self._api_key = self.base_config.get("api_key", "EMPTY")
-        self._timeout = self.base_config.get("timeout", 300)
+        self._timeout = self.base_config.get("timeout", 900)
         self._task_type = self.base_config.get("task_type", "doc2json")
         self._output_format = self.base_config.get("output_format", "json")
         self._batch_size = self.base_config.get("batch_size", 4)
@@ -103,6 +104,58 @@ class InfinityParser2Provider(Provider):
 
         self._parser = InfinityParser2(**kwargs)
 
+    def _parse_page(self, pil_image: PILImage.Image, page_width: float, page_height: float) -> dict[str, Any]:
+        """Parse a single rendered page image and return the legacy one-page raw shape."""
+        parse_kwargs: dict[str, Any] = {
+            "task_type": self._task_type,
+            "batch_size": self._batch_size,
+        }
+
+        if self._output_format:
+            parse_kwargs["output_format"] = self._output_format
+
+        if self._max_new_tokens is not None:
+            parse_kwargs["max_new_tokens"] = self._max_new_tokens
+
+        if "temperature" in self.base_config:
+            parse_kwargs["temperature"] = self._temperature
+
+        result = self._parser.parse(pil_image, **parse_kwargs)
+
+        if self._deep_parsing_mode:
+            result = self._apply_deep_parsing(result, pil_image)
+
+        return {
+            "result": result,
+            "_config": {
+                "model_name": self._model_name,
+                "backend": "vllm-server",
+                "api_url": self._api_url,
+                "task_type": self._task_type,
+                "output_format": self._output_format,
+                "batch_size": self._batch_size,
+                "page_width": page_width,
+                "page_height": page_height,
+            },
+        }
+
+    def _parse_pages(self, pages: list[tuple[PILImage.Image, float, float]]) -> dict[str, Any]:
+        """Parse every rendered page in order.
+
+        Single-page inputs keep the legacy raw_output shape; multi-page inputs
+        add ``page_results`` (one legacy-shaped dict per page) which
+        ``normalize`` reassembles in page order. The previous implementation
+        rendered only the first PDF page, silently parsing just the cover page
+        of multi-page documents.
+        """
+        results = [self._parse_page(image, width, height) for image, width, height in pages]
+        first = results[0]
+        if len(results) == 1:
+            return first
+        merged = dict(first)
+        merged["page_results"] = results
+        return merged
+
     def _parse_document(self, file_path: str) -> dict[str, Any]:
         """
         Parse a document using InfinityParser2.
@@ -111,39 +164,7 @@ class InfinityParser2Provider(Provider):
         :return: Raw parsing result
         """
         try:
-            parse_kwargs: dict[str, Any] = {
-                "task_type": self._task_type,
-                "batch_size": self._batch_size,
-            }
-
-            if self._output_format:
-                parse_kwargs["output_format"] = self._output_format
-
-            if self._max_new_tokens is not None:
-                parse_kwargs["max_new_tokens"] = self._max_new_tokens
-
-            if "temperature" in self.base_config:
-                parse_kwargs["temperature"] = self._temperature
-
-            pil_image, page_width, page_height = load_image(file_path)
-            result = self._parser.parse(pil_image, **parse_kwargs)
-
-            if self._deep_parsing_mode:
-                result = self._apply_deep_parsing(result, pil_image)
-
-            return {
-                "result": result,
-                "_config": {
-                    "model_name": self._model_name,
-                    "backend": "vllm-server",
-                    "api_url": self._api_url,
-                    "task_type": self._task_type,
-                    "output_format": self._output_format,
-                    "batch_size": self._batch_size,
-                    "page_width": page_width,
-                    "page_height": page_height,
-                },
-            }
+            return self._parse_pages(load_images(file_path))
 
         except Exception as e:
             error_str = str(e).lower()
@@ -279,7 +300,7 @@ class InfinityParser2Provider(Provider):
                 "max_new_tokens": 2048,
             }
             deep_results = [self._parser.parse(img, **deep_parse_kwargs) for img in pil_figure_images]
-            for elem, deep_result in zip(figure_elements, deep_results, strict=False):
+            for elem, deep_result in zip(figure_elements, deep_results, strict=True):
                 elem["text"] = deep_result
 
             return json.dumps(elements)
@@ -288,47 +309,45 @@ class InfinityParser2Provider(Provider):
             logger.exception("Deep parsing pass failed; returning shallow parse result")
             return result
 
+    @staticmethod
+    def _load_elements(result_str: Any) -> list[dict]:
+        """Decode the model's JSON element list, tolerating malformed output."""
+        if isinstance(result_str, list):
+            return [e for e in result_str if isinstance(e, dict)]
+        if not isinstance(result_str, str) or not result_str:
+            return []
+        try:
+            elements = json.loads(result_str)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(elements, list):
+            return []
+        return [e for e in elements if isinstance(e, dict)]
+
     def _normalize(self, raw_result: RawInferenceResult) -> ParseOutput:
-        """Normalize JSON layout result into ParseOutput with pages, layout_pages, and markdown."""
-        result_str = raw_result.raw_output.get("result", "")
-        if not result_str:
+        """Normalize JSON layout result into ParseOutput with pages, layout_pages, and markdown.
+
+        Multi-page raw outputs carry one legacy-shaped dict per page under
+        ``page_results``; each is normalized as its own page (page numbers are
+        assigned from render order, not from the model's ``page`` field, which
+        is always 1 for a single rendered image).
+        """
+        page_results = raw_result.raw_output.get("page_results")
+        if not isinstance(page_results, list) or not page_results:
+            page_results = [raw_result.raw_output]
+
+        if not any(page_raw.get("result") for page_raw in page_results):
             raise ProviderPermanentError(f"Empty result from InfinityParser2 for {raw_result.pipeline_name}")
 
-        page_width = raw_result.raw_output["_config"]["page_width"]
-        page_height = raw_result.raw_output["_config"]["page_height"]
-
-        # Load elements
-        try:
-            elements: list[dict] = json.loads(result_str)
-            if not isinstance(elements, list):
-                elements = []
-        except json.JSONDecodeError:
-            elements = []
-
-        # Group elements by page
-        pages_dict: dict[int, list[dict]] = {}
-        for elem in elements:
-            page_num = elem.get("page", 1)
-            if page_num not in pages_dict:
-                pages_dict[page_num] = []
-            pages_dict[page_num].append(elem)
-
-        if not pages_dict:
-            pages_dict = {1: []}
-
-        if len(pages_dict) != 1:
-            raise ProviderPermanentError(
-                f"Infinity-Parser2 provider only supports single-page documents; "
-                f"got {len(pages_dict)} pages for example {raw_result.request.example_id}"
-            )
-
-        # Get layout pages and markdown
         pages: list[PageIR] = []
         layout_pages: list[ParseLayoutPageIR] = []
         markdown_parts: list[str] = []
 
-        for page_num in sorted(pages_dict.keys()):
-            page_elements = pages_dict[page_num]
+        for page_num, page_raw in enumerate(page_results, start=1):
+            page_config = page_raw.get("_config") or {}
+            page_width = page_config.get("page_width", 0)
+            page_height = page_config.get("page_height", 0)
+            page_elements = self._load_elements(page_raw.get("result", ""))
 
             header_items: list[dict] = []
             footer_items: list[dict] = []
@@ -402,26 +421,30 @@ class InfinityParser2Provider(Provider):
         )
 
 
-def load_image(file_path: str) -> tuple[PILImage.Image, float, float]:
-    """Load a PDF or image file as a PIL Image and return its dimensions.
+def load_images(file_path: str) -> list[tuple[PILImage.Image, float, float]]:
+    """Load a PDF or image file as PIL Images (one per page) with their dimensions.
 
-    - PDF: converts the first page to RGB image at 300 DPI.
-    - Image: opens and converts to RGB.
+    - PDF: renders every page to an RGB image at 300 DPI, in source order.
+    - Image: opens and converts to RGB (single page).
 
     Returns:
-        Tuple of (PIL Image, width, height) where width and height are in pixels.
+        List of (PIL Image, width, height) tuples, width/height in pixels.
     """
     path = Path(file_path)
     if path.suffix.lower() == ".pdf":
-        images = convert_from_path(str(path), dpi=300, first_page=1, last_page=1)
+        images = convert_from_path(str(path), dpi=300)
         if not images:
-            raise ProviderPermanentError(f"Failed to render PDF page: {file_path}")
-        pil_image = images[0].convert("RGB")
+            raise ProviderPermanentError(f"Failed to render PDF pages: {file_path}")
+        pil_images = [image.convert("RGB") for image in images]
     else:
-        pil_image = PILImage.open(str(path)).convert("RGB")
+        pil_images = [PILImage.open(str(path)).convert("RGB")]
 
-    width, height = pil_image.size
-    return pil_image, float(width), float(height)
+    return [(image, float(image.size[0]), float(image.size[1])) for image in pil_images]
+
+
+def load_image(file_path: str) -> tuple[PILImage.Image, float, float]:
+    """Load the first page of a PDF (or an image) as a PIL Image with its dimensions."""
+    return load_images(file_path)[0]
 
 
 # =============================================================================

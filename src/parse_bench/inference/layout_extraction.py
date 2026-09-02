@@ -17,8 +17,12 @@ from parse_bench.schemas.layout_detection_output import (
     LayoutTableContent,
     LayoutTextContent,
 )
+from parse_bench.schemas.parse_output import LayoutItemIR, LayoutSegmentIR, ParseLayoutPageIR
 
 logger = logging.getLogger(__name__)
+
+_CHECKBOX_RAW_LABELS = frozenset({"checkbox-selected", "checkbox-unselected"})
+_CHECKBOX_CANONICAL_ITEM_TYPES = frozenset({"Checkbox-Selected", "Checkbox-Unselected"})
 
 
 def _resolve_label_version(
@@ -72,63 +76,16 @@ def extract_layout_from_llamaparse_output(
     x_scale = output_width / sdk_width if sdk_width > 0 else 1.0
     y_scale = output_height / sdk_height if sdk_height > 0 else 1.0
 
-    predictions: list[LayoutPrediction] = []
     items = page_data.get("items", [])
     page_md = page_data.get("md", "") or page_data.get("text", "") or ""
-    table_htmls = _extract_table_htmls(page_md)
-    table_html_idx = 0
-
-    for item_idx, item in enumerate(items):
-        if not isinstance(item, dict):
-            continue
-        layout_bboxes = item.get("layoutAwareBbox", [])
-        item_type = str(item.get("type") or "text")
-        item_text = str(item.get("value") or "")
-
-        for segment_idx, bbox_data in enumerate(layout_bboxes):
-            if not isinstance(bbox_data, dict):
-                continue
-            label = bbox_data.get("label")
-            if not isinstance(label, str):
-                continue
-
-            # Enforce strict unknown-label behavior.
-            map_llamaparse_raw_label_to_canonical(
-                label,
-                label_version=resolved_label_version,
-            )
-
-            x = float(bbox_data.get("x", 0)) * x_scale
-            y = float(bbox_data.get("y", 0)) * y_scale
-            w = float(bbox_data.get("w", 0)) * x_scale
-            h = float(bbox_data.get("h", 0)) * y_scale
-
-            content, consumed_table = _build_content(
-                item_type=item_type,
-                item_text=item_text,
-                segment=bbox_data,
-                table_htmls=table_htmls,
-                table_html_idx=table_html_idx,
-            )
-            if consumed_table:
-                table_html_idx += 1
-
-            predictions.append(
-                LayoutPrediction(
-                    bbox=[x, y, x + w, y + h],
-                    score=float(bbox_data.get("confidence", 0.0)),
-                    label=label,
-                    page=page_index + 1,
-                    content=content,
-                    provider_metadata={
-                        "label_version": resolved_label_version,
-                        "item_type": item_type,
-                        "item_index": item_idx,
-                        "segment_index": segment_idx,
-                        "order_index": len(predictions),
-                    },
-                )
-            )
+    predictions, layout_items = _extract_page_predictions(
+        items=items,
+        page_number=page_index + 1,
+        page_md=page_md,
+        label_version=resolved_label_version,
+        x_scale=x_scale,
+        y_scale=y_scale,
+    )
 
     markdown = _page_markdown(page_data)
 
@@ -139,6 +96,15 @@ def extract_layout_from_llamaparse_output(
         model=LayoutDetectionModel.LLAMAPARSE,
         image_width=max(int(output_width), 1),
         image_height=max(int(output_height), 1),
+        layout_pages=[
+            ParseLayoutPageIR(
+                page_number=page_index + 1,
+                width=float(output_width),
+                height=float(output_height),
+                md=markdown,
+                items=layout_items,
+            )
+        ],
         predictions=predictions,
         markdown=markdown,
     )
@@ -176,6 +142,7 @@ def extract_all_layouts_from_llamaparse_output(
         output_height = int(raw_output.get("image_height", output_height))
 
     predictions: list[LayoutPrediction] = []
+    layout_pages: list[ParseLayoutPageIR] = []
     page_markdowns: list[str] = []
 
     for page_idx, page_data in enumerate(api_pages):
@@ -189,59 +156,25 @@ def extract_all_layouts_from_llamaparse_output(
         page_md = _page_markdown(page_data)
         if page_md:
             page_markdowns.append(page_md)
-        table_htmls = _extract_table_htmls(page_md)
-        table_html_idx = 0
-
-        for item_idx, item in enumerate(items):
-            if not isinstance(item, dict):
-                continue
-            layout_bboxes = item.get("layoutAwareBbox", [])
-            item_type = str(item.get("type") or "text")
-            item_text = str(item.get("value") or "")
-
-            for segment_idx, bbox_data in enumerate(layout_bboxes):
-                if not isinstance(bbox_data, dict):
-                    continue
-                label = bbox_data.get("label")
-                if not isinstance(label, str):
-                    continue
-
-                map_llamaparse_raw_label_to_canonical(
-                    label,
-                    label_version=resolved_label_version,
-                )
-
-                x = float(bbox_data.get("x", 0)) * x_scale
-                y = float(bbox_data.get("y", 0)) * y_scale
-                w = float(bbox_data.get("w", 0)) * x_scale
-                h = float(bbox_data.get("h", 0)) * y_scale
-
-                content, consumed_table = _build_content(
-                    item_type=item_type,
-                    item_text=item_text,
-                    segment=bbox_data,
-                    table_htmls=table_htmls,
-                    table_html_idx=table_html_idx,
-                )
-                if consumed_table:
-                    table_html_idx += 1
-
-                predictions.append(
-                    LayoutPrediction(
-                        bbox=[x, y, x + w, y + h],
-                        score=float(bbox_data.get("confidence", 0.0)),
-                        label=label,
-                        page=page_number,
-                        content=content,
-                        provider_metadata={
-                            "label_version": resolved_label_version,
-                            "item_type": item_type,
-                            "item_index": item_idx,
-                            "segment_index": segment_idx,
-                            "order_index": len(predictions),
-                        },
-                    )
-                )
+        page_predictions, page_layout_items = _extract_page_predictions(
+            items=items,
+            page_number=page_number,
+            page_md=page_md,
+            label_version=resolved_label_version,
+            x_scale=x_scale,
+            y_scale=y_scale,
+            order_index_offset=len(predictions),
+        )
+        predictions.extend(page_predictions)
+        layout_pages.append(
+            ParseLayoutPageIR(
+                page_number=page_number,
+                width=float(output_width),
+                height=float(output_height),
+                md=page_md,
+                items=page_layout_items,
+            )
+        )
 
     return LayoutOutput(
         task_type="layout_detection",
@@ -250,6 +183,7 @@ def extract_all_layouts_from_llamaparse_output(
         model=LayoutDetectionModel.LLAMAPARSE,
         image_width=max(int(output_width), 1),
         image_height=max(int(output_height), 1),
+        layout_pages=layout_pages,
         predictions=predictions,
         markdown="\n\n---\n\n".join(page_markdowns),
     )
@@ -264,6 +198,167 @@ def _page_markdown(page_data: dict[str, Any]) -> str:
     if isinstance(text, str):
         return text
     return ""
+
+
+def _extract_page_predictions(
+    *,
+    items: list[Any],
+    page_number: int,
+    page_md: str,
+    label_version: str,
+    x_scale: float,
+    y_scale: float,
+    order_index_offset: int = 0,
+) -> tuple[list[LayoutPrediction], list[LayoutItemIR]]:
+    predictions: list[LayoutPrediction] = []
+    layout_items: list[LayoutItemIR] = []
+    table_htmls = _extract_table_htmls(page_md)
+    table_html_idx = 0
+    mark_scope_keys = _collect_mark_scope_checkbox_keys(items)
+
+    for item_idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        layout_bboxes = item.get("layoutAwareBbox", [])
+        item_type = str(item.get("type") or "text")
+        item_text = str(item.get("value") or "")
+
+        for segment_idx, bbox_data in enumerate(layout_bboxes):
+            if not isinstance(bbox_data, dict):
+                continue
+            label = bbox_data.get("label")
+            if not isinstance(label, str):
+                continue
+
+            map_llamaparse_raw_label_to_canonical(
+                label,
+                label_version=label_version,
+            )
+
+            if _should_skip_duplicate_checkbox_prediction(
+                item_type=item_type,
+                raw_label=label,
+                bbox_data=bbox_data,
+                mark_scope_keys=mark_scope_keys,
+            ):
+                continue
+
+            x = float(bbox_data.get("x", 0)) * x_scale
+            y = float(bbox_data.get("y", 0)) * y_scale
+            w = float(bbox_data.get("w", 0)) * x_scale
+            h = float(bbox_data.get("h", 0)) * y_scale
+
+            content, consumed_table = _build_content(
+                item_type=item_type,
+                item_text=item_text,
+                segment=bbox_data,
+                table_htmls=table_htmls,
+                table_html_idx=table_html_idx,
+            )
+            if consumed_table:
+                table_html_idx += 1
+
+            attributes = _prediction_attributes(item_type=item_type, raw_label=label)
+            prediction = LayoutPrediction(
+                bbox=[x, y, x + w, y + h],
+                score=float(bbox_data.get("confidence", 0.0)),
+                label=label,
+                page=page_number,
+                content=content,
+                attributes=attributes,
+                provider_metadata={
+                    "label_version": label_version,
+                    "item_type": item_type,
+                    "item_index": item_idx,
+                    "segment_index": segment_idx,
+                    "order_index": order_index_offset + len(predictions),
+                },
+            )
+            predictions.append(prediction)
+            layout_items.append(_prediction_to_layout_item(prediction, label_version=label_version))
+
+    return predictions, layout_items
+
+
+def _collect_mark_scope_checkbox_keys(items: list[Any]) -> set[tuple[str, float, float, float, float]]:
+    keys: set[tuple[str, float, float, float, float]] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        item_type = str(item.get("type") or "text")
+        if item_type not in _CHECKBOX_CANONICAL_ITEM_TYPES:
+            continue
+        for bbox_data in item.get("layoutAwareBbox", []):
+            if not isinstance(bbox_data, dict):
+                continue
+            raw_label = bbox_data.get("label")
+            if not isinstance(raw_label, str) or raw_label not in _CHECKBOX_RAW_LABELS:
+                continue
+            keys.add(_checkbox_key(raw_label, bbox_data))
+    return keys
+
+
+def _should_skip_duplicate_checkbox_prediction(
+    *,
+    item_type: str,
+    raw_label: str,
+    bbox_data: dict[str, Any],
+    mark_scope_keys: set[tuple[str, float, float, float, float]],
+) -> bool:
+    if raw_label not in _CHECKBOX_RAW_LABELS:
+        return False
+    if item_type in _CHECKBOX_CANONICAL_ITEM_TYPES:
+        return False
+    return _checkbox_key(raw_label, bbox_data) in mark_scope_keys
+
+
+def _prediction_attributes(*, item_type: str, raw_label: str) -> dict[str, str]:
+    if item_type in _CHECKBOX_CANONICAL_ITEM_TYPES and raw_label in _CHECKBOX_RAW_LABELS:
+        return {"scope": "mark"}
+    return {}
+
+
+def _checkbox_key(raw_label: str, bbox_data: dict[str, Any]) -> tuple[str, float, float, float, float]:
+    return (
+        raw_label,
+        round(float(bbox_data.get("x", 0.0)), 4),
+        round(float(bbox_data.get("y", 0.0)), 4),
+        round(float(bbox_data.get("w", 0.0)), 4),
+        round(float(bbox_data.get("h", 0.0)), 4),
+    )
+
+
+def _prediction_to_layout_item(
+    prediction: LayoutPrediction,
+    *,
+    label_version: str,
+) -> LayoutItemIR:
+    canonical_label, _ = map_llamaparse_raw_label_to_canonical(
+        prediction.label,
+        label_version=label_version,
+    )
+    x1, y1, x2, y2 = prediction.bbox
+    segment = LayoutSegmentIR(
+        x=x1,
+        y=y1,
+        w=x2 - x1,
+        h=y2 - y1,
+        confidence=prediction.score,
+        label=prediction.label,
+    )
+    item_kwargs: dict[str, Any] = {
+        "type": canonical_label.value,
+        "bbox": segment,
+        "layout_segments": [segment],
+        "score": prediction.score,
+        "attributes": dict(prediction.attributes),
+    }
+    if isinstance(prediction.content, LayoutTableContent):
+        item_kwargs["html"] = prediction.content.html
+    elif isinstance(prediction.content, LayoutTextContent):
+        item_kwargs["md"] = prediction.content.text
+        item_kwargs["value"] = prediction.content.text
+    return LayoutItemIR(**item_kwargs)
 
 
 def _collect_labels(pages: list[dict[str, Any]]) -> list[str]:
@@ -297,6 +392,15 @@ def _build_content(
     if item_type == "table":
         if table_html_idx < len(table_htmls):
             return LayoutTableContent(html=table_htmls[table_html_idx]), True
+        # When no HTML table is available, use per-segment text extraction
+        # (same logic as non-table items) to avoid inflating attribution F1
+        # with the full table markdown for every segment.
+        start = segment.get("startIndex")
+        end = segment.get("endIndex")
+        if isinstance(start, int) and isinstance(end, int) and end >= start:
+            text = item_text[start : end + 1]
+            if text:
+                return LayoutTextContent(text=text), False
         if item_text:
             return LayoutTextContent(text=item_text), False
         return None, False

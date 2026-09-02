@@ -46,6 +46,11 @@ from parse_bench.schemas.product import ProductType
 
 DEFAULT_SERVED_MODEL_NAME = "qwen3.5-4b"
 
+# Reasoning depths accepted by the Qwen3.8 chat templates (Qwen3.8-27B and
+# Qwen3.8-Flash-Next). The template raises on anything else, and defaults to
+# "xhigh" when thinking is on and no effort is given.
+QWEN38_REASONING_EFFORTS = ("xhigh", "medium", "low")
+
 # --- Parse mode prompt ---
 PROMPT_PARSE = (
     "Parse this document image and output its content as clean markdown.\n"
@@ -132,10 +137,15 @@ class QwenProvider(Provider):
         - model (str, default="qwen3.5-4b"): Served model name
         - prompt_mode (str, default="parse"): "parse" or "layout"
         - enable_thinking (bool, default=False): Enable Qwen reasoning tokens
+        - reasoning_effort (str, optional): Qwen3.8 reasoning depth ("xhigh",
+          "medium" or "low"); requires enable_thinking=True. Unset means the
+          model default ("xhigh") applies.
         - timeout (int, default=600): Request timeout in seconds
         - dpi (int, default=150): DPI for PDF to image conversion
         - max_tokens (int, default=16384): Max tokens per response
         - temperature (float, default=0.1): Sampling temperature
+        - top_p (float, optional): Nucleus sampling cutoff; sent only when set
+        - top_k (int, optional): Top-k cutoff (vLLM extension); sent only when set
         - api_key_env (str, default="VLLM_API_KEY"): Env var for API key
     """
 
@@ -154,10 +164,31 @@ class QwenProvider(Provider):
         # every request so public self-hosted endpoints cannot change semantics
         # through a different server-level default.
         self._enable_thinking = bool(self.base_config.get("enable_thinking", False))
+        # Reasoning depth rides along in the same chat_template_kwargs. Validated
+        # here so a typo fails at construction instead of as a template error on
+        # every page of every document.
+        reasoning_effort = self.base_config.get("reasoning_effort")
+        if reasoning_effort is not None:
+            if reasoning_effort not in QWEN38_REASONING_EFFORTS:
+                raise ProviderConfigError(
+                    f"Unsupported reasoning_effort {reasoning_effort!r}. Supported: "
+                    f"{', '.join(QWEN38_REASONING_EFFORTS)}."
+                )
+            if not self._enable_thinking:
+                raise ProviderConfigError(
+                    "reasoning_effort requires enable_thinking=True (the chat template "
+                    "ignores the effort when thinking is disabled)."
+                )
+        self._reasoning_effort: str | None = reasoning_effort
         self._timeout = self.base_config.get("timeout", 600)
         self._dpi = self.base_config.get("dpi", 150)
         self._max_tokens = self.base_config.get("max_tokens", 16384)
         self._temperature = self.base_config.get("temperature", 0.1)
+        # Left unset the request carries neither, so the server's own defaults
+        # apply. The Qwen3.8 pipelines set them to the model card's per-mode
+        # recommendation (top_k is a vLLM request extension, not OpenAI).
+        self._top_p = self.base_config.get("top_p")
+        self._top_k = self.base_config.get("top_k")
 
         api_key_env = self.base_config.get("api_key_env", "VLLM_API_KEY")
         self._api_key = os.environ.get(api_key_env, "")
@@ -223,7 +254,14 @@ class QwenProvider(Provider):
             "max_tokens": self._max_tokens,
             "stream": False,
         }
-        payload["chat_template_kwargs"] = {"enable_thinking": self._enable_thinking}
+        if self._top_p is not None:
+            payload["top_p"] = self._top_p
+        if self._top_k is not None:
+            payload["top_k"] = self._top_k
+        chat_template_kwargs: dict[str, Any] = {"enable_thinking": self._enable_thinking}
+        if self._enable_thinking and self._reasoning_effort is not None:
+            chat_template_kwargs["reasoning_effort"] = self._reasoning_effort
+        payload["chat_template_kwargs"] = chat_template_kwargs
 
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._api_key:
