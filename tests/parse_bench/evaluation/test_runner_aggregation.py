@@ -357,9 +357,7 @@ def test_no_failures_is_a_no_op() -> None:
 def _layout_case(test_id: str, with_annotations: bool):
     from parse_bench.test_cases.schema import LayoutDetectionTestCase, LayoutTestRule
 
-    rules = (
-        [LayoutTestRule(page=1, bbox=[0.1, 0.1, 0.2, 0.2], canonical_class="text")] if with_annotations else []
-    )
+    rules = [LayoutTestRule(page=1, bbox=[0.1, 0.1, 0.2, 0.2], canonical_class="text")] if with_annotations else []
     return LayoutDetectionTestCase(
         test_id=test_id,
         group="layout",
@@ -386,9 +384,7 @@ def test_missing_layout_output_is_synthesized_as_zero(tmp_path: Path, monkeypatc
     assert synthesized.error == "No usable inference output for this example"
 
 
-def test_layout_case_without_annotations_is_not_scored_as_zero(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_layout_case_without_annotations_is_not_scored_as_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     tc = _layout_case("layout/doc2", with_annotations=False)
     monkeypatch.setattr("parse_bench.evaluation.runner.load_test_cases", lambda **kwargs: [tc])
 

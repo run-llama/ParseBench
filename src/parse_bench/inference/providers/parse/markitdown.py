@@ -50,9 +50,7 @@ class MarkItDownProvider(Provider):
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         if request.product_type != ProductType.PARSE:
-            raise ProviderPermanentError(
-                f"MarkItDownProvider only supports PARSE, got {request.product_type}"
-            )
+            raise ProviderPermanentError(f"MarkItDownProvider only supports PARSE, got {request.product_type}")
 
         pdf_path = Path(request.source_file_path)
         if not pdf_path.exists():

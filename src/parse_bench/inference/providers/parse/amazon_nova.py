@@ -292,9 +292,7 @@ class AmazonNovaProvider(Provider):
         except Exception as e:
             raise ProviderPermanentError(f"Failed to convert PDF to images: {e}") from e
 
-    def _converse(
-        self, image: Image.Image, system_prompt: str, user_prompt: str
-    ) -> tuple[str, dict[str, int], str]:
+    def _converse(self, image: Image.Image, system_prompt: str, user_prompt: str) -> tuple[str, dict[str, int], str]:
         """Send one page image to Bedrock Converse and return (text, usage, stop_reason)."""
         image_bytes = self._image_to_jpeg_bytes(image)
 
@@ -345,9 +343,7 @@ class AmazonNovaProvider(Provider):
 
         return text, self._extract_usage(response), stop_reason
 
-    def _parse_image_with_layout(
-        self, image: Image.Image
-    ) -> tuple[list[dict[str, Any]], str, dict[str, int], str]:
+    def _parse_image_with_layout(self, image: Image.Image) -> tuple[list[dict[str, Any]], str, dict[str, int], str]:
         """Parse a page image to layout-annotated markdown blocks."""
         text, usage, stop_reason = self._converse(image, SYSTEM_PROMPT_LAYOUT, USER_PROMPT_LAYOUT)
         # Prefer the lenient reader (Nova uses <TABLE>/<p> wrappers and leaves

@@ -44,14 +44,19 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 **Prerequisites:** Create a `.env` file with the API key for the parsing tool you want to evaluate (see [Configuration](#configuration) for details).
 
 ```bash
-# Install
+# Install from PyPI (pick the extras for the providers you want to run)
+pip install "parse-bench[runners]"          # every provider SDK
+pip install "parse-bench[llamaparse]"       # or just one, e.g. llamaparse / openai / anthropic / google
+
+# Or, from a checkout of this repo
 uv sync --extra runners
 
 # Optional: add the `fast` extra for a JIT-accelerated TEDS table metric (numba).
 # Scores are identical to the default path — just faster on large tables.
-uv sync --extra runners --extra fast
+pip install "parse-bench[runners,fast]"
 
 # Quick test run (small dataset, 3 files per category — good for trying things out)
+# (drop the `uv run` prefix if you installed from PyPI)
 uv run parse-bench run llamaparse_agentic --test
 
 # Full benchmark run (replace llamaparse_agentic with any pipeline name, see "Available Pipelines" below)
@@ -63,7 +68,7 @@ uv run parse-bench serve llamaparse_agentic
 
 ## Available Pipelines
 
-A **pipeline** is a document parsing tool or configuration that you want to evaluate. There are 90+ pipelines available -- see [docs/pipelines.md](docs/pipelines.md) for the full list, or run `uv run parse-bench pipelines`.
+A **pipeline** is a document parsing tool or configuration that you want to evaluate. There are 180+ pipelines available -- see [docs/pipelines.md](docs/pipelines.md) for the full list, or run `uv run parse-bench pipelines`.
 
 <details>
 <summary><strong>Paper baselines (21 pipelines)</strong></summary>

@@ -11,6 +11,15 @@ from parse_bench.inference.providers.base import (
     ProviderConfigError,
     ProviderPermanentError,
 )
+from parse_bench.inference.providers.registry import register_provider
+from parse_bench.schemas.parse_output import PageIR, ParseOutput
+from parse_bench.schemas.pipeline import PipelineSpec
+from parse_bench.schemas.pipeline_io import (
+    InferenceRequest,
+    InferenceResult,
+    RawInferenceResult,
+)
+from parse_bench.schemas.product import ProductType
 
 # Hardcoded path to the workspace `lit` release binary. ParseBench lives at
 # <workspace>/ParseBench/src/parse_bench/inference/providers/parse/liteparse.py,
@@ -26,15 +35,6 @@ _CLI_FLAG_MAP: dict[str, str] = {
     "num_workers": "--num-workers",
     "image_mode": "--image-mode",
 }
-from parse_bench.inference.providers.registry import register_provider
-from parse_bench.schemas.parse_output import PageIR, ParseOutput
-from parse_bench.schemas.pipeline import PipelineSpec
-from parse_bench.schemas.pipeline_io import (
-    InferenceRequest,
-    InferenceResult,
-    RawInferenceResult,
-)
-from parse_bench.schemas.product import ProductType
 
 
 @register_provider("liteparse")
@@ -61,9 +61,7 @@ class LiteParseProvider(Provider):
         self._output_format = self.base_config.get("output_format", "markdown")
         self._ocr_enabled = self.base_config.get("ocr_enabled", True)
         self._preserve_small_text = self.base_config.get("preserve_very_small_text", False)
-        self._flag_kwargs = {
-            k: v for k, v in self.base_config.items() if k in _CLI_FLAG_MAP and v is not None
-        }
+        self._flag_kwargs = {k: v for k, v in self.base_config.items() if k in _CLI_FLAG_MAP and v is not None}
 
     def _build_cli_args(self, pdf_path: str, fmt: str) -> list[str]:
         args: list[str] = [str(_LIT_BIN), "parse", pdf_path, "--format", fmt, "--quiet"]

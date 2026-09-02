@@ -45,6 +45,7 @@ def get_normalizer(
 
     if mode == NormalizationMode.JUDGE:
         from parse_bench.evaluation.metrics.parse.llm_normalization.strategy_judge import JudgeNormalizer
+
         return JudgeNormalizer()
 
     return None
