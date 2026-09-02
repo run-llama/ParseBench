@@ -67,6 +67,7 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | **`anthropic_opus_4_8_parse_with_layout_file`** | Claude Opus 4.8, parse + layout, file mode (In paper: *Anthropic Opus 4.8*) | `ANTHROPIC_API_KEY` |
 | `anthropic_sonnet_5_parse_with_layout_file` | Claude Sonnet 5, adaptive thinking + layout, file mode | `ANTHROPIC_API_KEY` |
 | `anthropic_fable_5_parse_with_layout_file` | Claude Fable 5, parse + layout, file mode | `ANTHROPIC_API_KEY` |
+| `anthropic_fable_5_1_parse_with_layout_file` | Claude Fable 5.1, parse + layout, file mode | `ANTHROPIC_API_KEY` |
 
 ### Google Gemini
 

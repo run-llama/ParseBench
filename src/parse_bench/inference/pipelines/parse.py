@@ -2091,6 +2091,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Anthropic Fable 5.1 - Parse with Layout File
+    register_fn(
+        PipelineSpec(
+            pipeline_name="anthropic_fable_5_1_parse_with_layout_file",
+            provider_name="anthropic",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "claude-fable-5-1",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+            },
+        )
+    )
+
     # Anthropic Haiku - Parse with Layout File - Thinking
     register_fn(
         PipelineSpec(

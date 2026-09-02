@@ -72,6 +72,7 @@ USER_PROMPT = (
 # Source: https://platform.claude.com/docs/en/about-claude/pricing (2026-03-25)
 _ANTHROPIC_PRICING_PER_M: dict[str, tuple[float, float]] = {
     # model-prefix: (input_per_M, output_per_M)
+    "claude-fable-5-1": (10.00, 50.00),
     "claude-fable-5": (10.00, 50.00),
     # Sonnet 5 has introductory pricing through 2026-08-31; handled in
     # _get_pricing so benchmark costs switch to standard pricing on time.
