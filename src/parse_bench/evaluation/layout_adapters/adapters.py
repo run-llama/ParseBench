@@ -1427,6 +1427,100 @@ class OIParserLayoutAdapter(LayoutAdapter):
         )
 
 
+@register_layout_adapter("cohere_parse", priority=90)
+class CohereParseLayoutAdapter(LayoutAdapter):
+    """Adapter that extracts LayoutOutput from Cohere Parse ParseOutput.layout_pages.
+
+    Enables cross-evaluation: the ``cohere_parse`` PARSE pipeline is scored against
+    the layout-detection dataset using VE bounding boxes from the model output.
+
+    Cohere Parse emits normalized [0,1] xywh coordinates and Canonical17 labels
+    (Title, Table, Picture, etc.) in ``layout_pages``.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        return isinstance(inference_result.output, ParseOutput) and bool(
+            inference_result.output.layout_pages
+        )
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            filtered = [p for p in inference_result.output.predictions if p.page == page_filter]
+            return inference_result.output.model_copy(update={"predictions": filtered})
+
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("CohereParseLayoutAdapter requires ParseOutput or LayoutOutput")
+
+        layout_pages = inference_result.output.layout_pages
+        if not layout_pages:
+            return LayoutOutput(
+                task_type="layout_detection",
+                example_id=inference_result.request.example_id,
+                pipeline_name=inference_result.pipeline_name,
+                model=LayoutDetectionModel.COHERE_PARSE_LAYOUT,
+                image_width=1,
+                image_height=1,
+                predictions=[],
+            )
+
+        first_page = layout_pages[0]
+        output_width = int(first_page.width or 1)
+        output_height = int(first_page.height or 1)
+
+        predictions: list[LayoutPrediction] = []
+
+        for lp in layout_pages:
+            page_number = lp.page_number
+            if page_filter is not None and page_number != page_filter:
+                continue
+
+            page_w = float(lp.width or output_width)
+            page_h = float(lp.height or output_height)
+
+            for item in lp.items:
+                for seg in item.layout_segments:
+                    label = seg.label or item.type or "Text"
+
+                    # Cohere Parse stores normalized [0,1] xywh; convert to pixel xyxy.
+                    x1 = seg.x * page_w
+                    y1 = seg.y * page_h
+                    x2 = x1 + seg.w * page_w
+                    y2 = y1 + seg.h * page_h
+
+                    content = _build_vendor_content(label, item.value)
+
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[x1, y1, x2, y2],
+                            score=float(seg.confidence or 1.0),
+                            label=label,
+                            page=page_number,
+                            content=content,
+                            provider_metadata={
+                                "order_index": len(predictions),
+                            },
+                        )
+                    )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.COHERE_PARSE_LAYOUT,
+            image_width=max(output_width, 1),
+            image_height=max(output_height, 1),
+            predictions=predictions,
+        )
+
+
 @register_layout_adapter("pulse", priority=90)
 class PulseLayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from Pulse ParseOutput.layout_pages.

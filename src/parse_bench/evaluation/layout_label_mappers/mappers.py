@@ -133,6 +133,29 @@ class OIParserLabelMapper(LayoutLabelMapper):
         return canonical
 
 
+@register_layout_label_mapper("cohere_parse", "model:cohere_parse_layout", priority=90)
+class CohereParseLabelMapper(LayoutLabelMapper):
+    """Mapper for Cohere Parse layout labels.
+
+    Cohere Parse emits Canonical17 labels directly (e.g. ``Title``, ``Table``,
+    ``Page-header``); normalize casing for case-insensitive lookup.
+    """
+
+    _BY_LOWER: dict[str, CanonicalLabel] = {label.value.lower(): label for label in CanonicalLabel}
+
+    def to_canonical(
+        self,
+        label: str,
+        prediction: LayoutPrediction,
+        context: MappingContext,
+    ) -> CanonicalLabel:
+        del prediction, context
+        canonical = self._BY_LOWER.get(label.strip().lower())
+        if canonical is None:
+            raise UnknownRawLayoutLabelError(f"Unknown cohere-parse layout label '{label}'")
+        return canonical
+
+
 @register_layout_label_mapper(
     "pymupdf4llm",
     "model:pymupdf4llm_layout",
