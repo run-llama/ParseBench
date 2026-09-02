@@ -14,16 +14,18 @@ Reference paper:
 """
 
 import itertools
+import os
 from collections import defaultdict
+from dataclasses import replace
 from difflib import SequenceMatcher
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal, overload
 
 import numpy as np
 from lxml import html
-from scipy.optimize import linear_sum_assignment
 
 from parse_bench.evaluation.metrics.base import Metric
+from parse_bench.evaluation.metrics.parse.table_pairing import assign_tables, page_blocking_active
 from parse_bench.evaluation.metrics.parse.table_parsing import (
     _ASCII_TO_SUBSCRIPT,
     _ASCII_TO_SUPERSCRIPT,
@@ -275,6 +277,231 @@ def _align_2d_outer(
     return true_indices, pred_indices, score
 
 
+def _kernel_mode() -> str:
+    """Select the ``factored_2dmss`` implementation: ``array`` | ``memo`` | ``slow``.
+
+    ``array`` (default) builds the reward as a vectorized numpy tensor over a
+    unique-cell-value similarity matrix and runs the alignment DP on Python lists
+    — no per-pair LCS redundancy, no R1·C1·R2·C2 dict build, no numpy scalar
+    indexing. ``memo`` is the previous fast path (memoized dict build). ``slow`` is
+    the original dict path. All three return bit-identical scores; the non-array
+    modes exist only for before/after benchmarking.
+
+    ``BENCH_GRITS_KERNEL`` selects explicitly; the legacy boolean
+    ``BENCH_GRITS_FAST_KERNEL=0`` forces ``slow``.
+    """
+    mode = os.environ.get("BENCH_GRITS_KERNEL", "").strip().lower()
+    if mode in ("array", "memo", "slow"):
+        return mode
+    return "slow" if os.environ.get("BENCH_GRITS_FAST_KERNEL", "1") == "0" else "array"
+
+
+def _precompute_rewards(
+    true_grid: np.ndarray,
+    pred_grid: np.ndarray,
+    reward_function: Any,
+    memoize: bool,
+) -> tuple[dict[tuple[int, int, int, int], float], dict[tuple[int, int, int, int], float]]:
+    """Original dict reward lookups over every cell pair (``slow`` / ``memo`` modes).
+
+    The reward depends only on the two cell VALUES, but the grids carry the same
+    string in many cells, so the naive ``range(R1·C1·R2·C2)`` loop calls
+    ``reward_function`` (an LCS over strings) up to 1.7M times per pair with massive
+    redundancy. ``memoize`` caches by ``(cell_value, cell_value)`` (a pure-function
+    cache → identical rewards). The ``array`` kernel avoids this loop entirely.
+    """
+    pre_computed: dict[tuple[int, int, int, int], float] = {}
+    transpose_rewards: dict[tuple[int, int, int, int], float] = {}
+    product = itertools.product(
+        range(true_grid.shape[0]),
+        range(true_grid.shape[1]),
+        range(pred_grid.shape[0]),
+        range(pred_grid.shape[1]),
+    )
+    if memoize:
+        cache: dict[tuple[Any, Any], float] = {}
+        for trow, tcol, prow, pcol in product:
+            value_key = (true_grid[trow, tcol], pred_grid[prow, pcol])
+            reward = cache.get(value_key)
+            if reward is None:
+                reward = reward_function(*value_key)
+                cache[value_key] = reward
+            pre_computed[(trow, tcol, prow, pcol)] = reward
+            transpose_rewards[(tcol, trow, pcol, prow)] = reward
+    else:
+        for trow, tcol, prow, pcol in product:
+            reward = reward_function(true_grid[trow, tcol], pred_grid[prow, pcol])
+            pre_computed[(trow, tcol, prow, pcol)] = reward
+            transpose_rewards[(tcol, trow, pcol, prow)] = reward
+    return pre_computed, transpose_rewards
+
+
+def _reward_tensor(
+    true_grid: np.ndarray,
+    pred_grid: np.ndarray,
+    reward_function: Any,
+) -> np.ndarray:
+    """Reward tensor ``R[trow, tcol, prow, pcol] = reward(true[trow,tcol], pred[prow,pcol])``.
+
+    ``reward_function`` is evaluated once per *distinct* (true_value, pred_value)
+    pair over a unique-string similarity matrix, then broadcast-gathered into the
+    full R1·C1·R2·C2 tensor — no per-cell Python loop, no LCS redundancy. Values
+    are the same doubles the dict path would store, so downstream scores are
+    bit-identical.
+    """
+    true_uids: dict[Any, int] = {}
+    pred_uids: dict[Any, int] = {}
+    uid_true = np.empty(true_grid.shape, dtype=np.intp)
+    uid_pred = np.empty(pred_grid.shape, dtype=np.intp)
+    unique_true: list[Any] = []
+    unique_pred: list[Any] = []
+    for r in range(true_grid.shape[0]):
+        for c in range(true_grid.shape[1]):
+            value = true_grid[r, c]
+            uid = true_uids.get(value)
+            if uid is None:
+                uid = len(unique_true)
+                true_uids[value] = uid
+                unique_true.append(value)
+            uid_true[r, c] = uid
+    for r in range(pred_grid.shape[0]):
+        for c in range(pred_grid.shape[1]):
+            value = pred_grid[r, c]
+            uid = pred_uids.get(value)
+            if uid is None:
+                uid = len(unique_pred)
+                pred_uids[value] = uid
+                unique_pred.append(value)
+            uid_pred[r, c] = uid
+
+    sim = np.empty((len(unique_true), len(unique_pred)), dtype=np.float64)
+    for a, value_a in enumerate(unique_true):
+        for b, value_b in enumerate(unique_pred):
+            sim[a, b] = reward_function(value_a, value_b)
+
+    # Broadcast-gather: (R1,C1,1,1) x (1,1,R2,C2) -> (R1,C1,R2,C2)
+    return sim[uid_true[:, :, None, None], uid_pred[None, None, :, :]]
+
+
+def _traceback_list(pointers: list[list[int]]) -> tuple[list[int], list[int]]:
+    """List-based traceback (mirror of :func:`_traceback`). -1=up, 1=left, 0=match."""
+    i = len(pointers) - 1
+    j = len(pointers[0]) - 1
+    seq1_indices: list[int] = []
+    seq2_indices: list[int] = []
+    while not (i == 0 and j == 0):
+        ptr = pointers[i][j]
+        if ptr == -1:
+            i -= 1
+        elif ptr == 1:
+            j -= 1
+        else:
+            i -= 1
+            j -= 1
+            seq1_indices.append(i)
+            seq2_indices.append(j)
+    return seq1_indices[::-1], seq2_indices[::-1]
+
+
+@overload
+def _align_matrix(reward_matrix: list[list[float]], return_alignment: Literal[False] = False) -> float: ...
+
+
+@overload
+def _align_matrix(
+    reward_matrix: list[list[float]], return_alignment: Literal[True]
+) -> tuple[list[int], list[int], float]: ...
+
+
+def _align_matrix(
+    reward_matrix: list[list[float]],
+    return_alignment: bool = False,
+) -> float | tuple[list[int], list[int], float]:
+    """Max-reward monotonic alignment over a dense ``M×N`` reward matrix.
+
+    Identical DP and tie-breaking to :func:`_align_1d` / :func:`_align_2d_outer`
+    (``best = max(diag, up, left)``; tie prefers diag, then up, then left), but on
+    plain Python lists — no numpy scalar indexing, no 4-tuple dict keys.
+    """
+    m = len(reward_matrix)
+    n = len(reward_matrix[0]) if m else 0
+    scores = [[0.0] * (n + 1) for _ in range(m + 1)]
+    pointers = [[0] * (n + 1) for _ in range(m + 1)]
+    for i in range(1, m + 1):
+        pointers[i][0] = -1  # up
+    for j in range(1, n + 1):
+        pointers[0][j] = 1  # left
+
+    for i in range(1, m + 1):
+        reward_row = reward_matrix[i - 1]
+        scores_prev = scores[i - 1]
+        scores_cur = scores[i]
+        pointers_cur = pointers[i]
+        for j in range(1, n + 1):
+            diag = scores_prev[j - 1] + reward_row[j - 1]
+            skip_up = scores_prev[j]
+            skip_left = scores_cur[j - 1]
+            best = max(diag, skip_up, skip_left)
+            scores_cur[j] = best
+            if diag == best:
+                pointers_cur[j] = 0
+            elif skip_up == best:
+                pointers_cur[j] = -1
+            else:
+                pointers_cur[j] = 1
+
+    score = scores[m][n]
+    if not return_alignment:
+        return score
+    seq1_indices, seq2_indices = _traceback_list(pointers)
+    return seq1_indices, seq2_indices, score
+
+
+def _factored_2dmss_array(
+    true_grid: np.ndarray,
+    pred_grid: np.ndarray,
+    reward_function: Any,
+) -> tuple[float, float, float, float, dict[int, int], dict[int, int]]:
+    """Array-kernel ``factored_2dmss`` — bit-identical to the dict path.
+
+    Builds the reward tensor once (vectorized), then does the same factored
+    row/column alignments. The per-row-pair column score and per-col-pair row
+    score matrices (``RR`` / ``CC``) are exactly the inner ``_align_1d`` scores the
+    dict path recomputes inside ``_align_2d_outer``. ``positive_match`` is summed in
+    the original nested order so floating-point rounding matches to the last bit.
+    """
+    reward = _reward_tensor(true_grid, pred_grid, reward_function)
+    n_true_rows, n_true_cols, n_pred_rows, n_pred_cols = reward.shape
+
+    # Row alignment: reward between true row i and pred row j is their column
+    # alignment score over reward[i, :, j, :] (C1×C2).
+    rr = [[_align_matrix(reward[i, :, j, :].tolist()) for j in range(n_pred_rows)] for i in range(n_true_rows)]
+    true_row_nums, pred_row_nums, row_score = _align_matrix(rr, return_alignment=True)
+
+    # Column alignment: reward between true col i and pred col j is their row
+    # alignment score over reward[:, i, :, j] (R1×R2).
+    cc = [[_align_matrix(reward[:, i, :, j].tolist()) for j in range(n_pred_cols)] for i in range(n_true_cols)]
+    true_col_nums, pred_col_nums, col_score = _align_matrix(cc, return_alignment=True)
+
+    num_true = n_true_rows * n_true_cols
+    num_pos = n_pred_rows * n_pred_cols
+
+    upper_bound = min(row_score, col_score)
+    ub_fscore, _, _ = _compute_fscore(upper_bound, num_true, num_pos)
+
+    # Sum matched-cell rewards in the same (row-pair outer, col-pair inner) order
+    # as the dict path so the float reduction is bit-identical.
+    positive_match = 0.0
+    for true_row, pred_row in zip(true_row_nums, pred_row_nums, strict=True):
+        for true_col, pred_col in zip(true_col_nums, pred_col_nums, strict=True):
+            positive_match += float(reward[true_row, true_col, pred_row, pred_col])
+
+    fscore, precision, recall = _compute_fscore(positive_match, num_true, num_pos)
+    row_map = dict(zip(true_row_nums, pred_row_nums, strict=True))
+    col_map = dict(zip(true_col_nums, pred_col_nums, strict=True))
+    return fscore, precision, recall, ub_fscore, row_map, col_map
+
+
 def factored_2dmss(
     true_grid: np.ndarray,
     pred_grid: np.ndarray,
@@ -287,18 +514,14 @@ def factored_2dmss(
 
     Returns (fscore, precision, recall, upper_bound_score).
     """
-    pre_computed: dict[tuple[int, int, int, int], float] = {}
-    transpose_rewards: dict[tuple[int, int, int, int], float] = {}
+    mode = _kernel_mode()
+    if mode == "array":
+        fscore, precision, recall, ub_fscore, _, _ = _factored_2dmss_array(true_grid, pred_grid, reward_function)
+        return fscore, precision, recall, ub_fscore
 
-    for trow, tcol, prow, pcol in itertools.product(
-        range(true_grid.shape[0]),
-        range(true_grid.shape[1]),
-        range(pred_grid.shape[0]),
-        range(pred_grid.shape[1]),
-    ):
-        reward = reward_function(true_grid[trow, tcol], pred_grid[prow, pcol])
-        pre_computed[(trow, tcol, prow, pcol)] = reward
-        transpose_rewards[(tcol, trow, pcol, prow)] = reward
+    pre_computed, transpose_rewards = _precompute_rewards(
+        true_grid, pred_grid, reward_function, memoize=(mode == "memo")
+    )
 
     num_pos = pred_grid.shape[0] * pred_grid.shape[1]
     num_true = true_grid.shape[0] * true_grid.shape[1]
@@ -333,18 +556,13 @@ def factored_2dmss_with_alignment(
     Returns (fscore, precision, recall, upper_bound, row_map, col_map)
     where row_map = {true_row: pred_row} and col_map = {true_col: pred_col}.
     """
-    pre_computed: dict[tuple[int, int, int, int], float] = {}
-    transpose_rewards: dict[tuple[int, int, int, int], float] = {}
+    mode = _kernel_mode()
+    if mode == "array":
+        return _factored_2dmss_array(true_grid, pred_grid, reward_function)
 
-    for trow, tcol, prow, pcol in itertools.product(
-        range(true_grid.shape[0]),
-        range(true_grid.shape[1]),
-        range(pred_grid.shape[0]),
-        range(pred_grid.shape[1]),
-    ):
-        reward = reward_function(true_grid[trow, tcol], pred_grid[prow, pcol])
-        pre_computed[(trow, tcol, prow, pcol)] = reward
-        transpose_rewards[(tcol, trow, pcol, prow)] = reward
+    pre_computed, transpose_rewards = _precompute_rewards(
+        true_grid, pred_grid, reward_function, memoize=(mode == "memo")
+    )
 
     num_pos = pred_grid.shape[0] * pred_grid.shape[1]
     num_true = true_grid.shape[0] * true_grid.shape[1]
@@ -567,6 +785,49 @@ def grits_from_html(
     return metrics
 
 
+def _leading_title_band_text(td: TableData) -> str | None:
+    """Normalized text of a leading full-width title band, if the table has one.
+
+    A title band is row 0 rendered as one colspan cell: after span expansion
+    every column of row 0 carries the same non-empty text. Tables with only
+    one row, or only one column, are excluded — the first has no body left to
+    score once the band is dropped, the second cannot distinguish a band from
+    an ordinary cell.
+    """
+    n_rows, n_cols = td.data.shape
+    if n_rows < 2 or n_cols < 2:
+        return None
+    texts = {normalize_cell_text(str(td.data[0, c])) for c in range(n_cols)}
+    if len(texts) != 1:
+        return None
+    text = texts.pop()
+    return text or None
+
+
+def _drop_caption_matched_title_band(td: TableData, other_caption: str) -> TableData:
+    """Drop ``td``'s leading title band when ``other_caption`` says the same thing.
+
+    ``<caption>`` is the semantically correct place for a table's title, and a
+    prediction that uses it must not be scored as having lost the title row
+    that a ground truth spells as a full-width header band (or vice versa).
+    The caption never enters either grid — it is not a ``<td>``/``<th>`` — so
+    the band on the other side is the only asymmetry, and removing it makes
+    the two structures comparable.
+
+    Guarded by text equality under the ordinary cell normalization, so a band
+    that says something the caption does not is left in place and still
+    scores. Applied in both directions by the caller, so the treatment is
+    symmetric between ground truth and prediction.
+    """
+    caption = normalize_cell_text(other_caption)
+    if not caption:
+        return td
+    band = _leading_title_band_text(td)
+    if band is None or band != caption:
+        return td
+    return replace(td, data=td.data[1:, :])
+
+
 def grits_con_from_table_data(
     gt_td: TableData,
     pred_td: TableData,
@@ -580,6 +841,17 @@ def grits_con_from_table_data(
     and applies the upgraded ``normalize_cell_text``. P5 entry point — replaces
     the older ``grits_from_html`` path on the GriTS hot path.
     """
+    if gt_td.data.size == 0 or pred_td.data.size == 0:
+        return None
+
+    # A <caption> on one side and a full-width title band saying the same
+    # thing on the other are the same title rendered two ways; neutralize the
+    # band so the difference costs nothing. Both directions, so the treatment
+    # is symmetric.
+    if pred_td.caption:
+        gt_td = _drop_caption_matched_title_band(gt_td, pred_td.caption)
+    if gt_td.caption:
+        pred_td = _drop_caption_matched_title_band(pred_td, gt_td.caption)
     if gt_td.data.size == 0 or pred_td.data.size == 0:
         return None
 
@@ -672,6 +944,9 @@ class GriTSMetric(Metric):
         self,
         expected_tables: list[Any],
         actual_tables: list[Any],
+        *,
+        expected_pages: list[int] | None = None,
+        actual_pages: list[int] | None = None,
         **kwargs: Any,
     ) -> list[MetricValue]:
         """Compute GriTS_Con scores between expected and actual table sets.
@@ -685,6 +960,13 @@ class GriTSMetric(Metric):
         Args:
             expected_tables: Pre-extracted GT tables (``list[ExtractedTable]``).
             actual_tables: Pre-extracted predicted tables (``list[ExtractedTable]``).
+            expected_pages: Optional page number (1-indexed) per GT table, aligned
+                with ``expected_tables``. When supplied together with
+                ``actual_pages`` (and length-consistent), the GT->pred assignment
+                is solved per page so a GT table only pairs with a prediction on
+                the same page. Omit for the document-global assignment.
+            actual_pages: Optional page number per predicted table, aligned with
+                ``actual_tables``.
             kwargs: Additional parameters (not used)
 
         Returns:
@@ -719,30 +1001,42 @@ class GriTSMetric(Metric):
 
         n_expected = len(expected_td)
         n_actual = len(actual_td)
-        total_pairs = n_expected * n_actual
+
+        # When per-table page labels are supplied, only same-page pairs are
+        # eligible to match — so only those need a GriTS comparison. This both
+        # constrains the assignment to within-page pairs and avoids the O(n_gt *
+        # n_pred) blow-up on multi-page documents.
+        blocked = page_blocking_active(expected_pages, actual_pages, n_expected, n_actual)
+        allowed_pairs = [
+            (i, j)
+            for i in range(n_expected)
+            for j in range(n_actual)
+            if not blocked or expected_pages[i] == actual_pages[j]  # type: ignore[index]
+        ]
+        total_pairs = len(allowed_pairs)
 
         print(
-            f"  GriTS: comparing {n_expected} expected x {n_actual} actual = {total_pairs} table pair(s)",
+            f"  GriTS: comparing {n_expected} expected x {n_actual} actual = {total_pairs} table pair(s)"
+            f"{' (same-page only)' if blocked else ''}",
             flush=True,
         )
 
-        # Compute all pairwise GriTS scores sequentially
+        # Compute pairwise GriTS scores for the eligible pairs only. Disallowed
+        # (cross-page) cells keep cost 0.0 and are never read — the per-page
+        # assignment only ever selects same-page pairs.
         results_cache: dict[tuple[int, int], dict[str, Any]] = {}
         cost_matrix = np.zeros((n_expected, n_actual))
 
-        pair_idx = 0
-        for i, gt_table in enumerate(expected_td):
-            for j, pred_table in enumerate(actual_td):
-                pair_idx += 1
-                if total_pairs > 1:
-                    print(f"  GriTS: table pair {pair_idx}/{total_pairs}", flush=True)
-                maybe_result = grits_con_from_table_data(gt_table, pred_table)
-                result = maybe_result if maybe_result is not None else dict(_ZERO_RESULT)
-                results_cache[(i, j)] = result
-                cost_matrix[i, j] = -result["grits_con"]
+        for pair_idx, (i, j) in enumerate(allowed_pairs, start=1):
+            if total_pairs > 1:
+                print(f"  GriTS: table pair {pair_idx}/{total_pairs}", flush=True)
+            maybe_result = grits_con_from_table_data(expected_td[i], actual_td[j])
+            result = maybe_result if maybe_result is not None else dict(_ZERO_RESULT)
+            results_cache[(i, j)] = result
+            cost_matrix[i, j] = -result["grits_con"]
 
-        # Solve assignment via Hungarian algorithm
-        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+        # Solve assignment (per page when page labels are supplied, else global).
+        row_ind, col_ind = assign_tables(cost_matrix, expected_pages, actual_pages)
 
         per_table_details: list[dict[str, Any]] = []
         con_scores: list[float] = []
@@ -752,31 +1046,34 @@ class GriTSMetric(Metric):
             gi, pi = int(gt_idx), int(pred_idx)
             result = results_cache[(gi, pi)]
             con_scores.append(result["grits_con"])
-            per_table_details.append(
-                {
-                    "gt_table_index": gi,
-                    "pred_table_index": pi,
-                    "grits_con": result["grits_con"],
-                    "grits_precision_con": result["grits_precision_con"],
-                    "grits_recall_con": result["grits_recall_con"],
-                    "_con_row_alignment": result.get("_con_row_alignment", {}),
-                    "_con_col_alignment": result.get("_con_col_alignment", {}),
-                }
-            )
+            detail: dict[str, Any] = {
+                "gt_table_index": gi,
+                "pred_table_index": pi,
+                "grits_con": result["grits_con"],
+                "grits_precision_con": result["grits_precision_con"],
+                "grits_recall_con": result["grits_recall_con"],
+                "_con_row_alignment": result.get("_con_row_alignment", {}),
+                "_con_col_alignment": result.get("_con_col_alignment", {}),
+            }
+            if blocked:
+                detail["gt_page"] = expected_pages[gi]  # type: ignore[index]
+                detail["pred_page"] = actual_pages[pi]  # type: ignore[index]
+            per_table_details.append(detail)
             matched_gt.add(gi)
 
         # Unmatched expected tables score 0
         for i in range(n_expected):
             if i not in matched_gt:
                 con_scores.append(0.0)
-                per_table_details.append(
-                    {
-                        "gt_table_index": i,
-                        "pred_table_index": None,
-                        "grits_con": 0.0,
-                        "note": "No matching table in actual",
-                    }
-                )
+                unmatched_detail: dict[str, Any] = {
+                    "gt_table_index": i,
+                    "pred_table_index": None,
+                    "grits_con": 0.0,
+                    "note": "No matching table in actual",
+                }
+                if blocked:
+                    unmatched_detail["gt_page"] = expected_pages[i]  # type: ignore[index]
+                per_table_details.append(unmatched_detail)
 
         avg_con = sum(con_scores) / len(con_scores) if con_scores else 0.0
         print(f"  GriTS: done, con = {avg_con:.4f}", flush=True)

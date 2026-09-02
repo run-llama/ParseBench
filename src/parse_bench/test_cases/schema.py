@@ -5,12 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, field_validator
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, SerializeAsAny, Tag, field_validator
 
 from parse_bench.test_cases.parse_rule_schemas import (
     ParseRule,
+    ParseRuleBase,
     coerce_parse_rule,
-    coerce_parse_rule_list_or_none,
 )
 
 # =============================================================================
@@ -223,10 +223,49 @@ class ExtractTestCase(BaseTestCase):
         return [rule for rule in self.test_rules if isinstance(rule, ExtractFieldTestRule)]
 
 
-class ParseTestCase(BaseTestCase):
-    """Test case for PARSE product type."""
+def _coerce_mixed_rule_list(
+    value: list[dict[str, Any]] | list[LayoutTestRule | SerializeAsAny[ParseRuleBase] | ExtractFieldTestRule] | None,
+) -> list[LayoutTestRule | SerializeAsAny[ParseRuleBase] | ExtractFieldTestRule]:
+    """Coerce a mixed rule list (dicts + typed models) into typed models.
 
-    test_rules: list[ParseRule] | None = Field(
+    ``ParseTestCase`` accepts layout rules (``type=layout``) and extract-field
+    rules (``type=extract_field``) alongside parse rules on the same
+    ``test_rules`` list, so one on-disk payload validates identically whether
+    the outer case is detector-shaped or parse-shaped. Parse-only consumers
+    filter the non-parse entries out before scoring.
+    """
+    if value is None:
+        return []
+
+    typed_rules: list[LayoutTestRule | SerializeAsAny[ParseRuleBase] | ExtractFieldTestRule] = []
+    for rule in value:
+        if isinstance(rule, (LayoutTestRule, ExtractFieldTestRule)):
+            typed_rules.append(rule)
+            continue
+
+        if isinstance(rule, dict):
+            rule_type = rule.get("type")
+            if rule_type == "layout":
+                typed_rules.append(LayoutTestRule.model_validate(rule))
+            elif rule_type == "extract_field":
+                typed_rules.append(ExtractFieldTestRule.model_validate(rule))
+            else:
+                typed_rules.append(coerce_parse_rule(rule))
+            continue
+
+        typed_rules.append(coerce_parse_rule(rule))
+
+    return typed_rules
+
+
+class ParseTestCase(BaseTestCase):
+    """Test case for PARSE product type.
+
+    Accepts parse rules (``present``, ``order``, ``table``, ...) as well as
+    layout and extract-field rules on the same ``test_rules`` list.
+    """
+
+    test_rules: list[LayoutTestRule | SerializeAsAny[ParseRuleBase] | ExtractFieldTestRule] | None = Field(
         default=None,
         description="List of rule-based test definitions (from test.json test_rules)",
     )
@@ -275,12 +314,33 @@ class ParseTestCase(BaseTestCase):
         ),
     )
 
+    metadata: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Additional metadata (doc_category, complexity_rank, expected_pages for page-aware table matching, etc.)"
+        ),
+    )
+
     @field_validator("test_rules", mode="before")
     @classmethod
-    def _coerce_parse_rules(cls, value: list[dict[str, Any]] | None) -> list[ParseRule] | None:
+    def _coerce_rules(
+        cls, value: list[dict[str, Any]] | None
+    ) -> list[LayoutTestRule | SerializeAsAny[ParseRuleBase] | ExtractFieldTestRule] | None:
         if value is None:
             return None
-        return coerce_parse_rule_list_or_none(value)
+        return _coerce_mixed_rule_list(value)
+
+    def get_parse_rules(self) -> list[ParseRuleBase]:
+        """Return only the parse rules from ``test_rules`` (layout/extract-field rules excluded)."""
+        if not self.test_rules:
+            return []
+        return [rule for rule in self.test_rules if not isinstance(rule, (LayoutTestRule, ExtractFieldTestRule))]
+
+    def get_extract_field_rules(self) -> list[ExtractFieldTestRule]:
+        """Return only the typed ``extract_field`` rules from ``test_rules``."""
+        if not self.test_rules:
+            return []
+        return [rule for rule in self.test_rules if isinstance(rule, ExtractFieldTestRule)]
 
 
 class LayoutDetectionTestCase(BaseTestCase):

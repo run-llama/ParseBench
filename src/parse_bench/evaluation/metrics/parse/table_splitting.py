@@ -138,6 +138,11 @@ def build_sub_table(
         col_headers=sub_col_headers,
         row_headers={},
         header_cells=sub_header_cells,
+        thead_rows=set(pred_table.thead_rows),
+        tbody_rows={r for r in pred_table.tbody_rows if r < last_nonempty},
+        tfoot_rows={r for r in pred_table.tfoot_rows if r < last_nonempty},
+        column_scope_rows={r for r in pred_table.column_scope_rows if r < last_nonempty},
+        row_scope_rows={r for r in pred_table.row_scope_rows if r < last_nonempty},
     )
 
 

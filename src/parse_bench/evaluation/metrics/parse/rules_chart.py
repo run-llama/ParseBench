@@ -28,6 +28,12 @@ from parse_bench.test_cases.parse_rule_schemas import (
     ParseRotateCheckRule,
 )
 
+
+def parse_chart_tables(content: str) -> list[TableData]:
+    """Parse the Markdown and HTML tables consumed by chart rules."""
+    return [*parse_markdown_tables(content), *parse_html_tables(content)]
+
+
 # =============================================================================
 # Number Normalization Utilities for Chart Tests
 # =============================================================================
@@ -309,63 +315,252 @@ class ChartDataPointRule(ParseTestRule):
 
         return matches
 
-    def _check_label_association(  # type: ignore[no-untyped-def]
+    def _label_matches(self, label: str, cell_text: str, *, allow_partial: bool = True) -> bool:
+        """Match labels consistently across table cells and chart context."""
+        normalized_label = normalize_text(label)
+        normalized_cell = normalize_text(cell_text)
+
+        if normalized_label == normalized_cell:
+            return True
+
+        stripped_label = self._strip_for_label_compare(normalized_label)
+        stripped_cell = self._strip_for_label_compare(normalized_cell)
+        if stripped_label and stripped_label == stripped_cell:
+            return True
+
+        if not allow_partial:
+            return False
+
+        # Short labels such as ``Q1`` and ``US`` can validly appear as a
+        # distinct token inside a longer, candidate-local cell.  Permit that
+        # narrow form while continuing to reject fuzzy/substring matches for
+        # short fragments: ``EU27`` must not bind to a value cell ``7``.
+        if min(len(stripped_label), len(stripped_cell)) < 3:
+            # Keep periods within abbreviations such as ``U.S.`` but split
+            # slash- and hyphen-delimited chart labels such as ``Q1/2024``.
+            # A compacted value like ``us7`` remains a different token and
+            # cannot donate the ``US`` label.
+            cell_tokens = re.findall(r"[a-z0-9]+(?:\.[a-z0-9]+)*", normalized_cell)
+            label_tokens = re.findall(r"[a-z0-9]+(?:\.[a-z0-9]+)*", normalized_label)
+            delimited_label_match = bool(
+                len(label_tokens) > 1
+                and any(
+                    [self._strip_for_label_compare(token) for token in cell_tokens[start : start + len(label_tokens)]]
+                    == [self._strip_for_label_compare(token) for token in label_tokens]
+                    for start in range(len(cell_tokens) - len(label_tokens) + 1)
+                )
+            )
+            return (
+                bool(
+                    re.search(r"[a-z]", stripped_label)
+                    and any(self._strip_for_label_compare(token) == stripped_label for token in cell_tokens)
+                )
+                or delimited_label_match
+            )
+
+        threshold = max(0.5, 1.0 - (self.max_diffs / max(len(normalized_label), 1)))
+        return (
+            fuzz.partial_ratio(normalized_label, normalized_cell) / 100.0 >= threshold
+            or stripped_label in stripped_cell
+        )
+
+    @staticmethod
+    def _two_digit_year_matches_candidate_evidence(label: str, evidence: str) -> bool:
+        """Match chart shorthand such as ``09`` to a local ``2009`` token.
+
+        This equivalence is deliberately narrower than the general label
+        matcher. It is used only after a value candidate has selected its own
+        row and authored header chain, so a year in a caption or another body
+        row cannot repair an otherwise unrelated value. Tokenization also
+        prevents compact values such as ``20090`` or ``2009.0`` from donating
+        a year.
+        """
+        normalized_label = normalize_text(label)
+        if not re.fullmatch(r"\d{2}", normalized_label):
+            return False
+
+        tokens = re.findall(r"[a-z0-9]+(?:\.[a-z0-9]+)*", normalize_text(evidence))
+        return any(
+            re.fullmatch(r"(?:19|20)\d{2}", token) is not None and token[-2:] == normalized_label for token in tokens
+        )
+
+    def _candidate_label_matches(self, label: str, evidence: str) -> bool:
+        """Match a label against evidence already bound to one value candidate."""
+        return self._label_matches(label, evidence) or self._two_digit_year_matches_candidate_evidence(label, evidence)
+
+    def _candidate_data_scope(  # type: ignore[no-untyped-def]
         self,
         table_array,
         value_row: int,
         value_col: int,
-        label: str,
         table_data: TableData | None = None,
-    ) -> bool:
-        """
-        Check if a label is associated with a value cell.
+    ) -> list[str]:
+        """Return only parser-authored evidence local to one value candidate."""
+        _, cols = table_array.shape
+        scope: list[str] = []
+        seen: set[str] = set()
 
-        A label is associated if it appears in the same row OR same column,
-        including colspan/rowspan headers tracked by col_headers/row_headers.
-        """
-        rows, cols = table_array.shape
-        threshold = max(0.5, 1.0 - (self.max_diffs / max(len(label), 1)))
-        stripped_label = self._strip_for_label_compare(label)
+        def add(text: object) -> None:
+            normalized = normalize_text(str(text))
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                scope.append(normalized)
 
-        def _label_matches(cell_text: str) -> bool:
-            if fuzz.partial_ratio(label, cell_text) / 100.0 >= threshold:
-                return True
-            stripped_cell = self._strip_for_label_compare(cell_text)
-            if stripped_label and stripped_cell and stripped_label in stripped_cell:
-                return True
-            return False
-
-        # Check same row
+        # A data label may come from the candidate row, but never from an
+        # arbitrary body row merely because it shares the value column.
         for col_idx in range(cols):
-            if col_idx == value_col:
-                continue
-            cell_text = normalize_text(str(table_array[value_row, col_idx]))
-            if _label_matches(cell_text):
-                return True
+            if col_idx != value_col and (not table_data or (value_row, col_idx) not in table_data.header_cells):
+                add(table_array[value_row, col_idx])
 
-        # Check same column
+        if not table_data:
+            return scope
+
+        # ``parse_html_tables`` records every row containing a ``<th>`` in
+        # ``header_rows``, including row headers in ``<tbody>``. Cross-row
+        # labels may come from an explicit ``<thead>``, or from an initial
+        # top-level block whose cells are all ``<th>``. Body-row headers stay
+        # local to their own candidate metadata. Markdown tables have no HTML
+        # header cells and explicitly designate row zero as their header, so
+        # preserve that parser-authored convention too.
+        if table_data.thead_rows:
+            preceding_thead_rows = {row_idx for row_idx in table_data.thead_rows if row_idx < value_row}
+            authored_header_rows = set()
+            if preceding_thead_rows:
+                last_thead_row = max(preceding_thead_rows)
+                for row_idx in range(last_thead_row, -1, -1):
+                    if row_idx not in preceding_thead_rows:
+                        break
+                    authored_header_rows.add(row_idx)
+            authored_header_rows |= {
+                row_idx
+                for row_idx in table_data.column_scope_rows
+                if row_idx < value_row and row_idx not in table_data.tfoot_rows
+            }
+        elif not table_data.header_cells:
+            authored_header_rows = {row_idx for row_idx in table_data.header_rows if row_idx < value_row}
+        else:
+            authored_header_rows = {
+                row_idx
+                for row_idx in table_data.column_scope_rows
+                if row_idx < value_row and row_idx not in table_data.tfoot_rows
+            }
+            for row_idx in range(value_row):
+                # A top-level implicit header may use an empty ``<td>`` as
+                # the corner filler (the common row-label/year layout).  It
+                # is still authored as a header row only when every other
+                # cell is a real ``<th>``; non-empty ``<td>`` cells are body
+                # leakage and must terminate the inferred block.  Explicit
+                # ``<tbody>`` rows are never eligible, even when all cells
+                # happen to be ``<th>``.
+                row_header_cells = [col_idx for col_idx in range(cols) if (row_idx, col_idx) in table_data.header_cells]
+                row_values = [str(table_array[row_idx, col_idx]).strip() for col_idx in range(cols)]
+                unique_nonempty = {value for value in row_values if value}
+                if row_idx in table_data.tbody_rows or row_idx in table_data.tfoot_rows:
+                    break
+                if row_idx in table_data.row_scope_rows:
+                    break
+                if not row_header_cells:
+                    # Match the title stripper's limited leading-row
+                    # behavior: empty spacers and a uniform full-width
+                    # ``<td colspan>`` title precede, rather than replace,
+                    # an implicit ``<th>`` header block.
+                    if not unique_nonempty or (cols > 1 and len(unique_nonempty) == 1 and all(row_values)):
+                        continue
+                    break
+                if any(
+                    (row_idx, col_idx) not in table_data.header_cells and str(table_array[row_idx, col_idx]).strip()
+                    for col_idx in range(cols)
+                ):
+                    break
+                authored_header_rows.add(row_idx)
+
+        # Parser-expanded rowspan/colspan metadata provides the candidate's
+        # local row and column header chains.
+        for header_entry in table_data.row_headers.get(value_row, []):
+            add(header_entry[1])
+        column_headers = [
+            header_entry
+            for header_entry in table_data.col_headers.get(value_col, [])
+            if header_entry[0] in authored_header_rows
+        ]
+        for header_entry in column_headers:
+            add(header_entry[1])
+
+        # ``col_headers`` contains only ``<th>`` cells.  An explicit
+        # ``<thead>`` is authored header provenance even when a level uses a
+        # ``<td>``, so fill only header rows not already represented by that
+        # metadata from the physical candidate column.  This is also the
+        # malformed-HTML fallback; it never consults another body row. A
+        # row-scoped ``<th>`` excludes only its own physical cell: an adjacent
+        # ``<td>`` in the same explicit header row may still be the column
+        # label for this candidate.
+        represented_header_rows = {header_entry[0] for header_entry in column_headers}
+        for header_row in sorted(authored_header_rows - represented_header_rows):
+            if (header_row, value_col) not in table_data.header_cells:
+                add(table_array[header_row, value_col])
+
+        return scope
+
+    def _labels_match_candidate_scope(  # type: ignore[no-untyped-def]
+        self,
+        table_array,
+        value_row: int,
+        value_col: int,
+        labels: list[str],
+        table_data: TableData | None = None,
+    ) -> tuple[list[str], list[str]]:
+        """Return labels matched and missing from one value candidate's scope."""
+        scope = self._candidate_data_scope(table_array, value_row, value_col, table_data)
+        matched = [label for label in labels if any(self._candidate_label_matches(label, item) for item in scope)]
+        missing = [label for label in labels if label not in matched]
+        return matched, missing
+
+    def _all_td_candidate_scope(  # type: ignore[no-untyped-def]
+        self,
+        table_array,
+        value_row: int,
+        value_col: int,
+        table_data: TableData,
+    ) -> list[str]:
+        """Return the legacy row/column scope for an un-authored HTML grid.
+
+        Model output sometimes uses only ``<td>`` elements, even for a visually
+        obvious first-row or first-column header. Such a table has no authored
+        header provenance to follow. The caller may use this broader scope only
+        when it identifies exactly one value candidate; otherwise cross-row
+        borrowing would make duplicate values ambiguous.
+        """
+        rows, _ = table_array.shape
+        scope = self._candidate_data_scope(table_array, value_row, value_col, table_data)
+        seen = set(scope)
+
         for row_idx in range(rows):
             if row_idx == value_row:
                 continue
-            cell_text = normalize_text(str(table_array[row_idx, value_col]))
-            if _label_matches(cell_text):
-                return True
+            normalized = normalize_text(str(table_array[row_idx, value_col]))
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                scope.append(normalized)
 
-        # Check col_headers for the value's column (handles colspan headers)
-        if table_data and table_data.col_headers:
-            for header_entry in table_data.col_headers.get(value_col, []):
-                header_text = normalize_text(str(header_entry[1]))
-                if _label_matches(header_text):
-                    return True
+        return scope
 
-        # Check row_headers for the value's row (handles rowspan headers)
-        if table_data and table_data.row_headers:
-            for header_entry in table_data.row_headers.get(value_row, []):
-                header_text = normalize_text(str(header_entry[1]))
-                if _label_matches(header_text):
-                    return True
+    def _unique_all_td_fallback_candidate(  # type: ignore[no-untyped-def]
+        self,
+        table_array,
+        value_matches: list[tuple[int, int]],
+        table_data: TableData,
+    ) -> tuple[int, int] | None:
+        """Resolve one unambiguous value candidate in an all-``td`` HTML table."""
+        if table_data.header_cells or table_data.header_rows:
+            return None
 
-        return False
+        winners = []
+        for value_row, value_col in value_matches:
+            scope = self._all_td_candidate_scope(table_array, value_row, value_col, table_data)
+            if all(any(self._label_matches(label, item) for item in scope) for label in self.labels):
+                winners.append((value_row, value_col))
+
+        return winners[0] if len(winners) == 1 else None
 
     def _extract_formatted_labels(self, context: str) -> set[str]:
         """Extract bold text and headings from markdown/HTML context."""
@@ -401,22 +596,12 @@ class ChartDataPointRule(ParseTestRule):
         This prevents labels like "Retail Ecommerce Sales" from being treated
         as title labels when they are actually column headers in the table.
         """
-        threshold = max(0.5, 1.0 - (self.max_diffs / max(len(label), 1)))
-        stripped_label = self._strip_for_label_compare(label)
         rows, cols = table_array.shape
-
-        def _label_matches(cell_text: str) -> bool:
-            if fuzz.partial_ratio(label, cell_text) / 100.0 >= threshold:
-                return True
-            stripped_cell = self._strip_for_label_compare(cell_text)
-            if stripped_label and stripped_cell and stripped_label in stripped_cell:
-                return True
-            return False
 
         for r in range(rows):
             for c in range(cols):
                 cell_text = normalize_text(str(table_array[r, c]))
-                if _label_matches(cell_text):
+                if self._label_matches(label, cell_text):
                     return True
 
         # Also check col_headers and row_headers
@@ -426,7 +611,7 @@ class ChartDataPointRule(ParseTestRule):
                     for entries in headers.values():
                         for entry in entries:
                             header_text = normalize_text(str(entry[1]))
-                            if _label_matches(header_text):
+                            if self._label_matches(label, header_text):
                                 return True
 
         return False
@@ -448,12 +633,17 @@ class ChartDataPointRule(ParseTestRule):
         threshold = 0.60
 
         for formatted_label in formatted_labels:
+            if self._label_matches(normalized_label, formatted_label, allow_partial=False):
+                return True
             similarity = fuzz.ratio(normalized_label, formatted_label) / 100.0
-            if similarity >= threshold:
+            if (
+                min(len(stripped_label), len(self._strip_for_label_compare(formatted_label))) >= 3
+                and similarity >= threshold
+            ):
                 return True
             # Fallback: compare with whitespace/special chars stripped
             stripped_formatted = self._strip_for_label_compare(formatted_label)
-            if stripped_label and stripped_formatted:
+            if min(len(stripped_label), len(stripped_formatted)) >= 3:
                 similarity = fuzz.ratio(stripped_label, stripped_formatted) / 100.0
                 if similarity >= threshold:
                     return True
@@ -467,43 +657,32 @@ class ChartDataPointRule(ParseTestRule):
         or "<caption>Solar PV (modules) ...</caption>").  Uses partial_ratio since
         headings/captions are typically longer than the label.
         """
-        normalized_label = normalize_text(label)
-        stripped_label = self._strip_for_label_compare(normalized_label)
-        threshold = max(0.5, 1.0 - (self.max_diffs / max(len(normalized_label), 1)))
-
-        def _matches(text: str) -> bool:
-            text = normalize_text(text)
-            if fuzz.partial_ratio(normalized_label, text) / 100.0 >= threshold:
-                return True
-            stripped = self._strip_for_label_compare(text)
-            if stripped_label and stripped and stripped_label in stripped:
-                return True
-            return False
-
         # Check <caption> elements
         for match in re.finditer(r"<caption[^>]*>(.+?)</caption>", context, re.IGNORECASE):
-            if _matches(match.group(1)):
+            if self._label_matches(label, match.group(1)):
                 return True
 
         # Check markdown headings (# Title, ## Title, etc.)
         for match in re.finditer(r"^#{1,6}\s+(.+?)$", context, re.MULTILINE):
-            if _matches(match.group(1)):
+            if self._label_matches(label, match.group(1)):
+                return True
+
+        # Check HTML headings. Unlike generic bold text, an authored heading
+        # is a strong chart-identity signal even when the same token also
+        # appears in a table body cell.
+        for match in re.finditer(r"<h[1-6][^>]*>(.+?)</h[1-6]>", context, re.IGNORECASE | re.DOTALL):
+            if self._label_matches(label, match.group(1)):
                 return True
 
         return False
 
     def run(self, content: str, normalized_content: str | None = None) -> tuple[bool, str, float]:
         """Check if value is associated with all labels in any table."""
-        # Parse all tables
-        tables_to_check = []
-
-        # Parse markdown tables
-        md_tables = parse_markdown_tables(content)
-        tables_to_check.extend(md_tables)
-
-        # Parse HTML tables
-        html_tables = parse_html_tables(content)
-        tables_to_check.extend(html_tables)
+        # ``[]`` is a real cache hit for table-free content. Only ``None``
+        # means this rule was invoked directly and must parse for itself.
+        tables_to_check = self.parsed_tables
+        if tables_to_check is None:
+            tables_to_check = parse_chart_tables(content)
 
         if not tables_to_check:
             return False, "No tables found in content", 0.0
@@ -522,19 +701,40 @@ class ChartDataPointRule(ParseTestRule):
             if not value_matches:
                 continue  # Try next table
 
+            # Some model-generated HTML uses no ``<th>`` elements at all.
+            # Preserve its visually vertical row/column association only when
+            # that broader evidence selects exactly one matching value cell.
+            all_td_fallback_candidate = self._unique_all_td_fallback_candidate(
+                table_array,
+                value_matches,
+                table_data,
+            )
+
             # For each matching cell, try validation phases
             for value_row, value_col in value_matches:
-                # PHASE 1: Try strict matching - all labels in table cells
-                missing_labels_strict = []
-                for label in self.labels:
-                    if not self._check_label_association(table_array, value_row, value_col, label, table_data):
-                        missing_labels_strict.append(label)
+                # PHASE 1: every data label must bind to this one value
+                # candidate's row and parser-authored header chains.
+                data_labels, missing_labels_strict = self._labels_match_candidate_scope(
+                    table_array, value_row, value_col, self.labels, table_data
+                )
 
                 if not missing_labels_strict:
-                    # Success - all labels found in table
                     return (
                         True,
-                        f"Value '{self.value}' found with all labels at ({value_row}, {value_col})",
+                        (
+                            f"Value '{self.value}' found with all labels in candidate-local scope "
+                            f"at ({value_row}, {value_col})"
+                        ),
+                        1.0,
+                    )
+
+                if all_td_fallback_candidate == (value_row, value_col):
+                    return (
+                        True,
+                        (
+                            f"Value '{self.value}' found with all labels in unique all-td row/column scope "
+                            f"at ({value_row}, {value_col})"
+                        ),
                         1.0,
                     )
 
@@ -546,25 +746,24 @@ class ChartDataPointRule(ParseTestRule):
                     # This ensures labels that appear in BOTH table and context
                     # are correctly classified as data labels (found in table)
 
-                    data_labels = []  # Labels found in table cells
                     title_labels = []  # Labels found in formatted context only
                     missing_labels = []  # Labels not found anywhere
 
-                    for label in self.labels:
-                        # Check if label is associated with value in table
-                        if self._check_label_association(table_array, value_row, value_col, label, table_data):
-                            data_labels.append(label)
-                        # Only allow formatted-context matching for labels that
-                        # do NOT exist anywhere in the current table.
-                        elif not self._label_exists_in_table(
-                            table_array, label, table_data
-                        ) and self._is_label_in_formatted_context(context, label):
-                            title_labels.append(label)
-                        # Headings and captions are strong table-identity signals;
-                        # allow them even when the label partially matches a table
-                        # cell (e.g. "LDC/LLDCs" heading vs "Average OSI for
-                        # LDC/LLDCs" column header).
-                        elif self._is_label_in_heading_or_caption(context, label):
+                    for label in missing_labels_strict:
+                        # A label found elsewhere in the table is data, not
+                        # chart identity context. It must bind locally.
+                        if self._label_exists_in_table(table_array, label, table_data):
+                            # A genuine heading/caption establishes chart
+                            # identity even when the same text also occurs in
+                            # another table cell. Ordinary formatted context
+                            # does not receive this exception.
+                            if self._is_label_in_heading_or_caption(context, label):
+                                title_labels.append(label)
+                            else:
+                                missing_labels.append(label)
+                        elif self._is_label_in_formatted_context(
+                            context, label
+                        ) or self._is_label_in_heading_or_caption(context, label):
                             title_labels.append(label)
                         else:
                             missing_labels.append(label)
@@ -577,7 +776,7 @@ class ChartDataPointRule(ParseTestRule):
                                 True,
                                 (
                                     f"Value '{self.value}' found with data labels {data_labels} "
-                                    f"in table and title labels "
+                                    f"in candidate-local scope and title labels "
                                     f"{title_labels} in context "
                                     f"at ({value_row}, {value_col})"
                                 ),
@@ -587,14 +786,17 @@ class ChartDataPointRule(ParseTestRule):
                             # All labels in table (no title labels needed)
                             return (
                                 True,
-                                f"Value '{self.value}' found with all labels at ({value_row}, {value_col})",
+                                (
+                                    f"Value '{self.value}' found with all labels in candidate-local scope "
+                                    f"at ({value_row}, {value_col})"
+                                ),
                                 1.0,
                             )
 
                     # Track failure reason
                     all_failed_reasons.append(
                         f"Value at ({value_row}, {value_col}) missing labels: {missing_labels} "
-                        f"(data labels {data_labels} in table, "
+                        f"(data labels {data_labels} in candidate-local scope, "
                         f"title labels {title_labels} in context)"
                     )
                 else:
@@ -759,13 +961,9 @@ class ChartDataArrayLabelsRule(ParseTestRule):
 
         Returns a score-based result where partial matches get proportionally lower scores.
         """
-        tables_to_check = []
-
-        md_tables = parse_markdown_tables(content)
-        tables_to_check.extend(md_tables)
-
-        html_tables = parse_html_tables(content)
-        tables_to_check.extend(html_tables)
+        tables_to_check = self.parsed_tables
+        if tables_to_check is None:
+            tables_to_check = parse_chart_tables(content)
 
         if not tables_to_check:
             return False, "No tables found in content", 0.0
@@ -1259,13 +1457,9 @@ class ChartDataArrayDataRule(ParseTestRule):
 
     def run(self, content: str, normalized_content: str | None = None) -> tuple[bool, str, float]:
         """Check if expected data values match any table in content."""
-        tables_to_check = []
-
-        md_tables = parse_markdown_tables(content)
-        tables_to_check.extend(md_tables)
-
-        html_tables = parse_html_tables(content)
-        tables_to_check.extend(html_tables)
+        tables_to_check = self.parsed_tables
+        if tables_to_check is None:
+            tables_to_check = parse_chart_tables(content)
 
         if not tables_to_check:
             return False, "No tables found in content", 0.0

@@ -2,10 +2,13 @@
 
 import json
 import re
+import unicodedata
 from collections import Counter
+from html import unescape
 from typing import Any, cast
 
 import pandas as pd
+from bs4 import BeautifulSoup
 from rapidfuzz import fuzz
 from unidecode import unidecode
 
@@ -34,6 +37,7 @@ from parse_bench.test_cases.parse_rule_schemas import (
     ParseTableColspanRule,
     ParseTableHeaderChainRule,
     ParseTableLeftHeaderRule,
+    ParseTableMarkerCellsRule,
     ParseTableNoAboveRule,
     ParseTableNoBelowRule,
     ParseTableNoLeftRule,
@@ -47,6 +51,247 @@ from parse_bench.test_cases.parse_rule_schemas import (
     ParseTablesValuesRule,
     ParseTableTopHeaderRule,
 )
+
+_DEFAULT_TABLE_MARKER_ALIASES = {
+    "x",
+    "y",
+    "n",
+    "yes",
+    "no",
+    "check",
+    "checked",
+    "✓",
+    "✔",
+    "☑",
+    "✅",
+    "✗",
+    "✘",
+    "×",
+    "•",
+    "●",
+    "∙",
+    "○",
+    "◉",
+    "◦",
+    "■",
+    "□",
+    "▪",
+    "▫",
+    "◼",
+    "◻",
+    "◆",
+    "◇",
+    "♦",
+    "★",
+    "☆",
+    "→",
+    "←",
+    "↑",
+    "↓",
+    "▲",
+    "▼",
+    "+",
+    "!",
+    "selected",
+    "green",
+    "red",
+    "yellow",
+    "orange",
+    "grey",
+    "gray",
+    "green square",
+    "red square",
+    "yellow square",
+    "orange square",
+    "grey square",
+    "gray square",
+    "expert knowledge",
+    "good knowledge",
+    "basic knowledge",
+}
+_MARKDOWN_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)", re.DOTALL)
+_BRACKETED_IMAGE_LABEL_RE = re.compile(r"\[\s*(?:icon|image)(?::[^\]]+)?\s*\]", re.IGNORECASE)
+_HTML_IMAGE_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_HTML_IMAGE_CELL_SENTINEL = "llamacloud-bench-image-cell"
+_MARKER_LIST_TOKEN = "<marker-list>"
+
+
+def _preserve_html_image_cells(content: str) -> str:
+    """Replace images inside HTML cells with text visible to ``parse_html_tables``.
+
+    The generic HTML table parser intentionally extracts text with
+    ``BeautifulSoup.get_text()``, which drops ``<img>`` elements.  Work on a
+    private copy here so image presence is retained for this rule without
+    changing cell values seen by every other table evaluator.
+    """
+
+    if not _HTML_IMAGE_RE.search(content):
+        return content
+    soup = BeautifulSoup(content, "lxml")
+    changed = False
+    for cell in soup.find_all(["td", "th"]):
+        if cell.find("img") is None:
+            continue
+        cell.clear()
+        cell.append(_HTML_IMAGE_CELL_SENTINEL)
+        changed = True
+    return str(soup) if changed else content
+
+
+def _marker_cell_token(value: object, aliases: set[str], allow_ocr_glyphs: bool) -> str | None:
+    raw = unescape(str(value)).strip()
+    if not raw:
+        return None
+    if (
+        _HTML_IMAGE_CELL_SENTINEL in raw
+        or _MARKDOWN_IMAGE_RE.search(raw)
+        or _BRACKETED_IMAGE_LABEL_RE.search(raw)
+        or _HTML_IMAGE_RE.search(raw)
+    ):
+        return "<image>"
+
+    token = " ".join(_HTML_TAG_RE.sub("", raw).split()).casefold()
+    if not token:
+        return None
+    if token in aliases:
+        return token
+    marker_list = [part.strip() for part in re.split(r"[,;/]", token)]
+    if len(marker_list) > 1 and all(part in aliases for part in marker_list):
+        return _MARKER_LIST_TOKEN
+    # Markers are sometimes serialized beside their numeric or textual value,
+    # for example ``▲ 512.40`` or ``✓ Announced``.  Only accept a leading
+    # alias when it is punctuation/symbol-like; ordinary word aliases must
+    # still occupy the whole cell to avoid matching prose.
+    leading_token = token.split(maxsplit=1)[0]
+    if leading_token in aliases and all(unicodedata.category(char)[0] in {"P", "S"} for char in leading_token):
+        return leading_token
+    if len(token) >= 3 and (token[0], token[-1]) in {("[", "]"), ("(", ")"), ("{", "}")}:
+        inner = token[1:-1].strip()
+        if inner in aliases:
+            return inner
+    if not allow_ocr_glyphs or len(token) > 3 or any(char.isspace() or char.isdigit() for char in token):
+        return None
+
+    # Visual markers are frequently OCR'd as a non-ASCII glyph (for example
+    # Harley-Davidson's badge becomes Cyrillic Ө). Accept short non-ASCII
+    # glyphs, plus Unicode symbols/punctuation, but leave ordinary ASCII words
+    # and punctuation out so abbreviations and missing-value dashes do not
+    # become false markers. ASCII symbols must be configured as aliases.
+    if any(ord(char) > 127 for char in token):
+        return token
+    return None
+
+
+class TableMarkerCellsRule(ParseTestRule):
+    """Check that repeated icon-like values remain inside a table grid."""
+
+    def __init__(self, rule_data: ParseTableMarkerCellsRule | dict):
+        super().__init__(rule_data)
+        rule_data = cast(ParseTableMarkerCellsRule, self._rule_data)
+        if self.type != TestType.TABLE_MARKER_CELLS.value:
+            raise ValueError(f"Invalid type for TableMarkerCellsRule: {self.type}")
+        self.min_count = rule_data.min_count
+        self.min_distinct_rows = rule_data.min_distinct_rows
+        self.min_distinct_columns = rule_data.min_distinct_columns
+        self.marker_aliases = {
+            " ".join(unescape(alias).split()).casefold()
+            for alias in [*_DEFAULT_TABLE_MARKER_ALIASES, *rule_data.marker_aliases]
+            if alias.strip()
+        }
+        self.allow_repeated_ocr_glyphs = rule_data.allow_repeated_ocr_glyphs
+
+    def run(self, content: str, normalized_content: str | None = None) -> tuple[bool, str]:
+        tables = [*parse_markdown_tables(content), *parse_html_tables(_preserve_html_image_cells(content))]
+        if not tables:
+            self.result_details = {
+                "requirement": self._requirement_summary(),
+                "tables_inspected": 0,
+                "diagnosis": "The parser emitted no recognizable Markdown or HTML table.",
+            }
+            return False, "No tables found; icon-valued cells could not be evaluated"
+
+        best = (0, 0, 0)
+        best_table: dict[str, Any] = {}
+        for table_index, table in enumerate(tables, start=1):
+            positions_by_token: dict[str, list[tuple[int, int]]] = {}
+            for row in range(table.data.shape[0]):
+                for column in range(table.data.shape[1]):
+                    token = _marker_cell_token(
+                        table.data[row, column],
+                        self.marker_aliases,
+                        self.allow_repeated_ocr_glyphs,
+                    )
+                    if token is not None:
+                        positions_by_token.setdefault(token, []).append((row, column))
+
+            # A short OCR glyph only counts as a marker when it repeats. Known
+            # aliases and image-only cells are already semantically explicit.
+            positions = [
+                position
+                for token, token_positions in positions_by_token.items()
+                if token in self.marker_aliases or token in {"<image>", _MARKER_LIST_TOKEN} or len(token_positions) >= 2
+                for position in token_positions
+            ]
+            score = (
+                len(positions),
+                len({row for row, _ in positions}),
+                len({column for _, column in positions}),
+            )
+            table_details = {
+                "index": table_index,
+                "shape": f"{table.data.shape[0]} rows x {table.data.shape[1]} columns",
+                "marker_cells": score[0],
+                "marker_rows": score[1],
+                "marker_columns": score[2],
+                "recognized_tokens": {
+                    token: len(token_positions) for token, token_positions in sorted(positions_by_token.items())
+                },
+            }
+            if score > best or not best_table:
+                best = score
+                best_table = table_details
+            if (
+                score[0] >= self.min_count
+                and score[1] >= self.min_distinct_rows
+                and score[2] >= self.min_distinct_columns
+            ):
+                self.result_details = {
+                    "requirement": self._requirement_summary(),
+                    "tables_inspected": len(tables),
+                    "matching_table": table_details,
+                }
+                return True, ""
+
+        diagnosis = self._failure_diagnosis(best)
+        self.result_details = {
+            "requirement": self._requirement_summary(),
+            "tables_inspected": len(tables),
+            "best_table": best_table,
+            "diagnosis": diagnosis,
+        }
+
+        return (
+            False,
+            f"Icon-table rule failed: {diagnosis} "
+            f"Best table had {best[0]} marker cells across {best[1]} rows and {best[2]} columns; "
+            f"required {self._requirement_summary()}.",
+        )
+
+    def _requirement_summary(self) -> str:
+        return (
+            f">={self.min_count} marker cells across >={self.min_distinct_rows} rows "
+            f"and >={self.min_distinct_columns} columns"
+        )
+
+    def _failure_diagnosis(self, best: tuple[int, int, int]) -> str:
+        if best[0] < self.min_count:
+            if best[0] == 0:
+                return "tables were found, but no repeated recognized marker-only values remained in their cells."
+            return f"only {best[0]} recognized marker cells remained; at least {self.min_count} are required."
+        if best[1] < self.min_distinct_rows:
+            return f"markers occupied only {best[1]} table rows; at least {self.min_distinct_rows} are required."
+        return f"markers occupied only {best[2]} table column(s); at least {self.min_distinct_columns} are required."
 
 
 class TableRule(ParseTestRule):
