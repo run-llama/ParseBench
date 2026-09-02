@@ -68,7 +68,7 @@ uv run parse-bench serve llamaparse_agentic
 
 ## Available Pipelines
 
-A **pipeline** is a document parsing tool or configuration that you want to evaluate. There are 180+ pipelines available -- see [docs/pipelines.md](docs/pipelines.md) for the full list, or run `uv run parse-bench pipelines`.
+A **pipeline** is a document parsing tool or configuration that you want to evaluate. There are 180+ pipelines available -- see [docs/pipelines.md](docs/pipelines.md) for the full list, or run `uv run parse-bench pipelines`. To add your own providers, pipelines, products or rule types from another package, see [docs/extending.md](docs/extending.md).
 
 <details>
 <summary><strong>Paper baselines (21 pipelines)</strong></summary>

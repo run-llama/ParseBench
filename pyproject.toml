@@ -32,6 +32,7 @@ dependencies = [
     "lxml>=5.0.0",
     "markdown>=3.0",
     "markdown2>=2.5.5",
+    "markdown-it-py>=3.0",
     "numpy>=1.24.0",
     "pandas>=2.0.0",
     "pydantic>=2.0.0",

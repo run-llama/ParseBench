@@ -490,6 +490,28 @@ class ParseTestRule:
         }
 
 
+_RULE_CLASS_REGISTRY: dict[str, type["ParseTestRule"]] = {}
+
+
+def register_rule_class(rule_type: str, rule_class: type["ParseTestRule"]) -> None:
+    """Register the scoring class for an additional rule ``type``.
+
+    Consulted by :func:`create_test_rule` before the built-in dispatch, so an
+    extension can add rule types without editing this module. Pair with
+    ``parse_rule_schemas.register_parse_rule_model`` so the payload validates.
+    """
+    if not isinstance(rule_type, str) or not rule_type:
+        raise ValueError("rule_type must be a non-empty string")
+    if not (isinstance(rule_type, str) and isinstance(rule_class, type) and issubclass(rule_class, ParseTestRule)):
+        raise TypeError("rule_class must subclass ParseTestRule")
+    _RULE_CLASS_REGISTRY[rule_type] = rule_class
+
+
+def registered_rule_classes() -> dict[str, type["ParseTestRule"]]:
+    """Snapshot of extension rule classes keyed by rule ``type``."""
+    return dict(_RULE_CLASS_REGISTRY)
+
+
 def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
     """
     Create a test rule from a typed payload.
@@ -523,6 +545,11 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
         ChartDataPointRule,
         RotateCheckRule,
     )
+    from parse_bench.evaluation.metrics.parse.rules_diagram import (
+        DiagramCountRule,
+        DiagramEdgeRule,
+        DiagramGraphRule,
+    )
     from parse_bench.evaluation.metrics.parse.rules_form import (
         FormFieldRule,
     )
@@ -540,6 +567,10 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
         TitleHierarchyPercentRule,
         TitleLevelRule,
     )
+    from parse_bench.evaluation.metrics.parse.rules_list import (
+        ListLevelRule,
+    )
+    from parse_bench.evaluation.metrics.parse.rules_page_decoration import PageDecorationRule
     from parse_bench.evaluation.metrics.parse.rules_table import (
         TableAdjacentDownRule,
         TableAdjacentLeftRule,
@@ -567,11 +598,16 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
         TextOrderRule,
         TextPresenceRule,
     )
+    from parse_bench.evaluation.metrics.parse.rules_watermark import WatermarkRemovalRule
 
     typed_rule: Any = coerce_parse_rule(rule_data)
     rule_type = get_rule_type(typed_rule)
     if not rule_type:
         raise ValueError("Rule must have a 'type' field")
+
+    registered = _RULE_CLASS_REGISTRY.get(rule_type)
+    if registered is not None:
+        return registered(typed_rule)
 
     if rule_type in {TestType.PRESENT.value, TestType.ABSENT.value}:
         return TextPresenceRule(typed_rule)
@@ -662,6 +698,17 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
     # Form rules
     elif rule_type == TestType.FORM_FIELD.value:
         return FormFieldRule(typed_rule)
+    elif rule_type == TestType.WATERMARK_REMOVAL.value:
+        return WatermarkRemovalRule(typed_rule)
+    # Diagram (mermaid) rules
+    elif rule_type == TestType.DIAGRAM_GRAPH.value:
+        return DiagramGraphRule(typed_rule)
+    elif rule_type == TestType.DIAGRAM_EDGE.value:
+        return DiagramEdgeRule(typed_rule)
+    elif rule_type == TestType.DIAGRAM_COUNT.value:
+        return DiagramCountRule(typed_rule)
+    elif rule_type == TestType.PAGE_DECORATION.value:
+        return PageDecorationRule(typed_rule)
     # Formatting rules (bold, italic, underline, strikeout, mark, sup, sub)
     elif rule_type in _FORMATTING_TEST_TYPES:
         if rule_type == TestType.MARK_COLOR.value:
@@ -684,6 +731,13 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
         return TitleLevelRule(typed_rule)
     elif rule_type == TestType.TITLE_HIERARCHY_PERCENT.value:
         return TitleHierarchyPercentRule(typed_rule)
+    elif rule_type == TestType.HEADING_STRUCTURE.value:
+        from parse_bench.evaluation.metrics.parse.rules_heading import HeadingStructureRule
+
+        return HeadingStructureRule(typed_rule)
+    # List nesting level rule
+    elif rule_type == TestType.LIST_LEVEL.value:
+        return ListLevelRule(typed_rule)
     # Page header / footer rules
     elif rule_type in {TestType.IS_HEADER.value, TestType.IS_FOOTER.value}:
         return PageSectionRule(typed_rule)
