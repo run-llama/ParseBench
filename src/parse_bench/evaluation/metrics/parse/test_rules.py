@@ -82,6 +82,10 @@ from parse_bench.evaluation.metrics.parse.rules_formatting import (  # noqa: F40
 )
 
 # List rules
+from parse_bench.evaluation.metrics.parse.rules_list import (  # noqa: F401
+    ListLevelRule,
+)
+
 # Table rules
 from parse_bench.evaluation.metrics.parse.rules_table import (  # noqa: F401
     TableAdjacentDownRule,
@@ -113,3 +117,4 @@ from parse_bench.evaluation.metrics.parse.rules_text import (  # noqa: F401
     TextOrderRule,
     TextPresenceRule,
 )
+from parse_bench.evaluation.metrics.parse.rules_watermark import WatermarkRemovalRule  # noqa: F401

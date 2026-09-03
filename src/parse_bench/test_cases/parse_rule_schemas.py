@@ -889,6 +889,8 @@ _RULE_TYPE_TO_MODEL: dict[str, type[ParseRuleBase]] = {
     TestType.PAGE_DECORATION.value: ParsePageDecorationRule,
 }
 
+_BUILTIN_RULE_TYPES: frozenset[str] = frozenset(_RULE_TYPE_TO_MODEL)
+
 
 def get_rule_type(rule: ParseRuleInput | Any) -> str | None:
     """Return the `type` field from either a typed schema or raw dict."""
@@ -1001,6 +1003,28 @@ def rule_to_dict(rule: ParseRuleInput | Any) -> dict[str, Any]:
     if isinstance(rule, dict):
         return dict(rule)
     raise TypeError(f"Expected ParseRule or dict, got {type(rule)!r}")
+
+
+def register_parse_rule_model(rule_type: str, model: type[ParseRuleBase]) -> None:
+    """Register the pydantic schema for an additional rule ``type``.
+
+    Extensions pair this with ``rules_base.register_rule_class`` (or call
+    ``parse_bench.extensions.register_rule_type`` which does both). Built-in
+    rule types cannot be replaced.
+    """
+    if not isinstance(rule_type, str) or not rule_type:
+        raise ValueError("rule_type must be a non-empty string")
+    if not (isinstance(model, type) and issubclass(model, ParseRuleBase)):
+        raise TypeError("model must subclass ParseRuleBase")
+    existing = _RULE_TYPE_TO_MODEL.get(rule_type)
+    if existing is not None and existing is not model and rule_type in _BUILTIN_RULE_TYPES:
+        raise ValueError(f"{rule_type!r} is a built-in rule type and cannot be replaced")
+    _RULE_TYPE_TO_MODEL[rule_type] = model
+
+
+def registered_parse_rule_types() -> list[str]:
+    """Every rule ``type`` with a registered schema (built-ins and extensions)."""
+    return list(_RULE_TYPE_TO_MODEL)
 
 
 def coerce_parse_rule(rule_data: ParseRuleInput | Any) -> ParseRuleBase:
