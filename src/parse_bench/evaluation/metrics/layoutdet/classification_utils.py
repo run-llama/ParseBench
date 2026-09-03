@@ -5,11 +5,14 @@ and computing per-class precision/recall/F1 metrics.
 """
 
 from collections import defaultdict
+from collections.abc import Callable
 
 import numpy as np
 from sklearn.metrics import average_precision_score
 
 from parse_bench.evaluation.metrics.layoutdet.iou import compute_iou_matrix
+
+OverlapFn = Callable[[dict, dict], float]
 
 
 def match_predictions_to_gt(
@@ -80,6 +83,9 @@ def compute_per_class_metrics(
     ground_truth: list[dict],  # [{bbox, class_name}, ...]
     class_names: list[str],
     iou_threshold: float = 0.5,
+    *,
+    overlap_fn: OverlapFn | None = None,
+    page_key: str = "example_id",
 ) -> dict[str, dict[str, float]]:
     """
     Compute per-class precision, recall, F1 at given IoU threshold.
@@ -90,85 +96,10 @@ def compute_per_class_metrics(
     :param iou_threshold: IoU threshold for matching (default 0.5)
     :return: Dict mapping class_name to metrics dict {precision, recall, f1, ap, support}
     """
-    class_to_idx = {name: i for i, name in enumerate(class_names)}
     class_set = set(class_names)
     results: dict[str, dict[str, float]] = {}
 
-    has_pages = False
-    for entry in predictions:
-        if "example_id" in entry:
-            has_pages = True
-            break
-    if not has_pages:
-        for entry in ground_truth:
-            if "example_id" in entry:
-                has_pages = True
-                break
-
-    if not has_pages:
-        for class_name in class_names:
-            class_idx = class_to_idx[class_name]
-
-            # Filter by class
-            class_preds = [p for p in predictions if p["class_name"] == class_name]
-            class_gt = [g for g in ground_truth if g["class_name"] == class_name]
-
-            if len(class_gt) == 0:
-                results[class_name] = {
-                    "precision": 0.0,
-                    "recall": 0.0,
-                    "f1": 0.0,
-                    "ap": 0.0,
-                    "support": 0,
-                }
-                continue
-
-            if len(class_preds) == 0:
-                results[class_name] = {
-                    "precision": 0.0,
-                    "recall": 0.0,
-                    "f1": 0.0,
-                    "ap": 0.0,
-                    "support": len(class_gt),
-                }
-                continue
-
-            # Convert to numpy arrays
-            pred_boxes = np.array([p["bbox"] for p in class_preds])
-            pred_scores = np.array([p["score"] for p in class_preds])
-            pred_classes = np.full(len(class_preds), class_idx)
-
-            gt_boxes = np.array([g["bbox"] for g in class_gt])
-            gt_classes = np.full(len(class_gt), class_idx)
-
-            # Match predictions to GT
-            y_true, y_scores = match_predictions_to_gt(
-                pred_boxes, pred_scores, pred_classes, gt_boxes, gt_classes, iou_threshold
-            )
-
-            # Compute metrics
-            tp = int(np.sum(y_true))
-            fp = len(y_true) - tp
-            fn = len(class_gt) - tp
-
-            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-            recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-            f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
-
-            # Compute AP using sklearn
-            if len(np.unique(y_true)) > 1:
-                ap = float(average_precision_score(y_true, y_scores))
-            else:
-                ap = precision if np.all(y_true == 1) else 0.0
-
-            results[class_name] = {
-                "precision": precision,
-                "recall": recall,
-                "f1": f1,
-                "ap": ap,
-                "support": len(class_gt),
-            }
-        return results
+    has_pages = any(page_key in entry for entry in predictions) or any(page_key in entry for entry in ground_truth)
 
     # Per-page matching to keep IoU matrices bounded by per-page box counts.
     predictions_by_page = defaultdict(lambda: defaultdict(list))  # type: ignore[var-annotated]
@@ -177,19 +108,18 @@ def compute_per_class_metrics(
     for pred in predictions:
         if pred.get("class_name") not in class_set:
             continue
-        page_id = str(pred.get("example_id", "__missing__"))
+        page_id = str(pred.get(page_key, "__missing__")) if has_pages else "__all__"
         predictions_by_page[page_id][pred["class_name"]].append(pred)
 
     for gt in ground_truth:
         if gt.get("class_name") not in class_set:
             continue
-        page_id = str(gt.get("example_id", "__missing__"))
+        page_id = str(gt.get(page_key, "__missing__")) if has_pages else "__all__"
         ground_truth_by_page[page_id][gt["class_name"]].append(gt)
 
     page_ids = set(predictions_by_page.keys()) | set(ground_truth_by_page.keys())
 
     for class_name in class_names:
-        class_idx = class_to_idx[class_name]
         total_true = 0
         total_false = 0
         total_support = 0
@@ -209,14 +139,11 @@ def compute_per_class_metrics(
             if not class_preds:
                 continue
 
-            pred_boxes = np.array([p["bbox"] for p in class_preds])
-            pred_scores = np.array([p["score"] for p in class_preds])
-            pred_classes = np.full(len(class_preds), class_idx)
-            gt_boxes = np.array([g["bbox"] for g in class_gt])
-            gt_classes = np.full(len(class_gt), class_idx)
-
-            y_true, y_scores = match_predictions_to_gt(
-                pred_boxes, pred_scores, pred_classes, gt_boxes, gt_classes, iou_threshold
+            y_true, y_scores = match_prediction_dicts_to_gt(
+                class_preds,
+                class_gt,
+                iou_threshold=iou_threshold,
+                overlap_fn=overlap_fn,
             )
             y_true_list = [int(v) for v in y_true.tolist()]
             y_score_list = [float(v) for v in y_scores.tolist()]
@@ -258,11 +185,73 @@ def compute_per_class_metrics(
     return results
 
 
+def match_prediction_dicts_to_gt(
+    predictions: list[dict],
+    ground_truth: list[dict],
+    *,
+    iou_threshold: float,
+    overlap_fn: OverlapFn | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Match same-class prediction/GT dictionaries using axis-aligned or custom overlap."""
+    if len(predictions) == 0:
+        return np.array([]), np.array([])
+
+    pred_scores = np.array([float(pred.get("score", 0.0)) for pred in predictions])
+    if len(ground_truth) == 0:
+        return np.zeros(len(predictions)), pred_scores.copy()
+
+    if overlap_fn is None:
+        pred_boxes = np.array([pred["bbox"] for pred in predictions])
+        pred_classes = np.zeros(len(predictions), dtype=int)
+        gt_boxes = np.array([gt["bbox"] for gt in ground_truth])
+        gt_classes = np.zeros(len(ground_truth), dtype=int)
+        return match_predictions_to_gt(
+            pred_boxes,
+            pred_scores,
+            pred_classes,
+            gt_boxes,
+            gt_classes,
+            iou_threshold,
+        )
+
+    overlap_matrix: np.ndarray | None = None
+    matrix_fn = getattr(overlap_fn, "matrix", None)
+    if callable(matrix_fn):
+        overlap_matrix = matrix_fn(predictions, ground_truth)
+
+    sorted_indices = np.argsort(-pred_scores)
+    y_true = np.zeros(len(predictions))
+    matched_gt: set[int] = set()
+
+    for pred_idx in sorted_indices:
+        pred = predictions[int(pred_idx)]
+        best_iou = 0.0
+        best_gt_idx = -1
+
+        for gt_idx, gt in enumerate(ground_truth):
+            if gt_idx in matched_gt:
+                continue
+
+            iou = float(overlap_matrix[int(pred_idx), gt_idx]) if overlap_matrix is not None else overlap_fn(pred, gt)
+            if iou >= iou_threshold and iou > best_iou:
+                best_iou = iou
+                best_gt_idx = gt_idx
+
+        if best_gt_idx >= 0:
+            y_true[int(pred_idx)] = 1
+            matched_gt.add(best_gt_idx)
+
+    return y_true, pred_scores.copy()
+
+
 def compute_map_at_thresholds(
     predictions: list[dict],  # [{bbox, class_name, score}, ...]
     ground_truth: list[dict],  # [{bbox, class_name}, ...]
     class_names: list[str],
     iou_thresholds: list[float] | None = None,
+    *,
+    overlap_fn: OverlapFn | None = None,
+    page_key: str = "example_id",
 ) -> dict[str, float]:
     """
     Compute mAP at multiple IoU thresholds (COCO-style).
@@ -282,7 +271,14 @@ def compute_map_at_thresholds(
     ap75 = 0.0
 
     for threshold in iou_thresholds:
-        per_class = compute_per_class_metrics(predictions, ground_truth, class_names, iou_threshold=threshold)
+        per_class = compute_per_class_metrics(
+            predictions,
+            ground_truth,
+            class_names,
+            iou_threshold=threshold,
+            overlap_fn=overlap_fn,
+            page_key=page_key,
+        )
 
         # Mean AP across classes (only classes with support > 0)
         aps = [m["ap"] for m in per_class.values() if m["support"] > 0]

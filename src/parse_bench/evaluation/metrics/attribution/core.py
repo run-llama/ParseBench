@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from parse_bench.evaluation.metrics.attribution.constants import ATTRIBUTION_TOKEN_F1_THRESHOLD
 from parse_bench.evaluation.metrics.attribution.geometry import (
     coco_to_xyxy,
     compute_overlap_matrix,
@@ -73,6 +74,30 @@ class PredBlock:
     order_index: int  # position in output list
 
 
+@dataclass(frozen=True)
+class GTTokenInstance:
+    """A single ordered GT token instance."""
+
+    gt_index: int
+    token: str
+    token_index: int
+
+
+@dataclass
+class PredBlockSupport:
+    """Prediction-side support diagnostics for duplicate-claim analysis."""
+
+    pred_index: int
+    overlap_gt_indices: list[int]
+    support_precision: float = 0.0
+    matched_token_instance_ids: list[tuple[int, int]] = field(default_factory=list)
+    owned_token_instance_ids: list[tuple[int, int]] = field(default_factory=list)
+    duplicate_token_instance_ids: list[tuple[int, int]] = field(default_factory=list)
+    overlap_scores_by_gt: dict[int, float] = field(default_factory=dict)
+    longest_matched_span_by_gt: dict[int, int] = field(default_factory=dict)
+    fp_bucket: str = "spatial_fp"
+
+
 @dataclass
 class AttributionResult:
     """Results from attribution evaluation for a single page."""
@@ -98,6 +123,24 @@ class AttributionResult:
     per_class_grounding: dict[str, float] = field(default_factory=dict)  # accuracy per class
     per_class_grounded_count: dict[str, int] = field(default_factory=dict)  # pass count per class
     per_class_total_count: dict[str, int] = field(default_factory=dict)  # total count per class
+
+    # Prediction-side duplicate claim / overclaim metrics
+    overclaim_metric_available: bool = False
+    grounding_overclaim_rate: float = 0.0
+    grounding_duplicate_supported_token_rate: float = 0.0
+    grounding_supported_block_precision: float = 0.0
+    grounding_spatial_fp_rate: float = 0.0
+    grounding_unsupported_block_rate: float = 0.0
+    grounding_redundant_block_rate: float = 0.0
+    supported_claim_count: int = 0
+    duplicate_claim_count: int = 0
+    claimed_supported_token_instances: int = 0
+    duplicate_supported_token_instances: int = 0
+    num_scored_pred_blocks: int = 0
+    supported_tp_blocks: int = 0
+    spatial_fp_blocks: int = 0
+    unsupported_fp_blocks: int = 0
+    redundant_fp_blocks: int = 0
 
     # Diagnostics
     num_gt_elements: int = 0
@@ -215,22 +258,207 @@ def _filter_pred_blocks_for_lap(
     if not gt_elements or not pred_blocks:
         return pred_blocks
 
+    kept_indices = _filter_pred_block_indices_for_lap(gt_elements, pred_blocks, ioa_threshold)
+    return [pred_blocks[pred_idx] for pred_idx in kept_indices]
+
+
+def _filter_pred_block_indices_for_lap(
+    gt_elements: list[GTElement],
+    pred_blocks: list[PredBlock],
+    ioa_threshold: float,
+) -> list[int]:
+    """Return indices of predictions that remain in precision-side scoring scope."""
+    if not gt_elements or not pred_blocks:
+        return list(range(len(pred_blocks)))
+
     gt_boxes = np.array([g.bbox_xyxy for g in gt_elements])
     pred_boxes = np.array([p.bbox_xyxy for p in pred_blocks])
     ioa_matrix = compute_overlap_matrix(gt_boxes, pred_boxes)
     explicit_mask = [gt_element_is_explicit(gt) for gt in gt_elements]
 
-    filtered: list[PredBlock] = []
-    for pred_idx, pred in enumerate(pred_blocks):
+    filtered: list[int] = []
+    for pred_idx, _pred in enumerate(pred_blocks):
         overlapping_gt_indices = np.where(ioa_matrix[:, pred_idx] >= ioa_threshold)[0]
         if len(overlapping_gt_indices) == 0:
-            filtered.append(pred)
+            filtered.append(pred_idx)
             continue
         if all(explicit_mask[int(gt_idx)] for gt_idx in overlapping_gt_indices):
             continue
-        filtered.append(pred)
+        filtered.append(pred_idx)
 
     return filtered
+
+
+def _build_gt_token_instances(
+    gt_elements: list[GTElement],
+    gt_indices: list[int],
+) -> list[GTTokenInstance]:
+    """Expand overlapping GT elements into ordered token instances."""
+    token_instances: list[GTTokenInstance] = []
+    ordered_gt_indices = sorted(gt_indices, key=lambda idx: (gt_elements[idx].ro_index, idx))
+    for gt_idx in ordered_gt_indices:
+        token_instances.extend(
+            GTTokenInstance(gt_index=gt_idx, token=token, token_index=token_idx)
+            for token_idx, token in enumerate(gt_elements[gt_idx].tokens)
+        )
+    return token_instances
+
+
+def _align_pred_tokens_to_gt_instances(
+    pred_tokens: list[str],
+    candidate_instances: list[GTTokenInstance],
+) -> list[GTTokenInstance]:
+    """Align prediction tokens to ordered GT token instances with deterministic LCS."""
+    if not pred_tokens or not candidate_instances:
+        return []
+
+    gt_tokens = [instance.token for instance in candidate_instances]
+    rows = len(pred_tokens)
+    cols = len(gt_tokens)
+    dp = [[0] * (cols + 1) for _ in range(rows + 1)]
+
+    for pred_idx in range(rows):
+        pred_token = pred_tokens[pred_idx]
+        for gt_idx in range(cols):
+            if pred_token == gt_tokens[gt_idx]:
+                dp[pred_idx + 1][gt_idx + 1] = dp[pred_idx][gt_idx] + 1
+            else:
+                dp[pred_idx + 1][gt_idx + 1] = max(dp[pred_idx][gt_idx + 1], dp[pred_idx + 1][gt_idx])
+
+    matches: list[GTTokenInstance] = []
+    pred_idx = rows
+    gt_idx = cols
+    while pred_idx > 0 and gt_idx > 0:
+        if pred_tokens[pred_idx - 1] == gt_tokens[gt_idx - 1]:
+            matches.append(candidate_instances[gt_idx - 1])
+            pred_idx -= 1
+            gt_idx -= 1
+            continue
+        if dp[pred_idx - 1][gt_idx] > dp[pred_idx][gt_idx - 1]:
+            pred_idx -= 1
+        else:
+            # On ties, prefer skipping the later GT candidate so repeated tokens
+            # resolve to the earliest valid token instances consistently.
+            gt_idx -= 1
+
+    matches.reverse()
+    return matches
+
+
+def _longest_consecutive_run(token_indices: list[int]) -> int:
+    """Return the longest contiguous token-index run."""
+    if not token_indices:
+        return 0
+    longest = 1
+    current = 1
+    ordered = sorted(token_indices)
+    for idx in range(1, len(ordered)):
+        if ordered[idx] == ordered[idx - 1] + 1:
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 1
+    return longest
+
+
+def _compute_pred_block_supports(
+    gt_elements: list[GTElement],
+    pred_blocks: list[PredBlock],
+    ioa_threshold: float,
+    support_threshold: float,
+) -> tuple[bool, list[PredBlockSupport]]:
+    """Compute order-invariant prediction-side support and ownership diagnostics.
+
+    The canonical claim unit is the adapted ``PredBlock`` list produced by the
+    evaluator's provider adapter. Provider-native containers or segment trees
+    must be resolved before this function runs.
+    """
+    scored_pred_indices = _filter_pred_block_indices_for_lap(gt_elements, pred_blocks, ioa_threshold)
+    has_textual_gt = any(gt.tokens for gt in gt_elements)
+    has_text_bearing_scored_pred = any(pred_blocks[pred_idx].tokens for pred_idx in scored_pred_indices)
+
+    if not scored_pred_indices:
+        return False, []
+
+    if gt_elements:
+        gt_boxes = np.array([gt.bbox_xyxy for gt in gt_elements])
+        pred_boxes = np.array([pred.bbox_xyxy for pred in pred_blocks])
+        overlap_matrix = compute_overlap_matrix(gt_boxes, pred_boxes)
+    else:
+        overlap_matrix = np.zeros((0, len(pred_blocks)))
+
+    supports: list[PredBlockSupport] = []
+    for pred_idx in scored_pred_indices:
+        overlapping_gt_indices = (
+            np.where(overlap_matrix[:, pred_idx] >= ioa_threshold)[0].tolist() if gt_elements else []
+        )
+        support = PredBlockSupport(
+            pred_index=pred_idx,
+            overlap_gt_indices=[int(gt_idx) for gt_idx in overlapping_gt_indices],
+            overlap_scores_by_gt={
+                int(gt_idx): float(overlap_matrix[int(gt_idx), pred_idx]) for gt_idx in overlapping_gt_indices
+            },
+        )
+        pred = pred_blocks[pred_idx]
+
+        if not overlapping_gt_indices:
+            support.fp_bucket = "spatial_fp"
+            supports.append(support)
+            continue
+
+        if not pred.tokens:
+            support.fp_bucket = "unsupported_fp"
+            supports.append(support)
+            continue
+
+        candidate_instances = _build_gt_token_instances(gt_elements, [int(gt_idx) for gt_idx in overlapping_gt_indices])
+        matched_instances = _align_pred_tokens_to_gt_instances(pred.tokens, candidate_instances)
+        matched_token_ids = [(instance.gt_index, instance.token_index) for instance in matched_instances]
+        support.matched_token_instance_ids = matched_token_ids
+        support.support_precision = len(matched_token_ids) / len(pred.tokens)
+
+        matched_token_indices_by_gt: dict[int, list[int]] = {}
+        for instance in matched_instances:
+            matched_token_indices_by_gt.setdefault(instance.gt_index, []).append(instance.token_index)
+        support.longest_matched_span_by_gt = {
+            gt_idx: _longest_consecutive_run(token_indices)
+            for gt_idx, token_indices in matched_token_indices_by_gt.items()
+        }
+
+        support.fp_bucket = "supported_tp" if support.support_precision >= support_threshold else "unsupported_fp"
+        supports.append(support)
+
+    supported_claimants = [support for support in supports if support.support_precision >= support_threshold]
+    claimants_by_token: dict[tuple[int, int], list[PredBlockSupport]] = {}
+    for support in supported_claimants:
+        for token_id in support.matched_token_instance_ids:
+            claimants_by_token.setdefault(token_id, []).append(support)
+
+    for token_id, claimants in claimants_by_token.items():
+        gt_idx, _token_index = token_id
+        owner = max(
+            claimants,
+            key=lambda claimant: (
+                claimant.support_precision,
+                claimant.overlap_scores_by_gt.get(gt_idx, 0.0),
+                claimant.longest_matched_span_by_gt.get(gt_idx, 0),
+                -claimant.pred_index,
+            ),
+        )
+        for claimant in claimants:
+            if claimant.pred_index == owner.pred_index:
+                claimant.owned_token_instance_ids.append(token_id)
+            else:
+                claimant.duplicate_token_instance_ids.append(token_id)
+
+    for support in supported_claimants:
+        if support.owned_token_instance_ids:
+            support.fp_bucket = "supported_tp"
+        else:
+            support.fp_bucket = "redundant_fp"
+
+    metric_available = has_textual_gt and has_text_bearing_scored_pred
+    return metric_available, supports
 
 
 def parse_gt_elements(test_rules: list[dict]) -> list[GTElement]:
@@ -293,6 +521,8 @@ def parse_pred_blocks(
     page_md: str,
     page_width: float,
     page_height: float,
+    *,
+    require_layout_aware_segments: bool = False,
 ) -> list[PredBlock]:
     """Parse predicted output items into PredBlock objects.
 
@@ -361,6 +591,9 @@ def parse_pred_blocks(
                         order_index=idx,
                     )
                 )
+            continue
+
+        if require_layout_aware_segments:
             continue
 
         bbox_norm = normalize_bbox_to_unit(bbox_dict, page_width, page_height)
@@ -773,6 +1006,12 @@ def compute_attribution_metrics(
     ga, ga_pass, ga_total, per_class_ga, per_class_ga_pass, per_class_ga_total = compute_grounding_accuracy(
         attribution_gt, pred_blocks, ioa_threshold
     )
+    overclaim_metric_available, pred_block_supports = _compute_pred_block_supports(
+        attribution_gt,
+        pred_blocks,
+        ioa_threshold,
+        support_threshold=ATTRIBUTION_TOKEN_F1_THRESHOLD,
+    )
 
     # Compute per-class LAP (by GT class) and AF1
     per_class_lap = compute_per_class_lap_by_gt(lap_gt, lap_pred_blocks, ioa_threshold)
@@ -801,6 +1040,24 @@ def compute_attribution_metrics(
         unmatched_gt = len(attribution_gt)
         unmatched_pred = len(pred_blocks)
 
+    claim_counts_by_token: dict[tuple[int, int], int] = {}
+    for support in pred_block_supports:
+        if support.support_precision < ATTRIBUTION_TOKEN_F1_THRESHOLD:
+            continue
+        for token_id in support.matched_token_instance_ids:
+            claim_counts_by_token[token_id] = claim_counts_by_token.get(token_id, 0) + 1
+
+    supported_claim_count = sum(claim_counts_by_token.values())
+    duplicate_claim_count = sum(max(0, count - 1) for count in claim_counts_by_token.values())
+    claimed_supported_token_instances = len(claim_counts_by_token)
+    duplicate_supported_token_instances = sum(1 for count in claim_counts_by_token.values() if count > 1)
+
+    num_scored_pred_blocks = len(pred_block_supports)
+    supported_tp_blocks = sum(1 for support in pred_block_supports if support.fp_bucket == "supported_tp")
+    spatial_fp_blocks = sum(1 for support in pred_block_supports if support.fp_bucket == "spatial_fp")
+    unsupported_fp_blocks = sum(1 for support in pred_block_supports if support.fp_bucket == "unsupported_fp")
+    redundant_fp_blocks = sum(1 for support in pred_block_supports if support.fp_bucket == "redundant_fp")
+
     return AttributionResult(
         lap=lap,
         lar=lar,
@@ -816,6 +1073,32 @@ def compute_attribution_metrics(
         per_class_grounding=per_class_ga,
         per_class_grounded_count=per_class_ga_pass,
         per_class_total_count=per_class_ga_total,
+        overclaim_metric_available=overclaim_metric_available,
+        grounding_overclaim_rate=(duplicate_claim_count / supported_claim_count if supported_claim_count > 0 else 0.0),
+        grounding_duplicate_supported_token_rate=(
+            duplicate_supported_token_instances / claimed_supported_token_instances
+            if claimed_supported_token_instances > 0
+            else 0.0
+        ),
+        grounding_supported_block_precision=(
+            supported_tp_blocks / num_scored_pred_blocks if num_scored_pred_blocks > 0 else 0.0
+        ),
+        grounding_spatial_fp_rate=spatial_fp_blocks / num_scored_pred_blocks if num_scored_pred_blocks > 0 else 0.0,
+        grounding_unsupported_block_rate=(
+            unsupported_fp_blocks / num_scored_pred_blocks if num_scored_pred_blocks > 0 else 0.0
+        ),
+        grounding_redundant_block_rate=(
+            redundant_fp_blocks / num_scored_pred_blocks if num_scored_pred_blocks > 0 else 0.0
+        ),
+        supported_claim_count=supported_claim_count,
+        duplicate_claim_count=duplicate_claim_count,
+        claimed_supported_token_instances=claimed_supported_token_instances,
+        duplicate_supported_token_instances=duplicate_supported_token_instances,
+        num_scored_pred_blocks=num_scored_pred_blocks,
+        supported_tp_blocks=supported_tp_blocks,
+        spatial_fp_blocks=spatial_fp_blocks,
+        unsupported_fp_blocks=unsupported_fp_blocks,
+        redundant_fp_blocks=redundant_fp_blocks,
         num_gt_elements=len(attribution_gt),
         num_pred_blocks=len(pred_blocks),
         num_gt_tokens=num_gt_tokens,

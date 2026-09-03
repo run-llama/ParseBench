@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -32,7 +33,7 @@ from parse_bench.schemas.layout_detection_output import (
     LayoutTableContent,
     LayoutTextContent,
 )
-from parse_bench.schemas.parse_output import ParseOutput
+from parse_bench.schemas.parse_output import ParseLayoutPageIR, ParseOutput
 from parse_bench.schemas.pipeline_io import InferenceResult
 from parse_bench.test_cases.schema import TestCase
 
@@ -93,6 +94,7 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
 
     def __init__(self) -> None:
         self._pages_payload: list[dict[str, Any]] | None = None
+        self._attribution_pages_payload: list[dict[str, Any]] | None = None
 
     @classmethod
     def matches(cls, inference_result: InferenceResult) -> bool:
@@ -125,6 +127,10 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
         page_filter: int | None = None,
     ) -> LayoutOutput:
         pages = _resolve_llamaparse_pages(inference_result)
+        self._attribution_pages_payload = _resolve_llamaparse_pages(
+            inference_result,
+            include_bbox_segment_fallback=False,
+        )
         raw_output = inference_result.raw_output if isinstance(inference_result.raw_output, dict) else {}
 
         if pages:
@@ -176,7 +182,8 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
                 test_case=None,
             )
 
-        raw_page = _find_page_payload(self._pages_payload, page_number)
+        attribution_pages = self._attribution_pages_payload or self._pages_payload
+        raw_page = _find_page_payload(attribution_pages, page_number)
         if raw_page is None:
             return super().to_attribution_blocks(
                 layout_output,
@@ -195,7 +202,21 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
         page_md = raw_page.get("md", "") or raw_page.get("text", "") or ""
         page_width = float(raw_page.get("width") or layout_output.image_width or 1)
         page_height = float(raw_page.get("height") or layout_output.image_height or 1)
-        return parse_pred_blocks(items, page_md, page_width, page_height)
+        # Attribution-scope policy: only layout-aware segments become
+        # attribution claims. Items that carry a coarse item-level ``bBox``
+        # but no ``layoutAwareBbox`` segments are dropped instead of
+        # contributing a whole-block claim (the attribution payload above is
+        # built with ``include_bbox_segment_fallback=False`` for the same
+        # reason). This matches the internal benchmark runs that produce the
+        # public leaderboard rows, so LlamaParse Visual Grounding LAP/AF1
+        # stay comparable between ParseBench and internal.
+        return parse_pred_blocks(
+            items,
+            page_md,
+            page_width,
+            page_height,
+            require_layout_aware_segments=True,
+        )
 
     def to_granular_pages(self, inference_result: InferenceResult) -> list[_GranularPage]:
         raw_output = inference_result.raw_output if isinstance(inference_result.raw_output, dict) else {}
@@ -886,14 +907,14 @@ class DoclingParseLayoutAdapter(LayoutAdapter):
 
         blocks: list[PredBlock] = []
         for item_index, item in enumerate(page.items):
-            segments = item.layout_segments or ([item.bbox] if item.bbox is not None else [])
+            segments = item.layout_segments
             if not segments:
                 continue
 
             for seg in segments:
                 label = seg.label or item.type or "unknown"
                 block_type = item.type or "text"
-                if item.type == "table":
+                if (item.type or "").strip().lower() == "table":
                     raw_text = extract_text_from_html(item.value)
                 else:
                     raw_text = item.value or ""
@@ -2464,7 +2485,11 @@ def _infer_page_number_from_example_id(example_id: str) -> int | None:
     return page_token if page_token > 0 else 1
 
 
-def _resolve_llamaparse_pages(inference_result: InferenceResult) -> list[dict[str, Any]]:
+def _resolve_llamaparse_pages(
+    inference_result: InferenceResult,
+    *,
+    include_bbox_segment_fallback: bool = True,
+) -> list[dict[str, Any]]:
     from parse_bench.inference.providers.parse.llamaparse_v2_normalization import (
         build_pages_from_cli2_raw_payload,
         build_pages_from_sdk_response_payload,
@@ -2503,9 +2528,46 @@ def _resolve_llamaparse_pages(inference_result: InferenceResult) -> list[dict[st
 
     if isinstance(inference_result.output, ParseOutput):
         if len(inference_result.output.layout_pages) > 0:
-            return layout_pages_to_legacy_pages_payload(inference_result.output.layout_pages)
+            layout_pages = inference_result.output.layout_pages
+            legacy_pages = layout_pages_to_legacy_pages_payload(layout_pages)
+            if include_bbox_segment_fallback:
+                return legacy_pages
+            # The normalizer always synthesizes a single layoutAwareBbox from
+            # the item bBox when no layout segments exist. Strip those
+            # synthesized segments when the caller opted out of the fallback.
+            return _strip_bbox_fallback_segments(legacy_pages, layout_pages)
 
     return []
+
+
+def _strip_bbox_fallback_segments(
+    legacy_pages: list[dict[str, Any]],
+    layout_pages: Sequence[ParseLayoutPageIR],
+) -> list[dict[str, Any]]:
+    """Drop ``layoutAwareBbox`` entries synthesized from a bare item ``bbox``.
+
+    ``layout_pages_to_legacy_pages_payload`` emits items 1:1 and in order
+    per page (pages sorted by ``page_number``), so a positional walk over the
+    typed ``layout_pages`` tells us which legacy items had no real
+    ``layout_segments`` and only received a bbox-derived segment.
+    """
+    typed_pages = sorted(layout_pages, key=lambda page: page.page_number)
+    stripped: list[dict[str, Any]] = []
+    for legacy_page, typed_page in zip(legacy_pages, typed_pages, strict=False):
+        page_copy = dict(legacy_page)
+        legacy_items = legacy_page.get("items")
+        if not isinstance(legacy_items, list):
+            stripped.append(page_copy)
+            continue
+        new_items: list[dict[str, Any]] = []
+        for legacy_item, typed_item in zip(legacy_items, typed_page.items, strict=False):
+            item_copy = dict(legacy_item)
+            if not typed_item.layout_segments:
+                item_copy.pop("layoutAwareBbox", None)
+            new_items.append(item_copy)
+        page_copy["items"] = new_items
+        stripped.append(page_copy)
+    return stripped
 
 
 def _find_page_payload(

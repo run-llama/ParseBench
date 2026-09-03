@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Discriminator, Field, Tag, field_validator
 
 from parse_bench.schemas.layout_ontology import CanonicalLabel
+from parse_bench.schemas.parse_output import ParseLayoutPageIR
 
 
 class YoloLabel(IntEnum):
@@ -526,6 +527,13 @@ class LayoutOutput(BaseModel):
     image_width: int = Field(ge=1, description="Width of the input image in pixels")
     image_height: int = Field(ge=1, description="Height of the input image in pixels")
     predictions: list[LayoutPrediction] = Field(default_factory=list)
+    layout_pages: list[ParseLayoutPageIR] = Field(
+        default_factory=list,
+        description=(
+            "Per-page layout payload. Target shape for layout detectors "
+            "(migration in progress — see predictions field)."
+        ),
+    )
     markdown: str = Field(
         default="",
         description=("Optional document markdown for providers that can supply it (e.g., LlamaParse layout runs)."),
