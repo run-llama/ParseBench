@@ -7,6 +7,7 @@ from pathlib import Path
 
 import fire
 
+from parse_bench import __version__
 from parse_bench.analysis.detailed_report import generate_detailed_html_report
 from parse_bench.evaluation.reports import (
     export_csv as export_csv_report,
@@ -113,7 +114,15 @@ class EvaluationCLI:
             # The metadata may have pipeline's default product_type, but the results
             # may have been produced with auto-detected product_type
             if product_type is None:
-                for result_file in output_dir_path.rglob("*.result.json"):
+                # Smallest file first: this sniff needs a single key, and a
+                # citation-heavy extract result can be ~1 GB of JSON.
+                def _result_file_size(path: Path) -> int:
+                    try:
+                        return path.stat().st_size
+                    except OSError:
+                        return 1 << 62
+
+                for result_file in sorted(output_dir_path.rglob("*.result.json"), key=_result_file_size):
                     try:
                         with open(result_file) as f:
                             result_data = json.load(f)
@@ -168,6 +177,7 @@ class EvaluationCLI:
                 max_workers=max_workers,
             )
             summary.completed_at = datetime.now()
+            summary.parse_bench_version = __version__
 
             # Save JSON report
             report_json_path = report_dir_path / "_evaluation_report.json"
@@ -202,15 +212,21 @@ class EvaluationCLI:
                 html_path = export_html_report(summary, report_dir_path)
                 print(f"🌐 HTML report exported to: {html_path.resolve()}")
 
-                detailed_html_path = generate_detailed_html_report(
-                    summary,
-                    report_dir_path,
-                    output_dir=output_dir_path,
-                    test_cases_dir=test_cases_dir_path,
-                    pipeline_name=pipeline_name,
-                    group=group,
-                )
-                print(f"🌐 Detailed HTML report exported to: {detailed_html_path.resolve()}")
+                # Detailed HTML reports are cosmetic explorers; never let a
+                # rendering failure (e.g. markdown2 recursion on pathological
+                # model output) fail the whole evaluation.
+                try:
+                    detailed_html_path = generate_detailed_html_report(
+                        summary,
+                        report_dir_path,
+                        output_dir=output_dir_path,
+                        test_cases_dir=test_cases_dir_path,
+                        pipeline_name=pipeline_name,
+                        group=group,
+                    )
+                    print(f"🌐 Detailed HTML report exported to: {detailed_html_path.resolve()}")
+                except Exception as e:
+                    print(f"⚠️  Skipped detailed HTML report (non-fatal): {e}", file=sys.stderr)
 
             return 0
 
@@ -332,14 +348,17 @@ class EvaluationCLI:
                 html_path = export_html_report(summary, report_dir_path)
                 print(f"  HTML: {html_path.resolve()}")
 
-                detailed_html_path = generate_detailed_html_report(
-                    summary,
-                    report_dir_path,
-                    output_dir=output_dir_path,
-                    test_cases_dir=test_cases_dir_path,
-                    pdf_base_url=pdf_base_url,
-                )
-                print(f"  Detailed HTML: {detailed_html_path.resolve()}")
+                try:
+                    detailed_html_path = generate_detailed_html_report(
+                        summary,
+                        report_dir_path,
+                        output_dir=output_dir_path,
+                        test_cases_dir=test_cases_dir_path,
+                        pdf_base_url=pdf_base_url,
+                    )
+                    print(f"  Detailed HTML: {detailed_html_path.resolve()}")
+                except Exception as e:
+                    print(f"⚠️  Skipped detailed HTML report (non-fatal): {e}", file=sys.stderr)
 
             print("\nDone!")
             return 0

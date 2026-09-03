@@ -72,6 +72,10 @@ class EvaluationSummary(BaseModel):
         default=None,
         description=("Confusion matrix for layout detection evaluations (computed during evaluation)"),
     )
+    parse_bench_version: str | None = Field(
+        default=None,
+        description="Version of parse-bench that produced this summary (for reproducibility)",
+    )
     started_at: datetime = Field(default_factory=datetime.now, description="When evaluation started")
     completed_at: datetime | None = Field(default=None, description="When evaluation completed")
     tag_metrics: dict[str, dict[str, float]] = Field(
