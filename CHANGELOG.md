@@ -73,6 +73,7 @@ with this version.
   so a runner can be installed without every provider SDK. `runners` remains the union.
 - `parse-bench version` command.
 - `liteparse` extra installs the released `lit` CLI from PyPI; the provider finds it on `PATH`.
+- LlamaParse normalisation rewrites `layout_pages[*].items[*].type` to canonical layout classes (splitting items whose segments disagree) and synthesises checkbox mark items, matching the internal harness's output contract. ParseBench's own layout scores are unchanged; it lets other consumers of saved outputs classify without the raw-label adapter.
 - LiteParse now requests `--extract-blocks` and emits `layout_pages` from the block kinds and bboxes, with a matching layout adapter and label mapper, so the Visual Grounding column can be scored (set `extract_blocks: false` in the pipeline config to disable).
 - Runner: `per_file_timeout` (CLI > pipeline > default 1800s), randomised external
   filenames for third-party providers, a hint when a corpus contains only unsupported
