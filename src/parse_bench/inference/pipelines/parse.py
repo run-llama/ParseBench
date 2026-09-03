@@ -244,19 +244,6 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         "markdown_source": "markdown",
         "poll_interval": 1.0,
     }
-    pulse_tables_config = {
-        "merge": True,
-        "table_format": "html",
-        "charts_to_tables": True,
-    }
-    pulse_tables_endpoint_config = {
-        "async_tables": True,
-        "use_tables_endpoint": True,
-        "tables_config": pulse_tables_config,
-        "merge_tables_into_markdown": True,
-        "replace_existing_tables": True,
-        **pulse_common_endpoint_config,
-    }
     pulse_ultra_2_image_prompt = (
         "For charts and plots, output a markdown table where each row is one data point. "
         "Include every visible chart label needed to identify the value as explicit row or column text, "
@@ -288,21 +275,6 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         "custom_refine_prompt": pulse_ultra_2_refine_prompt,
         **pulse_common_endpoint_config,
     }
-
-    register_fn(
-        PipelineSpec(
-            pipeline_name="pulse",
-            provider_name="pulse",
-            product_type=ProductType.PARSE,
-            config={
-                "model": "default",
-                "refine": False,
-                "credits_per_page": 1,
-                "figure_processing": {"description": True},
-                **pulse_tables_endpoint_config,
-            },
-        )
-    )
 
     # pulse-ultra-2: hosted tier with native figure extraction.
     # Refinement is enabled for the submitted leaderboard configuration.

@@ -1,7 +1,6 @@
 from datetime import datetime
 from pathlib import Path
 
-from parse_bench.inference.pipelines import get_pipeline
 from parse_bench.inference.providers.parse.pulse import (
     PulseProvider,
     _build_layout_pages,
@@ -53,9 +52,8 @@ def test_should_run_tables_endpoint_respects_disabled_and_empty_categories() -> 
     assert all_categories._should_run_tables_endpoint(Path("/tmp/layout/doc.pdf"))
 
 
-def test_registered_pulse_pipeline_runs_tables_endpoint_for_all_paths() -> None:
-    pipeline = get_pipeline("pulse")
-    provider = _provider(pipeline.config)
+def test_tables_endpoint_runs_for_all_paths_when_categories_unset() -> None:
+    provider = _provider({"use_tables_endpoint": True})
 
     assert provider._use_tables_endpoint is True
     assert provider._tables_endpoint_categories == set()
