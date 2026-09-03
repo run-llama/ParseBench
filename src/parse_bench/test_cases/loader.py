@@ -159,16 +159,16 @@ def _load_jsonl_dataset(root_dir: Path) -> list[TestCase]:
         rule_meta = group_data.get("rule_meta", {})
         all_tags = [category] + [t for t in extra_tags if t != category]
 
-        if layout_rules and not parse_rules:
-            # Pure layout test case
+        if layout_rules:
+            # Keep parse_rules alongside layout_rules; test_rules type-routes each.
             tc = LayoutDetectionTestCase(
                 test_id=test_id,
                 group=category,
                 file_path=pdf_path,
                 tags=all_tags,
-                test_rules=layout_rules,
-                ontology=layout_rules[0].get("ontology") if layout_rules else None,
-                page_index=layout_rules[0].get("page_index", 0) if layout_rules else 0,
+                test_rules=layout_rules + parse_rules,
+                ontology=layout_rules[0].get("ontology"),
+                page_index=layout_rules[0].get("page_index", 0),
             )
         else:
             # Parse test case — only coerce parse rules (layout rules handled separately)
