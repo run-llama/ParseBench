@@ -4,8 +4,9 @@ import sys
 from pathlib import Path
 
 import fire
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
+from parse_bench import __version__
 from parse_bench.analysis.cli import AnalysisCLI
 from parse_bench.data.cli import DataCLI
 from parse_bench.evaluation.cli import EvaluationCLI
@@ -13,18 +14,13 @@ from parse_bench.inference.cli import InferenceCLI
 from parse_bench.pipeline.cli import PipelineCLI
 
 
-# Load .env file if it exists (look in current directory and project root)
+# Load .env file if it exists. Search the current directory and its parents so
+# the CLI works both from a repo checkout and as an installed package.
 def _load_env() -> None:
-    """Load environment variables from .env file."""
-    # Try current directory first, then project root
-    env_paths = [
-        Path.cwd() / ".env",
-        Path(__file__).parent.parent.parent / ".env",
-    ]
-    for env_path in env_paths:
-        if env_path.exists():
-            load_dotenv(env_path, override=False)  # Don't override existing env vars
-            break
+    """Load environment variables from the nearest .env file."""
+    env_path = find_dotenv(usecwd=True)
+    if env_path:
+        load_dotenv(env_path, override=False)  # Don't override existing env vars
 
 
 def _resolve_pipeline_dir(name_or_path: str | Path) -> Path:
@@ -52,6 +48,7 @@ class BenchCLI:
         pipelines    List available pipeline configurations
         compare      Compare two pipeline results
         serve        View reports in browser with PDF support
+        version      Print the installed parse-bench version
 
     Advanced subcommands:
         inference    Run inference only
@@ -69,6 +66,10 @@ class BenchCLI:
         self.data = DataCLI()
 
     # ── Top-level convenience commands ──────────────────────────────
+
+    def version(self) -> str:
+        """Print the installed parse-bench version."""
+        return __version__
 
     def run(
         self,

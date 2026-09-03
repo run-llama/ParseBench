@@ -83,9 +83,7 @@ def _block_to_html(block: list[str]) -> str | None:
     if not data:
         return None
     th = "".join(f"<th>{_html.escape(c)}</th>" for c in header)
-    body = "".join(
-        "<tr>" + "".join(f"<td>{_html.escape(c)}</td>" for c in row) + "</tr>" for row in data
-    )
+    body = "".join("<tr>" + "".join(f"<td>{_html.escape(c)}</td>" for c in row) + "</tr>" for row in data)
     return f"<table><thead><tr>{th}</tr></thead><tbody>{body}</tbody></table>"
 
 
@@ -137,9 +135,7 @@ class OIParserProvider(Provider):
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         if request.product_type != ProductType.PARSE:
-            raise ProviderPermanentError(
-                f"OIParserProvider only supports PARSE, got {request.product_type}"
-            )
+            raise ProviderPermanentError(f"OIParserProvider only supports PARSE, got {request.product_type}")
 
         path = Path(request.source_file_path)
         if not path.exists():
@@ -178,9 +174,7 @@ class OIParserProvider(Provider):
         except (ValueError, requests.exceptions.RequestException) as e:
             # Truncated/invalid body (e.g. ChunkedEncodingError surfacing at read
             # time, or non-JSON) — transient; let the runner retry.
-            raise ProviderTransientError(
-                f"oi-parser bad/truncated response body: {type(e).__name__}: {e}"
-            ) from e
+            raise ProviderTransientError(f"oi-parser bad/truncated response body: {type(e).__name__}: {e}") from e
         completed_at = datetime.now()
         latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 
@@ -197,9 +191,7 @@ class OIParserProvider(Provider):
 
     def normalize(self, raw_result: RawInferenceResult) -> InferenceResult:
         if raw_result.product_type != ProductType.PARSE:
-            raise ProviderPermanentError(
-                f"OIParserProvider only supports PARSE, got {raw_result.product_type}"
-            )
+            raise ProviderPermanentError(f"OIParserProvider only supports PARSE, got {raw_result.product_type}")
 
         body_output = raw_result.raw_output.get("output")
         if not isinstance(body_output, dict):

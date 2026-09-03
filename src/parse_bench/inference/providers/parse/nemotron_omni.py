@@ -116,8 +116,7 @@ class NemotronOmniProvider(Provider):
         server_url = self.base_config.get("server_url") or os.getenv("NEMOTRON_OMNI_SERVER_URL")
         if not server_url:
             raise ProviderConfigError(
-                "NemotronOmni provider requires 'server_url' in config or "
-                "NEMOTRON_OMNI_SERVER_URL in the environment."
+                "NemotronOmni provider requires 'server_url' in config or NEMOTRON_OMNI_SERVER_URL in the environment."
             )
         self._server_url: str = str(server_url)
 

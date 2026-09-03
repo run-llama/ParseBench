@@ -38,7 +38,7 @@ from parse_bench.evaluation.metric_aggregation import add_precision_recall_f1_ag
 from parse_bench.evaluation.stats import build_operational_stats
 from parse_bench.schemas.evaluation import EvaluationResult, EvaluationSummary
 from parse_bench.schemas.layout_detection_output import LayoutOutput
-from parse_bench.schemas.pipeline_io import InferenceResult, InferenceRequest
+from parse_bench.schemas.pipeline_io import InferenceRequest, InferenceResult
 from parse_bench.schemas.product import ProductType
 from parse_bench.test_cases import load_test_cases
 from parse_bench.test_cases.parse_rule_schemas import get_rule_type

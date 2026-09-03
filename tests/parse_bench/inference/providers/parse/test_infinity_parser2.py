@@ -132,12 +132,7 @@ class TestConvertTableHeader(unittest.TestCase):
     """End-to-end: <td> in detected header rows is rewritten to <th>."""
 
     def test_td_to_th_in_header_row(self) -> None:
-        html = (
-            "<table>"
-            "<tr><td>2022</td><td>2023</td></tr>"
-            "<tr><td>10</td><td>20</td></tr>"
-            "</table>"
-        )
+        html = "<table><tr><td>2022</td><td>2023</td></tr><tr><td>10</td><td>20</td></tr></table>"
         out = _convert_table_header(html)
         soup = BeautifulSoup(out, "html.parser")
         rows = soup.find_all("tr")

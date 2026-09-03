@@ -1,11 +1,11 @@
 """Provider for Infinity-Parser2 PARSE via infinity_parser2 SDK with vLLM server."""
 
-from datetime import datetime
 import json
 import logging
-from pathlib import Path
 import re
 import traceback
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from pdf2image import convert_from_path
@@ -18,7 +18,7 @@ from parse_bench.inference.providers.base import (
     ProviderTransientError,
 )
 from parse_bench.inference.providers.registry import register_provider
-from parse_bench.schemas.parse_output import ParseLayoutPageIR, ParseOutput, PageIR
+from parse_bench.schemas.parse_output import PageIR, ParseLayoutPageIR, ParseOutput
 from parse_bench.schemas.pipeline import PipelineSpec
 from parse_bench.schemas.pipeline_io import (
     InferenceRequest,
@@ -257,10 +257,7 @@ class InfinityParser2Provider(Provider):
             if not isinstance(elements, list):
                 return result
 
-            figure_elements = [
-                elem for elem in elements
-                if elem.get("category", "").strip().lower() == "figure"
-            ]
+            figure_elements = [elem for elem in elements if elem.get("category", "").strip().lower() == "figure"]
             if not figure_elements:
                 return result
 
@@ -282,7 +279,7 @@ class InfinityParser2Provider(Provider):
                 "max_new_tokens": 2048,
             }
             deep_results = [self._parser.parse(img, **deep_parse_kwargs) for img in pil_figure_images]
-            for elem, deep_result in zip(figure_elements, deep_results):
+            for elem, deep_result in zip(figure_elements, deep_results, strict=False):
                 elem["text"] = deep_result
 
             return json.dumps(elements)
@@ -431,6 +428,7 @@ def load_image(file_path: str) -> tuple[PILImage.Image, float, float]:
 # Postprocess for chart2table
 # =============================================================================
 
+
 def _is_valid_md_table(table_text: str) -> bool:
     """Check if a markdown table is valid (non-empty)."""
     if not table_text or not table_text.strip():
@@ -544,6 +542,7 @@ def _convert_nonstandard_table(text: str) -> str:
 # Postprocess for HTML table header
 # =============================================================================
 
+
 def _is_year_cell(text: str) -> bool:
     """Return True if text looks like a date/year (yyyy, yyyymm, yyyymmdd, etc.)."""
     text = text.strip()
@@ -582,8 +581,7 @@ def _determine_header_row_count(rows: list) -> int:
         return 0
 
     def non_empty_cells(row):
-        return [td.get_text(strip=True) for td in row.find_all("td", recursive=False)
-                if td.get_text(strip=True)]
+        return [td.get_text(strip=True) for td in row.find_all("td", recursive=False) if td.get_text(strip=True)]
 
     def stats(row_list):
         """Return (pure_text_count, pure_number_count, total) for a list of rows."""
@@ -623,15 +621,15 @@ def _determine_header_row_count(rows: list) -> int:
     best_i = -1
     best_score = -1.0
     for i in range(3):
-        header_rows = rows[:i + 1]
-        data_rows = rows[i + 1:]
+        header_rows = rows[: i + 1]
+        data_rows = rows[i + 1 :]
         if not header_rows or not data_rows:
             continue
         header_text, header_num, header_total = stats(header_rows)
         data_text, data_num, data_total = stats(data_rows)
         if header_total == 0 or data_total == 0:
             continue
-        if (header_text / header_total >= 0.5 and data_num / data_total >= 0.5):
+        if header_text / header_total >= 0.5 and data_num / data_total >= 0.5:
             score = header_text / header_total + data_num / data_total
             if score > best_score:
                 best_score = score
