@@ -44,6 +44,17 @@ class TestTextValueMatching:
         passed, _, _ = self._rule("Last Name", "Collins").run(md)
         assert passed
 
+    def test_label_before_bold_value_match(self):
+        md = "Well No. **Z-5** Name of Lease **W. H. Portwood** No. of Acres **80**\n"
+        assert self._rule("Well No.", "Z-5").run(md)[0]
+        assert self._rule("Name of Lease", "W. H. Portwood").run(md)[0]
+        assert self._rule("No. of Acres", "80").run(md)[0]
+
+    def test_explicit_colon_wins_over_label_before_bold_fallback(self):
+        md = "**Name of Lease**: W. H. Portwood\nName of Lease **Wrong Lease**\n"
+        passed, _, _ = self._rule("Name of Lease", "W. H. Portwood").run(md)
+        assert passed
+
     def test_plain_colon_match(self):
         md = "Last Name: Collins\n"
         passed, _, _ = self._rule("Last Name", "Collins").run(md)
@@ -82,6 +93,155 @@ class TestTextValueMatching:
         md = "**Last Nam:** Collins\n"
         passed, _, _ = self._rule("Last Name", "Collins").run(md)
         assert passed
+
+    def test_value_normalization_ignores_separators(self):
+        md = "**Operator P-5 No.:** 253-385\n"
+        passed, _, _ = self._rule("Operator P-5 No.", "253 385").run(md)
+        assert passed
+
+    def test_value_tolerance_defaults_to_zero(self):
+        md = "**Operator P-5 No.:** 253386\n"
+        passed, expl, _ = self._rule("Operator P-5 No.", "253385").run(md)
+        assert not passed
+        assert "expected" in expl and "got" in expl
+
+    def test_value_tolerance_uses_value_max_diffs(self):
+        md = "**Operator P-5 No.:** 253386\n"
+        rule = FormFieldRule(
+            {
+                "type": "form_field",
+                "label": "Operator P-5 No.",
+                "value": "253385",
+                "value_type": "text",
+                "value_max_diffs": 1,
+            }
+        )
+        passed, _, _ = rule.run(md)
+        assert passed
+
+    def test_value_tolerance_respects_value_max_diffs_limit(self):
+        md = "**Operator P-5 No.:** 253487\n"
+        rule = FormFieldRule(
+            {
+                "type": "form_field",
+                "label": "Operator P-5 No.",
+                "value": "253385",
+                "value_type": "text",
+                "value_max_diffs": 1,
+            }
+        )
+        passed, expl, _ = rule.run(md)
+        assert not passed
+        assert "expected" in expl and "got" in expl
+
+
+class TestMultiLabelFormFields:
+    def _rule(self, label, value) -> FormFieldRule:
+        return FormFieldRule({"type": "form_field", "label": label, "value": value, "value_type": "text"})
+
+    def test_multilabel_table_match_is_order_insensitive(self):
+        md = (
+            "| Item | PLUG #1 | PLUG #2 |\n"
+            "|---|---|---|\n"
+            "| \\*19. Cementing Date | 1992 9-29 | |\n"
+            "| \\*22. Sacks of Cement Used (each plug) | 55 | |\n"
+        )
+        assert self._rule(["PLUG #1", "Cementing Date"], "1992 9-29").run(md)[0]
+        assert self._rule(["Cementing Date", "PLUG #1"], "1992 9-29").run(md)[0]
+
+    def test_multilabel_table_requires_the_same_value_cell(self):
+        md = (
+            "| Item | PLUG #1 | PLUG #2 |\n"
+            "|---|---|---|\n"
+            "| \\*19. Cementing Date | 1992 9-29 | |\n"
+            "| \\*22. Sacks of Cement Used (each plug) | 55 | |\n"
+        )
+        passed, expl, _ = self._rule(["PLUG #2", "Cementing Date"], "1992 9-29").run(md)
+        assert not passed
+        assert "expected" in expl and "got" in expl
+
+    def test_multilabel_table_matches_headers_with_context_prefixes(self):
+        md = (
+            "| CEMENTING TO PLUG AND ABANDON DATA: | CEMENTING TO PLUG AND ABANDON DATA:<br/>PLUG #1 | "
+            "CEMENTING TO PLUG AND ABANDON DATA:<br/>PLUG #2 |\n"
+            "|---|---|---|\n"
+            "| \\\\*19. Cementing Date | 3/11/02 | 3/11/02 |\n"
+            "| \\\\*22. Sacks of Cement Used (each plug) | 30 | 60 |\n"
+        )
+        assert self._rule(["PLUG #2", "Sacks of Cement Used"], "60").run(md)[0]
+
+    def test_multilabel_html_table_match(self):
+        html = (
+            "<table>"
+            "<thead><tr><th>Item</th><th>PLUG #1</th><th>PLUG #2</th></tr></thead>"
+            "<tbody>"
+            "<tr><td>Cementing Date</td><td>1992 9-29</td><td></td></tr>"
+            "<tr><td>Depth to Bottom of Tubing or Drill Pipe (ft.)</td><td>399</td><td>650</td></tr>"
+            "</tbody></table>"
+        )
+        assert self._rule(["PLUG #1", "Cementing Date"], "1992 9-29").run(html)[0]
+        assert self._rule(["PLUG #2", "Cementing Date"], "").run(html)[0]
+        assert self._rule(["PLUG #2", "Depth to Bottom of Tubing or Drill Pipe (ft.)"], "650").run(html)[0]
+
+    def test_multilabel_html_table_requires_same_value_cell(self):
+        html = (
+            "<table>"
+            "<thead><tr><th>Item</th><th>PLUG #1</th><th>PLUG #2</th></tr></thead>"
+            "<tbody>"
+            "<tr><td>Cementing Date</td><td>1992 9-29</td><td></td></tr>"
+            "<tr><td>Depth to Bottom of Tubing or Drill Pipe (ft.)</td><td>399</td><td>650</td></tr>"
+            "</tbody></table>"
+        )
+        passed, expl, _ = self._rule(["PLUG #2", "Cementing Date"], "1992 9-29").run(html)
+        assert not passed
+        assert "expected '1992 9-29', got ''" in expl
+
+    def test_multilabel_key_tolerance_defaults_to_zero(self):
+        md = "| Item | PLUG #1 |\n|---|---|\n| \\*19. Cementing Date | 1992 9-29 |\n"
+        passed, expl, _ = self._rule(["PLUG #1", "Cementing Dote"], "1992 9-29").run(md)
+        assert not passed
+        assert "label not found" in expl
+
+    def test_multilabel_key_tolerance_uses_label_max_diffs(self):
+        md = "| Item | PLUG #1 |\n|---|---|\n| \\*19. Cementing Date | 1992 9-29 |\n"
+        rule = FormFieldRule(
+            {
+                "type": "form_field",
+                "label": ["PLUG #1", "Cementing Dote"],
+                "label_max_diffs": [0, 1],
+                "value": "1992 9-29",
+                "value_type": "text",
+            }
+        )
+        assert rule.run(md)[0]
+
+    def test_multilabel_key_tolerance_is_index_specific(self):
+        md = "| Item | PLUG #1 |\n|---|---|\n| \\*19. Cementing Date | 1992 9-29 |\n"
+        rule = FormFieldRule(
+            {
+                "type": "form_field",
+                "label": ["PLUG #1", "Cementing Dote"],
+                "label_max_diffs": [1, 0],
+                "value": "1992 9-29",
+                "value_type": "text",
+            }
+        )
+        passed, expl, _ = rule.run(md)
+        assert not passed
+        assert "label not found" in expl
+
+    def test_multilabel_blank_label_keeps_label_tolerance_alignment(self):
+        md = "| Item | PLUG #1 |\n|---|---|\n| \\*19. Cementing Date | 1992 9-29 |\n"
+        rule = FormFieldRule(
+            {
+                "type": "form_field",
+                "label": ["PLUG #1", "", "Cementing Dote"],
+                "label_max_diffs": [0, 0, 1],
+                "value": "1992 9-29",
+                "value_type": "text",
+            }
+        )
+        assert rule.run(md)[0]
 
 
 class TestHtmlCellNeighborFallback:
@@ -578,6 +738,50 @@ class TestInlineCheckboxGroups:
         assert passed
 
 
+class TestInlineYesNoCheckboxGroups:
+    def _rule(self, label: str | list[str], value: bool) -> FormFieldRule:
+        return FormFieldRule({"type": "form_field", "label": label, "value": value, "value_type": "checkbox"})
+
+    def test_multilabel_yes_no_option_checked(self):
+        md = "Multistage cement?  Yes [ ] No [x]\n"
+        passed, _, _ = self._rule(["Multistage cement?", "No"], True).run(md)
+        assert passed
+        passed, _, _ = self._rule(["Multistage cement?", "Yes"], False).run(md)
+        assert passed
+
+    def test_multilabel_yes_no_option_rejects_wrong_checked_option(self):
+        md = "Multistage cement?  Yes [x] No [ ]\n"
+        passed, expl, _ = self._rule(["Multistage cement?", "No"], True).run(md)
+        assert not passed
+        assert "expected True, got False" in expl
+
+    def test_multilabel_yes_no_option_rejects_neither_checked(self):
+        md = "Multistage cement?  Yes [ ] No [ ]\n"
+        passed, expl, _ = self._rule(["Multistage cement?", "No"], True).run(md)
+        assert not passed
+        assert "expected True, got False" in expl
+
+    def test_multilabel_yes_no_option_handles_numbered_form_line(self):
+        md = "27. Multiple completion? Yes [ ] No [x]\n"
+        passed, _, _ = self._rule(["Multiple completion?", "No"], True).run(md)
+        assert passed
+        passed, _, _ = self._rule(["Multiple completion?", "Yes"], False).run(md)
+        assert passed
+
+    def test_multilabel_yes_no_disambiguates_repeated_options(self):
+        md = (
+            "27. Multiple completion? Yes [ ] No [x]\n"
+            "35. Any Oil and Gas Productive Zone within two miles? Yes [x] No [ ]\n"
+        )
+        passed, _, _ = self._rule(["Multiple completion?", "No"], True).run(md)
+        assert passed
+        passed, _, _ = self._rule(["Any Oil and Gas Productive Zone within two miles?", "Yes"], True).run(md)
+        assert passed
+        passed, expl, _ = self._rule(["Multiple completion?", "Yes"], True).run(md)
+        assert not passed
+        assert "expected True, got False" in expl
+
+
 # ---------------------------------------------------------------------------
 # Inline bold-colon multi-pair  (**First:** Maya **Last:** Collins)
 # ---------------------------------------------------------------------------
@@ -868,6 +1072,52 @@ class TestMultiColumnTableRowLabel:
         )
         passed, _, _ = self._rule("Course Title (row 2)", "Records Management 101").run(md)
         assert passed
+
+    def test_open_hole_from_to_markdown_table(self):
+        md = (
+            "**30. LIST ALL OPEN HOLE AND/OR PERFORATED INTERVALS**\n\n"
+            "| FROM | TO |\n"
+            "| ---- | -- |\n"
+            "| none reported | RRC |\n"
+            "| | |\n"
+        )
+        passed, _, _ = self._rule("FROM (row 1)", "none reported").run(md)
+        assert passed
+        passed, _, _ = self._rule("TO (row 1)", "RRC").run(md)
+        assert passed
+        passed, _, _ = self._rule("FROM (row 2)", "").run(md)
+        assert passed
+
+    def test_open_hole_from_to_flattened_line(self):
+        md = "30. LIST ALL OPEN HOLE AND/OR PERFORATED INTERVALS\nFROM none reported TO RRC\nFROM      TO\n"
+        passed, _, _ = self._rule("FROM (row 1)", "none reported").run(md)
+        assert passed
+        passed, _, _ = self._rule("TO (row 1)", "RRC").run(md)
+        assert passed
+        passed, _, _ = self._rule("FROM (row 2)", "").run(md)
+        assert passed
+        passed, _, _ = self._rule("TO (row 2)", "").run(md)
+        assert passed
+
+    def test_open_hole_from_to_flattened_line_multiple_rows(self):
+        md = "30. LIST ALL OPEN HOLE AND/OR PERFORATED INTERVALS\nFROM none reported TO RRC\nFROM 100 ft TO 200 ft\n"
+        passed, _, _ = self._rule("FROM (row 1)", "none reported").run(md)
+        assert passed
+        passed, _, _ = self._rule("TO (row 1)", "RRC").run(md)
+        assert passed
+        passed, _, _ = self._rule("FROM (row 2)", "100 ft").run(md)
+        assert passed
+        passed, _, _ = self._rule("TO (row 2)", "200 ft").run(md)
+        assert passed
+        passed, expl, _ = self._rule("TO (row 1)", "200 ft").run(md)
+        assert not passed
+        assert "expected '200 ft', got 'RRC'" in expl
+
+    def test_open_hole_from_to_flattened_line_wrong_row_fails(self):
+        md = "30. LIST ALL OPEN HOLE AND/OR PERFORATED INTERVALS\nFROM none reported TO RRC\nFROM 100 TO 200\n"
+        passed, expl, _ = self._rule("TO (row 1)", "200").run(md)
+        assert not passed
+        assert "expected '200', got 'RRC'" in expl
 
 
 class TestEmptyExpectedValue:

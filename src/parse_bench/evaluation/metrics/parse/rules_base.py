@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from parse_bench.evaluation.metrics.parse.table_parsing import (
+    TableData,
     parse_html_tables,
     parse_markdown_tables,
 )
 from parse_bench.evaluation.metrics.parse.test_types import TestType
+from parse_bench.evaluation.metrics.parse.utils import normalize_text
 from parse_bench.schemas.parse_output import ParseOutput
 from parse_bench.test_cases.parse_rule_schemas import (
     ParseExtraContentRule,
@@ -70,6 +72,53 @@ CELL_FUZZY_MATCH_THRESHOLD = 0.8
 
 
 logger = logging.getLogger(__name__)
+
+
+class RuleNotApplicable(Exception):
+    """Raised when a rule carries no evaluable constraint for this document.
+
+    This is *not* a failure and *not* an error: the rule definition itself is
+    degenerate, so the parser had nothing to get right or wrong. Scoring such a
+    rule 0.0 would penalise a correct parse for a defect in the ground truth.
+
+    ``RuleBasedMetric`` catches this and emits **no rule result at all**, which
+    is what excludes the rule from every downstream rollup - the per-type pass
+    rate, the normalized category scores, and ``semantic_formatting`` - by the
+    same "emit nothing when the measurement is undefined" convention the extract
+    grounding metrics use.
+
+    Reserve this for rules that are undefined *by construction*. A rule whose
+    constraint is well defined but unmet by the output is a real failure and
+    must keep scoring low.
+    """
+
+
+# The marker characters the annotation tool itself treats as markup noise: it
+# harvests rule text with ``text.replace(/[*_~]+/g, " ")``, and ``normalize_text``
+# mirrors that (see the note on the underscore branch in ``utils.normalize_text``).
+# Deliberately NOT the wider punctuation class: characters such as ``+`` and ``®``
+# are real superscript payloads in this corpus, and rules querying them are
+# satisfiable.
+_MARKDOWN_MARKER_CHARS = frozenset("*_~")
+
+
+def is_degenerate_marker_text(text: str) -> bool:
+    """True when a rule's query text cannot identify any content.
+
+    Annotation harvests rule text from ASCII banners and decorative rules, which
+    yields queries that are pure markdown markers - ``"*"``, ``"**"``, ``"~~"``.
+    ``normalize_text`` reduces those to markers or to nothing, so no output can
+    ever satisfy them: the rule is unsatisfiable by construction and permanently
+    scores 0.0.
+
+    Text that merely *contains* markers around real words (``"*Important*"``)
+    normalizes to that word and is a perfectly good query, so it is not
+    degenerate.
+    """
+    normalized = normalize_text(text).strip()
+    if not normalized:
+        return True
+    return all(char in _MARKDOWN_MARKER_CHARS or char.isspace() for char in normalized)
 
 
 _DATETIME_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})\s+\d{2}:\d{2}:\d{2}$")
@@ -254,6 +303,12 @@ _HTML_TABLE_BLOCK_PATTERN = re.compile(
     flags=re.IGNORECASE | re.DOTALL,
 )
 _HTML_TABLE_START_PATTERN = re.compile(r"<table\b[^>]*>", flags=re.IGNORECASE)
+# A markdown pipe table is a run of two or more consecutive lines that each
+# contain a ``|`` — the same shape ``parse_markdown_tables`` recognises.
+_MARKDOWN_TABLE_BLOCK_PATTERN = re.compile(
+    r"(?:^[^\n]*\|[^\n]*\n)+^[^\n]*\|[^\n]*$",
+    flags=re.MULTILINE,
+)
 
 
 def _strip_html_tables_and_content(md_content: str) -> str:
@@ -287,53 +342,60 @@ def _strip_html_tables_and_content(md_content: str) -> str:
     return stripped
 
 
+def _strip_tables_and_content(md_content: str) -> str:
+    """Remove HTML *and* markdown pipe tables, payload included."""
+    stripped = _strip_html_tables_and_content(md_content)
+    return _MARKDOWN_TABLE_BLOCK_PATTERN.sub(" ", stripped)
+
+
 def _extract_table_cell_texts(md_content: str) -> list[str]:
-    """Extract non-empty cell texts from markdown and HTML tables.
+    """Extract each authored non-empty table cell's text exactly once.
 
-    This is used by missing-content bag rules so table content remains searchable
-    while still allowing per-cell sentence/word extraction behavior.
+    Cells are returned in document order (markdown tables first, then HTML
+    tables), so consecutive cells of a row stay adjacent for substring
+    matching once whitespace is collapsed.
 
-    In addition to individual cell texts, concatenated row texts are emitted so
-    that sentences spanning multiple cells in the same row can be matched as
-    contiguous substrings after normalization.
+    Grid positions that exist only because a cell was expanded across a
+    ``rowspan``/``colspan`` are skipped: emitting them would count the
+    spanning cell's words once per covered position.
+
+    ``<caption>`` text is emitted too — it lives inside the table but outside
+    any cell, so it would otherwise be lost with the rest of the markup.
     """
     cell_texts: list[str] = []
 
-    for table in parse_markdown_tables(md_content):
-        for row in table.data:
-            row_parts: list[str] = []
-            for cell in row:
+    for table in (*parse_markdown_tables(md_content), *parse_html_tables(md_content)):
+        if table.caption:
+            cell_texts.append(table.caption)
+        for row_idx, row in enumerate(table.data):
+            for col_idx, cell in enumerate(row):
+                if (row_idx, col_idx) in table.spanned_cells:
+                    continue
                 text = str(cell).strip()
                 if text:
                     cell_texts.append(text)
-                    row_parts.append(text)
-            if len(row_parts) > 1:
-                cell_texts.append(" ".join(row_parts))
-
-    for table in parse_html_tables(md_content):
-        for row in table.data:
-            row_parts = []
-            for cell in row:
-                text = str(cell).strip()
-                if text:
-                    cell_texts.append(text)
-                    row_parts.append(text)
-            if len(row_parts) > 1:
-                cell_texts.append(" ".join(row_parts))
 
     return cell_texts
 
 
 def _augment_with_table_cell_text(md_content: str) -> str:
-    """Append table cell text to content without removing original markdown.
+    """Replace tables with their cell text, one cell per line.
 
     Why: missing_* rules should search substrings everywhere (including tables)
-    and treat each table cell as an independent text unit for splitting.
+    and treat each table cell as an independent text unit for splitting — but
+    the occurrence-counting rules (too_many_*, unexpected_*, bag_of_digit) read
+    the same text, so a cell must appear exactly once. Appending cell text to
+    content that still held the table counted every table word two to three
+    times (table markup + cell + row join) and inflated those scores.
+
+    Cells are emitted one per line, so the sentence splitter still sees each
+    cell as its own unit, while whitespace collapse in the full-text paths
+    keeps a row's cells contiguous for cross-cell substring matches.
     """
     cell_texts = _extract_table_cell_texts(md_content)
     if not cell_texts:
         return md_content
-    return f"{md_content}\n" + "\n".join(cell_texts)
+    return f"{_strip_tables_and_content(md_content)}\n" + "\n".join(cell_texts)
 
 
 def _unescape_html_entities(text: str) -> str:
@@ -375,6 +437,13 @@ class ParseTestRule:
         # Structured parse payload is injected by RuleBasedMetric when available.
         # Keep this optional so direct unit tests can still run rules against raw markdown only.
         self.parse_output: ParseOutput | None = None
+        # Structured rule-specific diagnostics copied into rule_results by the
+        # metric runner. Graduated rules use this for auditable component distances.
+        self.result_details: dict[str, Any] = {}
+        # The metric runner may inject one document/page-local table parse into
+        # chart rules. ``None`` preserves the direct-call parsing fallback;
+        # ``[]`` is a valid cached result for table-free content.
+        self.parsed_tables: list[TableData] | None = None
 
     def run(self, md_content: str, normalized_content: str | None = None) -> tuple[bool, str] | tuple[bool, str, float]:
         """
@@ -459,11 +528,15 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
     )
     from parse_bench.evaluation.metrics.parse.rules_formatting import (
         _FORMATTING_TEST_TYPES,
+        AbsentUnlessStrikeoutRule,
         CodeBlockRule,
         FormattingRule,
         LatexRule,
         MarkColorRule,
+        NotLatexRule,
         PageSectionRule,
+        PresentAsStrikeoutRule,
+        TextColorRule,
         TitleHierarchyPercentRule,
         TitleLevelRule,
     )
@@ -475,6 +548,7 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
         TableColspanRule,
         TableHeaderChainRule,
         TableLeftHeaderRule,
+        TableMarkerCellsRule,
         TableNoAboveRule,
         TableNoBelowRule,
         TableNoLeftRule,
@@ -543,6 +617,8 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
         return TablesNumRowsRule(typed_rule)
     elif rule_type == TestType.TABLES_NUM_COLS.value:
         return TablesNumColsRule(typed_rule)
+    elif rule_type == TestType.TABLE_MARKER_CELLS.value:
+        return TableMarkerCellsRule(typed_rule)
     # Table hierarchy rules
     elif rule_type == TestType.TABLE_COLSPAN.value:
         return TableColspanRule(typed_rule)
@@ -590,9 +666,17 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
     elif rule_type in _FORMATTING_TEST_TYPES:
         if rule_type == TestType.MARK_COLOR.value:
             return MarkColorRule(typed_rule)
+        if rule_type == TestType.TEXT_COLOR.value:
+            return TextColorRule(typed_rule)
         return FormattingRule(typed_rule)
+    elif rule_type == TestType.ABSENT_UNLESS_STRIKEOUT.value:
+        return AbsentUnlessStrikeoutRule(typed_rule)
+    elif rule_type == TestType.PRESENT_AS_STRIKEOUT.value:
+        return PresentAsStrikeoutRule(typed_rule)
     elif rule_type == TestType.IS_LATEX.value:
         return LatexRule(typed_rule)
+    elif rule_type == TestType.IS_NOT_LATEX.value:
+        return NotLatexRule(typed_rule)
     elif rule_type == TestType.IS_CODE_BLOCK.value:
         return CodeBlockRule(typed_rule)
     # Title / heading level rule

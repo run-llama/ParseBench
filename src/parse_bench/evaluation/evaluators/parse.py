@@ -59,7 +59,34 @@ from parse_bench.schemas.evaluation import EvaluationResult, MetricValue
 from parse_bench.schemas.parse_output import ParseOutput
 from parse_bench.schemas.pipeline_io import InferenceResult
 from parse_bench.schemas.product import ProductType
-from parse_bench.test_cases.schema import ExtractTestCase, ParseTestCase, TestCase
+from parse_bench.test_cases.schema import (
+    ExtractFieldTestRule,
+    ExtractTestCase,
+    LayoutTestRule,
+    ParseTestCase,
+    TestCase,
+)
+
+# Filter tuple for ``ParseTestCase.test_rules`` — layout and extract_field rule
+# models coexist with parse rules on the same list and are invisible to the
+# parse rule factory; they'd otherwise count as spurious failures in
+# ``RuleBasedMetric``.
+_NON_PARSE_RULE_TYPES: tuple[type, ...] = (LayoutTestRule, ExtractFieldTestRule)
+_STYLING_F_BETA = 0.5
+
+
+def _styling_f_beta_score(pos_score: float, neg_score: float) -> float:
+    """Combine styling scores while weighting negative-rule failures more.
+
+    For beta below 1, F-beta weights its precision-like input more heavily.
+    ``neg_score`` occupies that slot because false styling should cost more
+    than missed styling.
+    """
+    if pos_score + neg_score == 0:
+        return 0.0
+
+    beta_squared = _STYLING_F_BETA**2
+    return (1 + beta_squared) * neg_score * pos_score / (beta_squared * neg_score + pos_score)
 
 
 def _has_html_tables(content: str) -> bool:
@@ -80,17 +107,78 @@ def _has_extract_field_bboxes(test_case: ExtractTestCase) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _compute_teds_standalone(expected: str, actual: str, variants: set[str] | None = None) -> list[MetricValue]:
+def _predicted_markdown_and_pages(output: ParseOutput) -> tuple[str, list[int]] | None:
+    """Predicted table markdown sourced from ``output.pages``, plus a page label
+    per top-level table.
+
+    Concatenates the per-page markdown in page order and records each table's
+    page **intrinsically** (it came from that page's markdown) — so no positional
+    re-join against the flat ``output.markdown`` is needed, and a document whose
+    ``output.markdown`` is ordered differently from its pages cannot mislabel.
+    Returns ``None`` when ``output.pages`` is empty — the caller then matches
+    document-globally.
+    """
+    pages = getattr(output, "pages", None) or []
+    if not pages:
+        return None
+    parts: list[str] = []
+    labels: list[int] = []
+    for page in pages:
+        md = page.markdown or ""
+        parts.append(md)
+        labels.extend([int(page.page_index) + 1] * len(extract_html_tables(md)))
+    return "\n\n".join(parts), labels
+
+
+def _gt_markdown_and_pages(expected_pages: list[dict[str, Any]]) -> tuple[str, list[int]]:
+    """GT table markdown plus a page label per top-level GT table, both sourced
+    from the native per-page GT field
+    ``metadata["expected_pages"] = [{"page": int, "markdown": str}, ...]``.
+
+    Mirror of :func:`_predicted_markdown_and_pages`: the markdown and the labels
+    are built together (one entry per page, tables grouped under their page), so
+    they align by construction regardless of the order the pages are listed in —
+    no assumption that ``expected_pages`` is sorted by, or contiguous in, page
+    number, and no dependence on the flat ``expected_markdown`` ordering.
+    """
+    parts: list[str] = []
+    labels: list[int] = []
+    for entry in expected_pages:
+        md = entry.get("markdown", "") or ""
+        parts.append(md)
+        labels.extend([int(entry["page"])] * len(extract_html_tables(md)))
+    return "\n\n".join(parts), labels
+
+
+def _compute_teds_standalone(
+    expected: str,
+    actual: str,
+    variants: set[str] | None = None,
+    expected_pages: list[int] | None = None,
+    actual_pages: list[int] | None = None,
+) -> list[MetricValue]:
     """Compute TEDS metrics in a worker process."""
-    return TEDSMetric(variants=variants).compute(expected=expected, actual=actual)
+    return TEDSMetric(variants=variants).compute(
+        expected=expected,
+        actual=actual,
+        expected_pages=expected_pages,
+        actual_pages=actual_pages,
+    )
 
 
 def _compute_grits_standalone(
     expected_tables: list[ExtractedTable],
     actual_tables: list[ExtractedTable],
+    expected_pages: list[int] | None = None,
+    actual_pages: list[int] | None = None,
 ) -> list[MetricValue]:
     """Compute GriTS metrics in a worker process."""
-    return GriTSMetric().compute(expected_tables, actual_tables)
+    return GriTSMetric().compute(
+        expected_tables,
+        actual_tables,
+        expected_pages=expected_pages,
+        actual_pages=actual_pages,
+    )
 
 
 def _compute_table_metrics_parallel(
@@ -99,15 +187,22 @@ def _compute_table_metrics_parallel(
     expected_tables: list[ExtractedTable],
     actual_tables: list[ExtractedTable],
     teds_variants: set[str] | None = None,
+    expected_pages: list[int] | None = None,
+    actual_pages: list[int] | None = None,
 ) -> tuple[list[MetricValue], list[MetricValue]]:
     """Run TEDS and GriTS in parallel via separate processes.
 
     TEDS still operates on raw markdown (unchanged). GriTS receives the
-    pre-extracted ExtractedTable lists from the shared stage.
+    pre-extracted ExtractedTable lists from the shared stage. When per-table
+    page labels are supplied, both run page-constrained matching.
     """
     with ProcessPoolExecutor(max_workers=2) as pool:
-        teds_future = pool.submit(_compute_teds_standalone, expected, actual, teds_variants)
-        grits_future = pool.submit(_compute_grits_standalone, expected_tables, actual_tables)
+        teds_future = pool.submit(
+            _compute_teds_standalone, expected, actual, teds_variants, expected_pages, actual_pages
+        )
+        grits_future = pool.submit(
+            _compute_grits_standalone, expected_tables, actual_tables, expected_pages, actual_pages
+        )
         return teds_future.result(), grits_future.result()
 
 
@@ -178,8 +273,15 @@ class ParseEvaluator(BaseEvaluator):
         Requires:
         - ProductType.PARSE
         - inference_result.output is a ParseOutput instance
-        - test_case is a ParseTestCase with either test_rules or expected_markdown,
-          or an ExtractTestCase with extract_field bbox rules.
+        - test_case is one of:
+            - ParseTestCase with test_rules or expected_markdown (classic path)
+            - ParseTestCase carrying metric-specific GT in metadata
+              (cross-page table consistency or table merging). These datasets
+              have no rules or markdown; their metadata metric is the whole
+              evaluation.
+            - ExtractTestCase whose extract_field rules carry non-empty
+              bboxes (grounding-only scoring for parse pipelines against
+              extract-field GT)
         """
         if inference_result.product_type != ProductType.PARSE:
             return False
@@ -197,11 +299,15 @@ class ParseEvaluator(BaseEvaluator):
         if test_case.qa_config is not None:
             return False
 
-        # Need either test rules or expected markdown
+        # Need test rules, expected markdown, or supported metadata-only GT.
         has_test_rules = test_case.test_rules is not None and len(test_case.test_rules) > 0
         has_expected_markdown = test_case.expected_markdown is not None
-
-        return has_test_rules or has_expected_markdown
+        metadata_metric_keys = {"cross_page_table_consistency", "table_merging"}
+        test_case_metadata = getattr(test_case, "metadata", None)
+        has_metadata_gt = isinstance(test_case_metadata, dict) and bool(
+            metadata_metric_keys.intersection(test_case_metadata)
+        )
+        return has_test_rules or has_expected_markdown or has_metadata_gt
 
     def evaluate(self, inference_result: InferenceResult, test_case: TestCase) -> EvaluationResult:
         """
@@ -213,7 +319,10 @@ class ParseEvaluator(BaseEvaluator):
         :raises ValueError: If test case is invalid or missing required data
         """
         if not self.can_evaluate(inference_result, test_case):
-            raise ValueError("Cannot evaluate: missing test_rules or expected_markdown, or invalid product type")
+            raise ValueError(
+                "Cannot evaluate: missing test_rules, expected_markdown, or supported metadata GT; "
+                "or invalid product type"
+            )
 
         if not isinstance(inference_result.output, ParseOutput):
             raise ValueError("Inference result output is not ParseOutput")
@@ -228,9 +337,13 @@ class ParseEvaluator(BaseEvaluator):
 
         # Rule-based evaluation
         if self._enable_rule_based:
-            if not test_case.test_rules:
+            parse_rules_only = [r for r in (test_case.test_rules or []) if not isinstance(r, _NON_PARSE_RULE_TYPES)]
+            if not parse_rules_only:
+                skip_reason = (
+                    "no parse rules (only layout rules present)" if test_case.test_rules else "test_rules not provided"
+                )
                 logger.debug(
-                    f"Skipping rule-based metric: test_rules not provided "
+                    f"Skipping rule-based metric: {skip_reason} "
                     f"(test_id: {test_case.test_id}, "
                     f"example_id: {inference_result.request.example_id})"
                 )
@@ -244,7 +357,7 @@ class ParseEvaluator(BaseEvaluator):
 
                 # Execute rules
                 rule_result = self._rule_metric.compute(
-                    expected=test_case.test_rules,  # type: ignore[arg-type]
+                    expected=parse_rules_only,  # type: ignore[arg-type]
                     actual=markdown_content,
                     page=None,  # Document-level for now
                     raw_output=inference_result.raw_output,
@@ -353,6 +466,7 @@ class ParseEvaluator(BaseEvaluator):
                     _TEXT_STYLING_PAIRS = [
                         ("is_bold", "is_not_bold"),
                         ("is_strikeout", "is_not_strikeout"),
+                        ("present_as_strikeout", "is_not_strikeout"),
                         ("is_sup", "is_not_sup"),
                         ("is_sub", "is_not_sub"),
                     ]
@@ -375,9 +489,9 @@ class ParseEvaluator(BaseEvaluator):
                         "bag_of_digit_percent",
                     }
                     _ORDER_TYPES = {"order"}
-                    _TITLE_TYPES = {"is_title", "title_hierarchy_percent"}
+                    _TITLE_TYPES = {"is_title", "title_hierarchy_percent", "heading_structure"}
                     _CODE_BLOCK_TYPES = {"is_code_block"}
-                    _LATEX_TYPES = {"is_latex"}
+                    _LATEX_TYPES = {"is_latex", "is_not_latex"}
 
                     _NORMALIZED_CATEGORIES: dict[str, set[str]] = {
                         "normalized_text_styling": _TEXT_STYLING_TYPES,
@@ -411,13 +525,7 @@ class ParseEvaluator(BaseEvaluator):
                                 neg_score = (
                                     sum(_rule_score(r) for r in neg_rules) / len(neg_rules) if neg_rules else 1.0
                                 )
-                                beta = 0.5
-                                if pos_score + neg_score > 0:
-                                    cat_value = (
-                                        (1 + beta**2) * pos_score * neg_score / (beta**2 * pos_score + neg_score)
-                                    )
-                                else:
-                                    cat_value = 0.0
+                                cat_value = _styling_f_beta_score(pos_score, neg_score)
                                 _cat_values[metric_name] = cat_value
                                 metrics.append(
                                     MetricValue(
@@ -559,10 +667,31 @@ class ParseEvaluator(BaseEvaluator):
                 )
                 metrics.append(similarity_result)
 
-            # Table similarity metrics (TEDS and GriTS)
+            # Table similarity metrics (TEDS and GriTS).
+            # Page-aware GT datasets source BOTH sides' tables from their separate
+            # pages — GT from ``metadata["expected_pages"]`` and predictions from
+            # ``output.pages`` — so each table's page is intrinsic and matching is
+            # constrained to within-page. Every other dataset stays document-global
+            # (the whole document is effectively a single page).
+            expected_labels: list[int] | None = None
+            actual_labels: list[int] | None = None
+            table_expected_markdown = test_case.expected_markdown
+            table_actual_markdown = actual_markdown
+            gt_pages_field = (getattr(test_case, "metadata", None) or {}).get("expected_pages")
+            if gt_pages_field:
+                predicted = _predicted_markdown_and_pages(inference_result.output)
+                if predicted is not None:
+                    table_actual_markdown, actual_labels = predicted
+                    table_expected_markdown, expected_labels = _gt_markdown_and_pages(gt_pages_field)
+                else:
+                    logger.warning(
+                        "Page-aware GT but output.pages is empty; matching tables document-globally (test_id: %s).",
+                        test_case.test_id,
+                    )
+
             # Normalize predicted tables: merge preceding titles into tables
-            # when GT has full-width colspan title rows
-            actual_for_tables = merge_preceding_titles_into_tables(test_case.expected_markdown, actual_markdown)
+            # when GT has full-width colspan title rows.
+            actual_for_tables = merge_preceding_titles_into_tables(table_expected_markdown, table_actual_markdown)
 
             # Check for HTML tables once (used by both TEDS and GriTS)
             has_expected_tables = _has_html_tables(test_case.expected_markdown)
@@ -573,11 +702,13 @@ class ParseEvaluator(BaseEvaluator):
                     # Both sides have tables — compute table metrics
                     metrics.extend(
                         self._compute_table_similarity_metrics(
-                            test_case.expected_markdown,
+                            table_expected_markdown,
                             actual_for_tables,
                             allow_splitting_ambiguous_merged_tables=test_case.allow_splitting_ambiguous_merged_tables,
                             trm_unsupported=test_case.trm_unsupported,
                             max_top_title_rows=test_case.max_top_title_rows,
+                            expected_pages=expected_labels,
+                            actual_pages=actual_labels,
                         )
                     )
                 else:
@@ -732,6 +863,27 @@ class ParseEvaluator(BaseEvaluator):
                     f"example_id: {inference_result.request.example_id})"
                 )
 
+        # Cross-page table-consistency metric (gated on GT in test-case metadata;
+        # normal parse datasets carry no such metadata and are unaffected).
+        cpc_meta = getattr(test_case, "metadata", None)
+        if isinstance(cpc_meta, dict) and "cross_page_table_consistency" in cpc_meta:
+            from parse_bench.evaluation.metrics.parse.cross_page_table_consistency import (
+                compute_cross_page_table_metrics,
+            )
+
+            metrics.extend(
+                compute_cross_page_table_metrics(inference_result.output, cpc_meta["cross_page_table_consistency"])
+            )
+
+        # Table-merging (junction merge) metric — same metadata-keyed gating; a
+        # table_merging dataset carries metadata["table_merging"] and no rules.
+        if isinstance(cpc_meta, dict) and "table_merging" in cpc_meta:
+            from parse_bench.evaluation.metrics.parse.table_merging import (
+                compute_table_merging_metrics,
+            )
+
+            metrics.extend(compute_table_merging_metrics(inference_result.output, cpc_meta["table_merging"]))
+
         stats = build_operational_stats(inference_result)
 
         return EvaluationResult(
@@ -884,6 +1036,8 @@ class ParseEvaluator(BaseEvaluator):
         allow_splitting_ambiguous_merged_tables: bool = False,
         trm_unsupported: bool = False,
         max_top_title_rows: int = 1,
+        expected_pages: list[int] | None = None,
+        actual_pages: list[int] | None = None,
     ) -> list[MetricValue]:
         """Compute enabled table similarity metrics.
 
@@ -891,6 +1045,11 @@ class ParseEvaluator(BaseEvaluator):
         enabled, since they are independent CPU-bound computations.
         Falls back to sequential execution if parallel dispatch fails or
         only one metric is enabled.
+
+        When ``expected_pages`` / ``actual_pages`` are supplied (per-table page
+        labels for a multi-page table dataset), GriTS/TEDS match tables only
+        within the same page; everything falls back to global matching if the
+        labels turn out inconsistent with the table counts.
         """
         grits_results: list[MetricValue] = []
 
@@ -908,6 +1067,25 @@ class ParseEvaluator(BaseEvaluator):
         # that asymmetry is intentional.
         if allow_splitting_ambiguous_merged_tables:
             actual_tables, _ = split_ambiguous_merged_pred(expected_tables, actual_tables)
+
+        # Validate page labels align with the table lists GriTS/TEDS consume.
+        # The splitter can change the predicted count; when it does (or the
+        # labels are missing/mismatched) disable page-blocking for this doc.
+        if expected_pages is not None and (
+            actual_pages is None
+            or len(expected_pages) != len(expected_tables)
+            or len(actual_pages) != len(actual_tables)
+        ):
+            logger.warning(
+                "Page-constrained table matching disabled: page labels inconsistent "
+                "with table counts (expected_pages=%s vs %d GT tables, actual_pages=%s vs %d pred tables).",
+                len(expected_pages),
+                len(expected_tables),
+                None if actual_pages is None else len(actual_pages),
+                len(actual_tables),
+            )
+            expected_pages = None
+            actual_pages = None
 
         # Title-row stripping: detect leading <td> title rows and top <th>
         # spanning titles, physically remove them from each table's grid,
@@ -948,6 +1126,8 @@ class ParseEvaluator(BaseEvaluator):
                     expected_tables,
                     actual_tables,
                     teds_variants=self._teds_metric.variants,
+                    expected_pages=expected_pages,
+                    actual_pages=actual_pages,
                 )
                 results: list[MetricValue] = list(teds_results)
                 for r in grits_results:
@@ -986,9 +1166,21 @@ class ParseEvaluator(BaseEvaluator):
         # Sequential fallback (or only one metric enabled, or ref_grits active)
         results: list[MetricValue] = []  # type: ignore[no-redef]
         if self._enable_teds:
-            results.extend(self._teds_metric.compute(expected=expected, actual=actual))
+            results.extend(
+                self._teds_metric.compute(
+                    expected=expected,
+                    actual=actual,
+                    expected_pages=expected_pages,
+                    actual_pages=actual_pages,
+                )
+            )
         if self._enable_grits:
-            grits_results = self._grits_metric.compute(expected_tables, actual_tables)
+            grits_results = self._grits_metric.compute(
+                expected_tables,
+                actual_tables,
+                expected_pages=expected_pages,
+                actual_pages=actual_pages,
+            )
             for r in grits_results:
                 if r.metadata is None:
                     r.metadata = {}

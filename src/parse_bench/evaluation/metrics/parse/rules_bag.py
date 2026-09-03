@@ -17,7 +17,11 @@ from parse_bench.evaluation.metrics.parse.rules_base import (
     _unescape_html_entities,
 )
 from parse_bench.evaluation.metrics.parse.test_types import TestType
-from parse_bench.evaluation.metrics.parse.utils import normalize_text
+from parse_bench.evaluation.metrics.parse.utils import (
+    NON_WORD_CHAR_CLASS,
+    WORD_CHAR_CLASS,
+    normalize_text,
+)
 from parse_bench.test_cases.parse_rule_schemas import (
     ParseBagOfDigitPercentRule,
     ParseExtraContentRule,
@@ -58,12 +62,13 @@ def _is_cjk_char(ch: str) -> bool:
     return any(lo <= ch <= hi for lo, hi in _CJK_RANGES)
 
 
-# Unicode-aware word tokenization: matches sequences of Unicode letters
-# and/or digits (using Unicode categories L and N), properly handling
-# accented characters, CJK, etc.
-# Aligned with JS annotation tool which uses /[\p{L}\p{N}]+/gu — consecutive
-# CJK characters stay grouped as a single token.
-_UNICODE_WORD_PATTERN = re.compile(r"[\w]+", re.UNICODE)
+# Unicode-aware word tokenization: matches sequences of Unicode letters,
+# digits and combining marks, properly handling accented characters, CJK, etc.
+# Combining marks are word characters: Python's ``\w`` excludes them, which cut
+# Thai/Indic words at every vowel sign, tone mark and virama.
+# Aligned with the JS annotation tool, which uses /[\p{L}\p{M}\p{N}]+/gu —
+# consecutive CJK characters stay grouped as a single token.
+_UNICODE_WORD_PATTERN = re.compile(rf"{WORD_CHAR_CLASS}+", re.UNICODE)
 
 
 def _tokenize_unicode_words(text: str, min_length: int = 2) -> list[str]:
@@ -108,11 +113,15 @@ def _word_boundary_count(word: str, text: str) -> int:
 
     Uses Unicode-aware boundaries: for CJK words (single or multi-char),
     count raw substring occurrences.  For Latin words, uses ``\\b``.
+
+    Combining marks count as word characters, so a marked word is not matched
+    by a prefix of itself that stops just before one of its marks.
     """
     if any(_is_cjk_char(ch) for ch in word):
         # CJK: count raw substring occurrences (no word boundary concept)
         return text.count(word)
-    return len(re.findall(r"(?<!\w)" + re.escape(word) + r"(?!\w)", text, re.UNICODE))
+    pattern = rf"(?<!{WORD_CHAR_CLASS}){re.escape(word)}(?!{WORD_CHAR_CLASS})"
+    return len(re.findall(pattern, text, re.UNICODE))
 
 
 class SentenceBagRule(ParseTestRule):
@@ -136,7 +145,9 @@ class SentenceBagRule(ParseTestRule):
     _SENTENCE_SPLIT_PATTERN = re.compile(
         r"\n+|(?<!\d)\.(?!\d)|[!?]+|[\u3002\u3001\uFF0C\uFF01\uFF1F\uFF1B\u2026\u2025\u22EF]+"
     )
-    _BOUNDARY_PUNCT_PATTERN = re.compile(r"^[^\w]+|[^\w]+$")
+    # Combining marks are word characters here too: without them a trailing Thai
+    # tone mark reads as punctuation and gets trimmed off the last word.
+    _BOUNDARY_PUNCT_PATTERN = re.compile(rf"^{NON_WORD_CHAR_CLASS}+|{NON_WORD_CHAR_CLASS}+$")
     # Matches markdown image tags: ![alt text](url) — stripped entirely so alt text
     # does not produce spurious sentence/word matches.
     _MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\([^)]*\)")
@@ -242,7 +253,8 @@ class SentenceBagRule(ParseTestRule):
         plain ``str.count`` is used for performance.
         """
         if len(sentence) < 20:
-            return len(re.findall(r"(?<!\w)" + re.escape(sentence) + r"(?!\w)", full_text))
+            pattern = rf"(?<!{WORD_CHAR_CLASS}){re.escape(sentence)}(?!{WORD_CHAR_CLASS})"
+            return len(re.findall(pattern, full_text))
         return full_text.count(sentence)
 
     def _extract_normalized_sentences(self, md_content: str, include_table_cells: bool = False) -> Counter[str]:
@@ -686,6 +698,7 @@ class WordBagRule(ParseTestRule):
         """
         md_content = _strip_fenced_code_blocks(md_content)
         md_content = _strip_and_replace_latex(md_content)
+        md_content = SentenceBagRule._MARKDOWN_IMAGE_PATTERN.sub(" ", md_content)
         md_content = _augment_with_table_cell_text(md_content)
         normalized_content = normalize_text(md_content)
         unescaped_content = _unescape_html_entities(normalized_content)
@@ -720,6 +733,7 @@ class WordBagRule(ParseTestRule):
         """
         md_content = _strip_fenced_code_blocks(md_content)
         md_content = _strip_and_replace_latex(md_content)
+        md_content = SentenceBagRule._MARKDOWN_IMAGE_PATTERN.sub(" ", md_content)
         if include_table_cells:
             md_content = _augment_with_table_cell_text(md_content)
         else:

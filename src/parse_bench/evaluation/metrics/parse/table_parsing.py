@@ -22,6 +22,31 @@ _SUBSCRIPT_DIGITS = "\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u208
 _ASCII_TO_SUPERSCRIPT = dict(zip("0123456789", _SUPERSCRIPT_DIGITS, strict=True))
 _ASCII_TO_SUBSCRIPT = dict(zip("0123456789", _SUBSCRIPT_DIGITS, strict=True))
 
+# The content-preserving inline styling elements, mirroring
+# ``_INLINE_STYLE_MARKER_RUN_RE`` in ``utils.py``.  ``sup``/``sub`` are excluded
+# for the same reason they are there: they are handled by _sup_sub_to_unicode.
+_INLINE_STYLE_TAGS = frozenset({"b", "i", "u", "s", "del", "strike", "ins", "mark", "span"})
+
+
+def _separate_abutting_inline_markers(cell: Tag) -> None:
+    """Insert a space between two abutting inline styling elements.
+
+    ``get_text()`` concatenates text nodes with no separator, so a byte-faithful
+    ``<u>105</u><s>103</s>`` extracts as ``105103`` and the two page numbers are
+    welded into one unmatchable token.  This is the cell-text counterpart of
+    ``_INLINE_STYLE_MARKER_RUN_RE`` in ``utils.py``: the whole-document path
+    folds such a run to a space, but a cell's text never reaches that path with
+    its markup intact once tables are replaced by their cell text.
+
+    A LONE marker still joins, exactly as in ``normalize_text`` - inline tags are
+    genuinely used intra-word (Japanese ``<u>`` opening mid-sentence) - so only
+    the boundary BETWEEN two marker elements is separated.
+    """
+    for tag in cell.find_all(lambda t: t.name in _INLINE_STYLE_TAGS):
+        nxt = tag.next_sibling
+        if isinstance(nxt, Tag) and nxt.name in _INLINE_STYLE_TAGS:
+            tag.insert_after(" ")
+
 
 def _sup_sub_to_unicode(cell: Tag) -> None:
     """Convert ``<sup>``/``<sub>`` digit content to Unicode equivalents.
@@ -58,6 +83,31 @@ class TableData:
     # answer "is (row, col) from a <th>?" without conflating span expansion
     # with hierarchical header levels in col_headers.
     header_cells: set[tuple[int, int]] = field(default_factory=set)
+    # Grid positions that only exist because a cell was expanded across a
+    # rowspan/colspan.  The originating position is *not* included, so callers
+    # that must visit each authored cell exactly once (e.g. bag-of-word
+    # extraction) can skip these without losing the cell itself.
+    spanned_cells: set[tuple[int, int]] = field(default_factory=set)
+    # Rows the source HTML placed inside an explicit <thead>. A subset of
+    # ``header_rows``, which also absorbs any row merely *containing* a <th> —
+    # including body rows whose label cell is a <th> row header. Keeping the
+    # authored <thead> separate lets header analysis tell "the document says
+    # this is part of the column-header block" from "this row happens to hold
+    # a <th>".
+    thead_rows: set[int] = field(default_factory=set)
+    # Rows the source HTML placed inside an explicit <tbody>. This preserves
+    # the distinction between an implicit top-level <th> header block and a
+    # body row that happens to use <th> for its row label.
+    tbody_rows: set[int] = field(default_factory=set)
+    # Rows the source HTML placed inside an explicit <tfoot>. Footer cells are
+    # never column headers for a chart value, even when malformed markup puts
+    # the footer before the body.
+    tfoot_rows: set[int] = field(default_factory=set)
+    # Rows containing an explicit HTML scope declaration. This preserves the
+    # author’s column-versus-row intent without changing generic <th> parsing.
+    column_scope_rows: set[int] = field(default_factory=set)
+    row_scope_rows: set[int] = field(default_factory=set)
+    caption: str = field(default="")  # <caption> text, which lives inside the table but outside any cell
     context_before: str = field(default="")  # Text before table (for chart titles)
     context_after: str = field(default="")  # Text after table (for captions)
 
@@ -266,6 +316,26 @@ def parse_html_tables(html_content: str) -> list[TableData]:
             nested.replace_with(nested.get_text(" ", strip=True))
 
         rows = table.find_all(["tr"])
+        # BeautifulSoup compares Tag instances structurally, so identical
+        # ``<tr>`` elements can compare equal. Provenance needs each source
+        # row's physical position, not the first structurally equal row.
+        row_indices = {id(row): row_idx for row_idx, row in enumerate(rows)}
+
+        # ``scope=colgroup`` and ``scope=rowgroup`` refer to the authored
+        # structural group, not merely to the cell's explicit span. Preserve
+        # those groups here so scoped headers can be expanded semantically
+        # without pretending that the source cell itself had a larger span.
+        colgroup_ranges: list[range] = []
+        next_col = 0
+        for colgroup in table.find_all("colgroup", recursive=False):
+            cols = colgroup.find_all("col", recursive=False)
+            width = 0
+            for col in cols:
+                width += int(col.get("span", 1))  # type: ignore[arg-type]
+            if not cols:
+                width = int(colgroup.get("span", 1))  # type: ignore[arg-type]
+            colgroup_ranges.append(range(next_col, next_col + width))
+            next_col += width
 
         # Extract <caption> text if present (used as chart title context)
         caption_elem = table.find("caption")
@@ -278,17 +348,37 @@ def parse_html_tables(html_content: str) -> list[TableData]:
         # Maps row index to all header cells to its left
         row_headers: dict[int, list[tuple[int, str]]] = {}
 
+        row_group_rows: dict[int, set[int]] = {}
+
         # Find rows inside thead tags - these are definitely header rows
-        thead = table.find("thead")
-        if thead:
-            thead_rows = thead.find_all("tr")
-            for tr in thead_rows:
-                if tr in rows:
-                    header_rows.add(rows.index(tr))
+        thead_row_indices: set[int] = set()
+        for thead in table.find_all("thead", recursive=False):
+            section_rows = {row_indices[id(tr)] for tr in thead.find_all("tr") if id(tr) in row_indices}
+            thead_row_indices |= section_rows
+            for row_idx in section_rows:
+                row_group_rows[row_idx] = section_rows
+        header_rows |= thead_row_indices
+
+        tbody_row_indices: set[int] = set()
+        for tbody in table.find_all("tbody", recursive=False):
+            section_rows = {row_indices[id(tr)] for tr in tbody.find_all("tr") if id(tr) in row_indices}
+            tbody_row_indices |= section_rows
+            for row_idx in section_rows:
+                row_group_rows[row_idx] = section_rows
+
+        tfoot_row_indices: set[int] = set()
+        for tfoot in table.find_all("tfoot", recursive=False):
+            section_rows = {row_indices[id(tr)] for tr in tfoot.find_all("tr") if id(tr) in row_indices}
+            tfoot_row_indices |= section_rows
+            for row_idx in section_rows:
+                row_group_rows[row_idx] = section_rows
 
         # Initialize a grid to track filled cells due to rowspan/colspan
         cell_grid = {}
         header_cells: set[tuple[int, int]] = set()
+        column_scope_rows: set[int] = set()
+        row_scope_rows: set[int] = set()
+        spanned_cells: set[tuple[int, int]] = set()
         col_span_info = {}  # Tracks which columns contain headers
         row_span_info = {}  # Tracks which rows contain headers
 
@@ -311,15 +401,23 @@ def parse_html_tables(html_content: str) -> list[TableData]:
                 # so that "Name<sup>1</sup>" becomes "Name¹", matching the
                 # representation when sources already use Unicode superscripts.
                 _sup_sub_to_unicode(cell)
+                # Two abutting inline markers are a token boundary, not a join.
+                _separate_abutting_inline_markers(cell)
                 cell_text = cell.get_text().strip()
 
                 # Check if this is a header cell
                 is_header = cell.name == "th"
+                scope = str(cell.get("scope", "")).lower()
                 if is_header:
                     header_rows.add(row_idx)
                     header_cols.add(col_idx)
                     col_span_info[col_idx] = True
                     row_span_info[row_idx] = True
+                    if row_idx not in tfoot_row_indices:
+                        if scope in {"col", "colgroup"}:
+                            column_scope_rows.add(row_idx)
+                        elif scope in {"row", "rowgroup"}:
+                            row_scope_rows.add(row_idx)
 
                 # Get rowspan and colspan
                 rowspan = int(cell.get("rowspan", 1))  # type: ignore[arg-type]
@@ -329,22 +427,35 @@ def parse_html_tables(html_content: str) -> list[TableData]:
                 for r in range(row_idx, row_idx + rowspan):
                     for c in range(col_idx, col_idx + colspan):
                         cell_grid[(r, c)] = cell_text
+                        if (r, c) != (row_idx, col_idx):
+                            spanned_cells.add((r, c))
                         if is_header:
                             header_cells.add((r, c))
 
                 # Update col_headers and row_headers if this is a header
-                if is_header:
+                if is_header and row_idx not in tfoot_row_indices:
                     # Add to col_headers for all columns this cell spans
-                    for c in range(col_idx, col_idx + colspan):
-                        if c not in col_headers:
-                            col_headers[c] = []
-                        col_headers[c].append((row_idx, cell_text))
+                    if scope not in {"row", "rowgroup"}:
+                        scoped_columns = range(col_idx, col_idx + colspan)
+                        if scope == "colgroup":
+                            scoped_columns = next(
+                                (group for group in colgroup_ranges if col_idx in group),
+                                scoped_columns,
+                            )
+                        for c in scoped_columns:
+                            if c not in col_headers:
+                                col_headers[c] = []
+                            col_headers[c].append((row_idx, cell_text))
 
                     # Add to row_headers for all rows this cell spans
-                    for r in range(row_idx, row_idx + rowspan):
-                        if r not in row_headers:
-                            row_headers[r] = []
-                        row_headers[r].append((col_idx, cell_text))
+                    if scope not in {"col", "colgroup"}:
+                        scoped_rows = set(range(row_idx, row_idx + rowspan))
+                        if scope == "rowgroup":
+                            scoped_rows = row_group_rows.get(row_idx, scoped_rows)
+                        for r in scoped_rows:
+                            if r not in row_headers:
+                                row_headers[r] = []
+                            row_headers[r].append((col_idx, cell_text))
 
                 col_idx += colspan
 
@@ -421,6 +532,13 @@ def parse_html_tables(html_content: str) -> list[TableData]:
                 col_headers=col_headers,
                 row_headers=row_headers,
                 header_cells=header_cells,
+                spanned_cells=spanned_cells,
+                thead_rows=thead_row_indices,
+                tbody_rows=tbody_row_indices,
+                tfoot_rows=tfoot_row_indices,
+                column_scope_rows=column_scope_rows,
+                row_scope_rows=row_scope_rows,
+                caption=caption_text,
                 context_before=context_before,
                 context_after=context_after,
             )

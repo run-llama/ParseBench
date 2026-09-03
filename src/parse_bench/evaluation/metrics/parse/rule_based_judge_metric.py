@@ -20,7 +20,7 @@ from parse_bench.evaluation.metrics.parse.llm_normalization.postprocess import (
 from parse_bench.evaluation.metrics.parse.rule_based_metric import RuleBasedMetric
 from parse_bench.schemas.evaluation import MetricValue
 
-_CHART_TYPES = {"chart_data_point", "chart_data_array_labels"}
+_CHART_TYPES = {"chart_data_point", "chart_data_array_labels", "chart_data_array_data"}
 
 
 class RuleBasedJudgeMetric(RuleBasedMetric):
