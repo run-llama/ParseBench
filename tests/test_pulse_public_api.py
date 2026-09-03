@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pytest
 
-from parse_bench.inference.pipelines import get_pipeline
 from parse_bench.inference.providers.base import ProviderPermanentError
 from parse_bench.inference.providers.parse.pulse import (
     PulseProvider,
