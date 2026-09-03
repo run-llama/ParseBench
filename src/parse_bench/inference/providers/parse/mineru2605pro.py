@@ -9,12 +9,13 @@ the official client flags (image_analysis=True,
 enable_table_formula_eq_wrap=True), so image and chart blocks are
 recognized instead of silently dropped.
 
-API format: POST {server_url} with {"image_base64": "..."} →
+API format: POST {server_url} with
+    {"image_base64": "...", "custom_prompt": "..."} →
     {"markdown": "...", "blocks": [...], "image_width", "image_height",
      "timing": {...}, "status": "success"}
 
-Each block is: {"type": str, "bbox": [x1, y1, x2, y2] normalized [0, 1],
-"angle", "content", ["merge_prev"]}.
+Each block is: {"type": str, "bbox": [x1,y1,x2,y2] normalized [0,1], "angle",
+"content", ["merge_prev"]}.
 """
 
 import asyncio
@@ -59,6 +60,8 @@ class MinerU2605ProProvider(Provider):
           supplied via the ``MINERU2605PRO_SERVER_URL`` environment variable.
         - timeout (int, default=600): request timeout seconds
         - dpi (int, default=150): PDF → image render DPI
+        - prompt_appendix (str, optional): Extra instruction appended to
+          MinerU's internal stage-two recognition prompts.
     """
 
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
@@ -72,17 +75,21 @@ class MinerU2605ProProvider(Provider):
         self._server_url: str = str(server_url)
         self._timeout = self.base_config.get("timeout", 600)
         self._dpi = self.base_config.get("dpi", 150)
+        self._prompt_appendix = str(self.base_config.get("prompt_appendix") or "").strip()
 
-    def _pdf_to_image(self, pdf_path: Path) -> bytes:
+    def _pdf_to_images(self, pdf_path: Path) -> list[bytes]:
         try:
             from pdf2image import convert_from_path
 
             images = convert_from_path(pdf_path, dpi=self._dpi)
             if not images:
                 raise ProviderPermanentError(f"No pages found in PDF: {pdf_path}")
-            buf = io.BytesIO()
-            images[0].save(buf, format="PNG")
-            return buf.getvalue()
+            encoded: list[bytes] = []
+            for img in images:
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                encoded.append(buf.getvalue())
+            return encoded
         except ImportError as e:
             raise ProviderPermanentError("pdf2image is required.") from e
         except Exception as e:
@@ -99,6 +106,8 @@ class MinerU2605ProProvider(Provider):
     async def _call_api(self, session: aiohttp.ClientSession, image_b64: str) -> dict[str, Any]:
         api_url = self._server_url.rstrip("/")
         payload: dict[str, str] = {"image_base64": image_b64}
+        if self._prompt_appendix:
+            payload["custom_prompt"] = self._prompt_appendix
 
         async with session.post(
             api_url,
@@ -121,6 +130,25 @@ class MinerU2605ProProvider(Provider):
                 raise ProviderPermanentError("Empty markdown response from API")
             return result
 
+    async def _run_inference_pages_async(self, pages: list[bytes]) -> dict[str, Any]:
+        """Run inference per page image in one session.
+
+        Single-page inputs keep the legacy raw_output shape; multi-page inputs
+        add ``page_results`` (one legacy-shaped dict per page) which
+        ``normalize`` reassembles in page order. The previous implementation
+        sent only ``images[0]``, silently parsing just the cover page of
+        multi-page documents.
+        """
+        results: list[dict[str, Any]] = []
+        for image_bytes in pages:
+            results.append(await self._run_inference_async(image_bytes))
+        first = results[0]
+        if len(results) == 1:
+            return first
+        merged = dict(first)
+        merged["page_results"] = results
+        return merged
+
     async def _run_inference_async(self, image_bytes: bytes) -> dict[str, Any]:
         image_b64 = base64.b64encode(image_bytes).decode()
         async with aiohttp.ClientSession() as session:
@@ -134,6 +162,7 @@ class MinerU2605ProProvider(Provider):
             "_config": {
                 "server_url": self._server_url,
                 "dpi": self._dpi,
+                "prompt_appendix": self._prompt_appendix,
             },
         }
 
@@ -151,16 +180,16 @@ class MinerU2605ProProvider(Provider):
 
         suffix = file_path.suffix.lower()
         if suffix == ".pdf":
-            image_bytes = self._pdf_to_image(file_path)
+            page_images = self._pdf_to_images(file_path)
         elif suffix in (".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp"):
-            image_bytes = self._read_image(file_path)
+            page_images = [self._read_image(file_path)]
         else:
             raise ProviderPermanentError(
                 f"Unsupported file type: {suffix}. Supported: .pdf, .png, .jpg, .jpeg, .webp, .tiff, .bmp"
             )
 
         try:
-            raw_output = asyncio.run(self._run_inference_async(image_bytes))
+            raw_output = asyncio.run(self._run_inference_pages_async(page_images))
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
             return RawInferenceResult(
@@ -193,6 +222,7 @@ class MinerU2605ProProvider(Provider):
                     "_config": {
                         "server_url": self._server_url,
                         "dpi": self._dpi,
+                        "prompt_appendix": self._prompt_appendix,
                     },
                 },
                 started_at=started_at,
@@ -289,6 +319,7 @@ class MinerU2605ProProvider(Provider):
         image_width: int,
         image_height: int,
         markdown: str,
+        page_number: int = 1,
     ) -> list[ParseLayoutPageIR]:
         if not blocks or not image_width or not image_height:
             return []
@@ -301,6 +332,7 @@ class MinerU2605ProProvider(Provider):
                 continue
 
             x1, y1, x2, y2 = bbox
+            # Clamp to [0,1] defensively
             x1 = max(0.0, min(1.0, float(x1)))
             y1 = max(0.0, min(1.0, float(y1)))
             x2 = max(0.0, min(1.0, float(x2)))
@@ -343,7 +375,7 @@ class MinerU2605ProProvider(Provider):
 
         return [
             ParseLayoutPageIR(
-                page_number=1,
+                page_number=page_number,
                 width=float(image_width),
                 height=float(image_height),
                 md=markdown,
@@ -357,16 +389,27 @@ class MinerU2605ProProvider(Provider):
                 f"MinerU2605ProProvider only supports PARSE product type, got {raw_result.product_type}"
             )
 
-        markdown = raw_result.raw_output.get("markdown", "")
-        if markdown:
-            markdown = self._close_unclosed_table_tags(markdown)
-            markdown = self._promote_first_row_to_thead(markdown)
-            markdown = self._sanitize_html_attributes(markdown)
+        page_results = raw_result.raw_output.get("page_results")
+        if not isinstance(page_results, list) or not page_results:
+            page_results = [raw_result.raw_output]
 
-        blocks = raw_result.raw_output.get("blocks", [])
-        image_width = raw_result.raw_output.get("image_width", 0)
-        image_height = raw_result.raw_output.get("image_height", 0)
-        layout_pages = self._build_layout_pages(blocks, image_width, image_height, markdown)
+        page_markdowns: list[str] = []
+        layout_pages: list[ParseLayoutPageIR] = []
+        for page_idx, page_raw in enumerate(page_results, start=1):
+            page_md = page_raw.get("markdown", "")
+            if page_md:
+                page_md = self._close_unclosed_table_tags(page_md)
+                page_md = self._promote_first_row_to_thead(page_md)
+                page_md = self._sanitize_html_attributes(page_md)
+            blocks = page_raw.get("blocks", [])
+            image_width = page_raw.get("image_width", 0)
+            image_height = page_raw.get("image_height", 0)
+            layout_pages.extend(
+                self._build_layout_pages(blocks, image_width, image_height, page_md, page_number=page_idx)
+            )
+            if page_md:
+                page_markdowns.append(page_md)
+        markdown = "\n\n".join(page_markdowns)
 
         output = ParseOutput(
             task_type="parse",

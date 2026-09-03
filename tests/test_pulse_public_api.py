@@ -1,6 +1,9 @@
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
+from parse_bench.inference.providers.base import ProviderPermanentError
 from parse_bench.inference.providers.parse.pulse import (
     PulseProvider,
     _build_layout_pages,
@@ -18,10 +21,10 @@ class _FakeResponse:
     status_code = 200
     text = ""
 
-    def __init__(self, payload: dict) -> None:
+    def __init__(self, payload: object) -> None:
         self._payload = payload
 
-    def json(self) -> dict:
+    def json(self) -> object:
         return self._payload
 
 
@@ -206,7 +209,14 @@ def test_run_inference_records_cost_from_configured_credits(tmp_path, monkeypatc
     monkeypatch.setattr(
         provider,
         "_extract",
-        lambda _: {"markdown": "ok", "bounding_boxes": {}, "plan_info": {"pages_used": 2}},
+        # plan_info.pages_used is the ACCOUNT-cumulative counter and must be ignored;
+        # cost comes from the document's own page_count.
+        lambda _: {
+            "markdown": "ok",
+            "bounding_boxes": {},
+            "page_count": 2,
+            "plan_info": {"pages_used": 4321},
+        },
     )
     pipeline = PipelineSpec(
         pipeline_name="pulse_ultra_2",
@@ -313,3 +323,56 @@ def test_build_layout_pages_normalizes_flat_and_grouped_bbox_outputs() -> None:
     assert grouped_pages[0].items[0].type == "table"
     assert grouped_pages[0].items[0].bbox.label == "Table"
     assert grouped_pages[0].items[0].value == "Name Value"
+
+
+def test_run_inference_ignores_plan_info_and_falls_back_to_num_pages(tmp_path, monkeypatch) -> None:
+    source = tmp_path / "doc.pdf"
+    source.write_bytes(b"%PDF-1.4\n")
+    provider = _provider({"credits_per_page": 10})
+    monkeypatch.setattr(
+        provider,
+        "_extract",
+        lambda _: {"markdown": "ok", "bounding_boxes": {}, "num_pages": 3, "plan-info": {"pages_used": 9999}},
+    )
+    pipeline = PipelineSpec(pipeline_name="pulse", provider_name="pulse", product_type=ProductType.PARSE, config={})
+    request = InferenceRequest(example_id="doc", source_file_path=str(source), product_type=ProductType.PARSE)
+
+    result = provider.run_inference(pipeline, request)
+
+    assert result.raw_output["num_pages"] == 3
+    assert result.raw_output["cost_usd"] == pytest.approx(0.45)
+
+
+def test_run_inference_without_page_count_records_no_cost(tmp_path, monkeypatch) -> None:
+    source = tmp_path / "doc.pdf"
+    source.write_bytes(b"%PDF-1.4\n")
+    provider = _provider({"credits_per_page": 10})
+    monkeypatch.setattr(
+        provider,
+        "_extract",
+        lambda _: {"markdown": "ok", "bounding_boxes": {}, "plan_info": {"pages_used": 4321}},
+    )
+    pipeline = PipelineSpec(pipeline_name="pulse", provider_name="pulse", product_type=ProductType.PARSE, config={})
+    request = InferenceRequest(example_id="doc", source_file_path=str(source), product_type=ProductType.PARSE)
+
+    result = provider.run_inference(pipeline, request)
+
+    assert "cost_usd" not in result.raw_output
+    assert "num_pages" not in result.raw_output
+
+
+def test_fetch_large_result_rejects_non_object_payload(monkeypatch) -> None:
+    provider = _provider()
+    monkeypatch.setattr(
+        "parse_bench.inference.providers.parse.pulse.requests.get",
+        lambda *_, **__: _FakeResponse(["not", "an", "object"]),
+    )
+    with pytest.raises(ProviderPermanentError, match="non-object"):
+        provider._resolve_large_result({"is_url": True, "url": "https://example.invalid/result.json"}, "extract")
+
+
+def test_iter_bbox_elements_coerces_non_string_content() -> None:
+    pages = _build_layout_pages(
+        {"ordered_elements": [{"source_category": "Text", "bbox": [100, 200, 900, 250], "page": 1, "text": 42}]}
+    )
+    assert pages[0].items[0].value == "42"

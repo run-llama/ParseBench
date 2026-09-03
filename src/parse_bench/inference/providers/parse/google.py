@@ -79,8 +79,14 @@ USER_PROMPT = (
 # Gemini pricing: USD per million tokens (input, output)
 # Thinking tokens are billed at the output token rate.
 # Source: https://ai.google.dev/gemini-api/docs/pricing (2026-03-25)
+# gemini-3.7-flash is introductory pricing through 2026-12-31; it rises to
+# (1.50, 7.50) on 2027-01-01.
+# gemini-3.8-flash (preview id "skimaki") launches 2026-09-02 with the same
+# discounted structure as 3.7-flash (Google DeepMind partner note, 2026-08-31).
 _GEMINI_PRICING_PER_M: dict[str, tuple[float, float]] = {
     # model-prefix: (input_per_M, output_per_M)
+    "gemini-3.7-flash": (0.75, 3.75),
+    "gemini-3.8-flash": (0.75, 3.75),
     "gemini-3.6-flash": (1.50, 7.50),
     "gemini-3.5-flash": (1.50, 9.00),
     "gemini-3.5-flash-lite": (0.30, 2.50),
@@ -89,8 +95,13 @@ _GEMINI_PRICING_PER_M: dict[str, tuple[float, float]] = {
     "gemini-2.5-flash": (0.30, 2.50),
     "gemini-2.5-flash-lite": (0.10, 0.40),
     "gemini-2.0-flash": (0.10, 0.40),
+    "gemini-2.0-flash-lite": (0.075, 0.30),
     "gemini-2.5-pro": (1.25, 10.00),
     "gemini-3.1-pro": (2.00, 12.00),
+    # Legacy 1.5 series (≤128k prompt tier; Gemini 1.5 prices were tiered above 128k)
+    "gemini-1.5-pro": (1.25, 5.00),
+    "gemini-1.5-flash": (0.075, 0.30),
+    "gemini-1.5-flash-8b": (0.0375, 0.15),
 }
 
 # Gemini context caching pricing: USD per million tokens / per million token-hours.
@@ -99,11 +110,61 @@ _GEMINI_CONTEXT_CACHE_PRICING_PER_M: dict[str, tuple[float, float]] = {
     # model-prefix: (cache_hit_per_M, storage_per_M_token_hour)
     "gemini-3-flash": (0.05, 1.00),
     "gemini-3.1-flash-lite": (0.025, 1.00),
+    "gemini-3.5-flash": (0.15, 1.00),
+    "gemini-3.5-flash-lite": (0.03, 1.00),
+    "gemini-3.6-flash": (0.15, 1.00),
     "gemini-2.5-flash": (0.03, 1.00),
     "gemini-2.5-flash-lite": (0.01, 1.00),
     "gemini-2.5-pro": (0.125, 4.50),
     "gemini-3.1-pro": (0.20, 4.50),
 }
+
+# Appended to the user turn when Gemini's recitation guard blocked the first
+# attempt: document transcription is not a request to reproduce a known work.
+_RECITATION_RETRY_PROMPT = (
+    "Retry mode: the previous attempt triggered Gemini's recitation guard. "
+    "Do not rely on memorized text, web recall, citations, URLs, or external sources. "
+    "Use only the attached document image as evidence. This is document transcription "
+    "into structured markdown/HTML, not a request to reproduce a known work. "
+    "Return only the requested output with no commentary."
+)
+
+
+def _request_timeout_ms(timeout_seconds: float | int | str | None) -> int | None:
+    if timeout_seconds is None:
+        return None
+    try:
+        value = float(timeout_seconds)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return max(1000, int(round(value * 1000.0)))
+
+
+def _is_retryable_empty_gemini_reason(reason: str) -> bool:
+    normalized = reason.lower()
+    return any(
+        marker in normalized
+        for marker in (
+            "finish_reason=",
+            "no candidates",
+            "prompt blocked",
+            "candidate has no content",
+            "candidate content has no parts",
+            "empty text",
+            "unusable table placeholder",
+        )
+    )
+
+
+def _is_recitation_gemini_reason(reason: str) -> bool:
+    return "recitation" in reason.lower()
+
+
+def _is_rate_limited_gemini_reason(reason: str) -> bool:
+    normalized = reason.lower()
+    return any(marker in normalized for marker in ("rate_limit", "rate limit", "429", "resource_exhausted"))
 
 
 @register_provider("google")
@@ -177,8 +238,10 @@ class GoogleProvider(Provider):
             from google import genai
             from google.genai import types
 
-            self._client = genai.Client(api_key=self._api_key)
             self._types = types
+            timeout_ms = _request_timeout_ms(self._timeout)
+            http_options = types.HttpOptions(timeout=timeout_ms) if timeout_ms is not None else None
+            self._client = genai.Client(api_key=self._api_key, http_options=http_options)
         except ImportError as e:
             raise ProviderConfigError("google-genai package not installed. Run: pip install google-genai") from e
 
@@ -201,7 +264,7 @@ class GoogleProvider(Provider):
         matches = [(p, r) for p, r in _GEMINI_CONTEXT_CACHE_PRICING_PER_M.items() if self._model.startswith(p)]
         return max(matches, key=lambda x: len(x[0]))[1] if matches else (0.0, 0.0)
 
-    def _usage_cost_breakdown(self, usage: dict[str, int]) -> dict[str, float]:
+    def _usage_cost_breakdown(self, usage: dict[str, Any]) -> dict[str, float]:
         """Compute cost breakdown for one Gemini API call."""
         input_rate, output_rate = self._get_pricing()
         cache_hit_rate, _ = self._get_context_cache_pricing()
@@ -211,18 +274,24 @@ class GoogleProvider(Provider):
         tool_use_prompt_tokens = int(usage.get("tool_use_prompt_tokens", 0) or 0)
         output_tokens = int(usage.get("output_tokens", 0) or 0)
         thinking_tokens = int(usage.get("thinking_tokens", 0) or 0)
+        # When the API already counts thoughts inside output_tokens, do not bill them twice.
+        thinking_tokens_in_output_tokens = bool(usage.get("thinking_tokens_in_output_tokens", False))
 
         non_cached_input_tokens = max(input_tokens - cached_content_tokens - tool_use_prompt_tokens, 0)
         input_cost_usd = non_cached_input_tokens * input_rate / 1_000_000
         tool_use_prompt_cost_usd = tool_use_prompt_tokens * input_rate / 1_000_000
         cached_input_cost_usd = cached_content_tokens * cache_hit_rate / 1_000_000
-        output_and_thinking_cost_usd = (output_tokens + thinking_tokens) * output_rate / 1_000_000
+        output_cost_usd = output_tokens * output_rate / 1_000_000
+        thinking_cost_usd = 0.0 if thinking_tokens_in_output_tokens else thinking_tokens * output_rate / 1_000_000
+        output_and_thinking_cost_usd = output_cost_usd + thinking_cost_usd
         cost_usd = input_cost_usd + tool_use_prompt_cost_usd + cached_input_cost_usd + output_and_thinking_cost_usd
 
         return {
             "input_cost_usd": input_cost_usd,
             "tool_use_prompt_cost_usd": tool_use_prompt_cost_usd,
             "cached_input_cost_usd": cached_input_cost_usd,
+            "output_cost_usd": output_cost_usd,
+            "thinking_cost_usd": thinking_cost_usd,
             "output_and_thinking_cost_usd": output_and_thinking_cost_usd,
             "cost_usd": cost_usd,
         }
@@ -470,6 +539,54 @@ class GoogleProvider(Provider):
             return "candidate content has no parts"
         return "empty text in response"
 
+    def _generate_with_empty_retry(
+        self, contents: list[Any], gen_config: Any
+    ) -> tuple[str | None, dict[str, int], str]:
+        """Call ``generate_content`` and retry once when the response carries no text.
+
+        A RECITATION finish reason gets the anti-recitation prompt appended to
+        the user turn before the retry; other empty reasons retry unchanged.
+        Returns ``(text, usage, failure_summary)`` where ``text`` is None when
+        both attempts were empty.
+        """
+        response = self._client.models.generate_content(
+            model=self._model,
+            contents=contents,
+            config=gen_config,
+        )
+        usage = self._extract_usage(response)
+        text = self._extract_text(response)
+        if text is not None:
+            return text, usage, ""
+
+        reason1 = self._failure_reason(response)
+        if _is_recitation_gemini_reason(reason1):
+            contents[0].parts.append(self._types.Part.from_text(text=_RECITATION_RETRY_PROMPT))
+        response = self._client.models.generate_content(
+            model=self._model,
+            contents=contents,
+            config=gen_config,
+        )
+        usage = self._extract_usage(response)
+        text = self._extract_text(response)
+        if text is not None:
+            return text, usage, ""
+        reason2 = self._failure_reason(response)
+        return None, usage, f"1st={reason1}, 2nd={reason2}"
+
+    @staticmethod
+    def _raise_if_retryable_empty(summary: str) -> None:
+        """Escalate an empty Gemini response to the runner's retry loop.
+
+        Empty candidates, blocked prompts, RECITATION and rate-limit reasons are
+        transient in practice; returning a placeholder would score the page as
+        empty markdown instead of retrying it.
+        """
+        if _is_rate_limited_gemini_reason(summary):
+            raise ProviderTransientError(f"Gemini rate limited: {summary}")
+        if _is_recitation_gemini_reason(summary) or _is_retryable_empty_gemini_reason(summary):
+            raise ProviderTransientError(f"Gemini returned no usable output after 2 attempts: {summary}")
+
     def _parse_image(self, image: Image.Image) -> tuple[str, dict[str, int]]:
         """
         Send image to Gemini Flash and get markdown response.
@@ -503,30 +620,15 @@ class GoogleProvider(Provider):
                 )
             ]
 
-            response = self._client.models.generate_content(
-                model=self._model,
-                contents=contents,
-                config=gen_config,
-            )
-            usage = self._extract_usage(response)
-            text = self._extract_text(response)
+            text, usage, summary = self._generate_with_empty_retry(contents, gen_config)
 
             if text is None:
-                reason1 = self._failure_reason(response)
-                # Single retry on empty response
-                response = self._client.models.generate_content(
-                    model=self._model,
-                    contents=contents,
-                    config=gen_config,
-                )
-                usage = self._extract_usage(response)
-                text = self._extract_text(response)
-
-            if text is None:
-                reason2 = self._failure_reason(response)
-                return f"[No output after 2 attempts: 1st={reason1}, 2nd={reason2}]", usage
+                self._raise_if_retryable_empty(summary)
+                return f"[No output after 2 attempts: {summary}]", usage
             return text, usage
 
+        except (ProviderTransientError, ProviderPermanentError):
+            raise
         except Exception as e:
             error_str = str(e).lower()
             if any(kw in error_str for kw in ["timeout", "connection", "network"]):
@@ -565,31 +667,17 @@ class GoogleProvider(Provider):
                 )
             ]
 
-            response = self._client.models.generate_content(
-                model=self._model,
-                contents=contents,
-                config=gen_config,
-            )
-            usage = self._extract_usage(response)
-            text = self._extract_text(response)
+            text, usage, summary = self._generate_with_empty_retry(contents, gen_config)
 
             if text is None:
-                reason1 = self._failure_reason(response)
-                response = self._client.models.generate_content(
-                    model=self._model,
-                    contents=contents,
-                    config=gen_config,
-                )
-                usage = self._extract_usage(response)
-                text = self._extract_text(response)
-
-            if text is None:
-                reason2 = self._failure_reason(response)
-                return [], f"[No output after 2 attempts: 1st={reason1}, 2nd={reason2}]", usage
+                self._raise_if_retryable_empty(summary)
+                return [], f"[No output after 2 attempts: {summary}]", usage
 
             items = swap_gemini_bbox(parse_layout_blocks(text))
             return items, text, usage
 
+        except (ProviderTransientError, ProviderPermanentError):
+            raise
         except Exception as e:
             error_str = str(e).lower()
             if any(kw in error_str for kw in ["timeout", "connection", "network"]):
@@ -637,30 +725,15 @@ class GoogleProvider(Provider):
                 )
             ]
 
-            response = self._client.models.generate_content(
-                model=self._model,
-                contents=contents,
-                config=gen_config,
-            )
-            usage = self._extract_usage(response)
-            text = self._extract_text(response)
+            text, usage, summary = self._generate_with_empty_retry(contents, gen_config)
 
             if text is None:
-                reason1 = self._failure_reason(response)
-                # Single retry on empty response
-                response = self._client.models.generate_content(
-                    model=self._model,
-                    contents=contents,
-                    config=gen_config,
-                )
-                usage = self._extract_usage(response)
-                text = self._extract_text(response)
-
-            if text is None:
-                reason2 = self._failure_reason(response)
-                return f"[No output after 2 attempts: 1st={reason1}, 2nd={reason2}]", usage
+                self._raise_if_retryable_empty(summary)
+                return f"[No output after 2 attempts: {summary}]", usage
             return text, usage
 
+        except (ProviderTransientError, ProviderPermanentError):
+            raise
         except Exception as e:
             error_str = str(e).lower()
             if any(kw in error_str for kw in ["timeout", "connection", "network"]):
@@ -698,31 +771,17 @@ class GoogleProvider(Provider):
                 )
             ]
 
-            response = self._client.models.generate_content(
-                model=self._model,
-                contents=contents,
-                config=gen_config,
-            )
-            usage = self._extract_usage(response)
-            text = self._extract_text(response)
+            text, usage, summary = self._generate_with_empty_retry(contents, gen_config)
 
             if text is None:
-                reason1 = self._failure_reason(response)
-                response = self._client.models.generate_content(
-                    model=self._model,
-                    contents=contents,
-                    config=gen_config,
-                )
-                usage = self._extract_usage(response)
-                text = self._extract_text(response)
-
-            if text is None:
-                reason2 = self._failure_reason(response)
-                text = f"[No output after 2 attempts: 1st={reason1}, 2nd={reason2}]"
+                self._raise_if_retryable_empty(summary)
+                text = f"[No output after 2 attempts: {summary}]"
 
             items = swap_gemini_bbox(parse_layout_blocks(text))
             return items, text, usage
 
+        except (ProviderTransientError, ProviderPermanentError):
+            raise
         except Exception as e:
             error_str = str(e).lower()
             if any(kw in error_str for kw in ["timeout", "connection", "network"]):

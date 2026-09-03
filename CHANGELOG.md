@@ -48,6 +48,19 @@ with this version.
   date normalization handles `MM/DD/YY`, missing spaces after commas and out-of-range
   years; keyless lists are aligned order-invariantly; nullable numeric fields treat `0`
   and `null` as equal when the schema allows null.
+- Inference providers: 13 self-hosted VLM/OCR providers (Chandra 2, DeepSeek-OCR 2,
+  Falcon OCR, Gemma 4, Granite Vision, Infinity Parser 2, MinerU 2.5/2605/Diffusion,
+  Nemotron Omni, PaddleOCR, Surya 2, Unlimited-OCR) rendered only the first page of a
+  multi-page PDF; Reducto output was truncated to the first chunk; Gemini empty and
+  RECITATION responses are retried instead of scored as empty output;
+  `amazon_nova_2_lite_parse_with_layout` now actually enables layout mode; layout
+  checkbox predictions are de-duplicated.
+- Cost columns: Pulse cost used an account-wide cumulative page counter; LlamaParse now
+  bills cost-optimised pages at the cost-effective rate; OpenAI GPT-5 Mini and GPT-5.6
+  prices corrected; AWS Textract and Extend now report cost; Anthropic prompt-cache
+  tokens are priced. `parse-bench inference renormalize` re-prices saved runs via
+  `Provider.recompute_cost` without re-running inference.
+- Leaderboard: the *LiteParse (no OCR)* row was re-run with LiteParse 2.14.3 and this release's scoring (overall 32.8 -> 36.9; visual grounding 10.7 -> 31.8 now that layout blocks are scored).
 - `ParseTestCase` accepts layout and extract-field rules on `test_rules` and carries `metadata`.
 - Rule schemas and classes for `table_marker_cells`, `text_color`, `absent_unless_strikeout`,
   `present_as_strikeout`, `is_not_latex` and the extended `form_field` rule (`label` list,
@@ -59,6 +72,16 @@ with this version.
   `reducto`, `datalab`, `landingai`, `unstructured`, `chunkr`, `extend`, `docling`, `local`)
   so a runner can be installed without every provider SDK. `runners` remains the union.
 - `parse-bench version` command.
+- `liteparse` extra installs the released `lit` CLI from PyPI; the provider finds it on `PATH`.
+- LlamaParse normalisation rewrites `layout_pages[*].items[*].type` to canonical layout classes (splitting items whose segments disagree) and synthesises checkbox mark items, matching the internal harness's output contract. ParseBench's own layout scores are unchanged; it lets other consumers of saved outputs classify without the raw-label adapter.
+- LiteParse now requests `--extract-blocks` and emits `layout_pages` from the block kinds and bboxes, with a matching layout adapter and label mapper, so the Visual Grounding column can be scored (set `extract_blocks: false` in the pipeline config to disable).
+- Runner: `per_file_timeout` (CLI > pipeline > default 1800s), randomised external
+  filenames for third-party providers, a hint when a corpus contains only unsupported
+  extensions.
+- New pipelines: Reducto change-tracking / agentic table / agentic chart, GPT-5.4
+  reasoning-none, Sonnet 5 parse-with-layout, Gemini 3.6 / 3.7 / 3.1 Flash Lite
+  layout variants, Mistral OCR 4.1, Nemotron Omni vLLM, Qwen3.8 Flash Next.
+- `parse_bench_version` is recorded in `_metadata.json`.
 - CI (lint, tests, wheel smoke test) and a tag-driven PyPI publish workflow.
 
 ### Changed
@@ -66,6 +89,9 @@ with this version.
 - `markdown2` floor raised to 2.5.5: 2.5.4 renders `*`/`_` runs inside table cells differently, which changed 12 of 2078 LiteParse outputs between environments.
 - The package version is single-sourced from `parse_bench.__version__`.
 - `.env` discovery now walks up from the current directory instead of assuming a repo checkout.
+- The optional LlamaParse job-log HTML renderer is configured with `PARSE_BENCH_LOG_VIEWER`
+  instead of a hard-coded sibling-directory path.
+- The `liteparse` provider locates the `lit` binary via `LITEPARSE_BIN` or `PATH`.
 
 ## [0.2.0] - 2026-09-01
 

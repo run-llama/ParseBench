@@ -146,17 +146,19 @@ class NemotronOmniProvider(Provider):
     # Image helpers
     # ------------------------------------------------------------------
 
-    def _pdf_to_image_with_size(self, pdf_path: Path) -> tuple[bytes, int, int]:
+    def _pdf_to_images_with_size(self, pdf_path: Path) -> list[tuple[bytes, int, int]]:
         try:
             from pdf2image import convert_from_path
 
             images = convert_from_path(pdf_path, dpi=self._dpi)
             if not images:
                 raise ProviderPermanentError(f"No pages found in PDF: {pdf_path}")
-            img = images[0]
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            return buf.getvalue(), img.width, img.height
+            page_images: list[tuple[bytes, int, int]] = []
+            for img in images:
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                page_images.append((buf.getvalue(), img.width, img.height))
+            return page_images
         except ImportError as e:
             raise ProviderPermanentError("pdf2image is required.") from e
         except ProviderPermanentError:
@@ -268,6 +270,15 @@ class NemotronOmniProvider(Provider):
             result["markdown"] = raw_content
         return result
 
+    async def _run_inference_pages_async(self, pages: list[tuple[bytes, int, int]]) -> dict[str, Any]:
+        """Run pages sequentially to preserve document order and avoid endpoint overload."""
+        page_results = [await self._run_inference_async(*page) for page in pages]
+        if len(page_results) == 1:
+            return page_results[0]
+        raw_output = dict(page_results[0])
+        raw_output["page_results"] = page_results
+        return raw_output
+
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         if request.product_type != ProductType.PARSE:
             raise ProviderPermanentError(f"NemotronOmniProvider only supports PARSE, got {request.product_type}")
@@ -280,16 +291,16 @@ class NemotronOmniProvider(Provider):
 
         suffix = file_path.suffix.lower()
         if suffix == ".pdf":
-            image_bytes, img_w, img_h = self._pdf_to_image_with_size(file_path)
+            image_pages = self._pdf_to_images_with_size(file_path)
         elif suffix in (".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp"):
-            image_bytes, img_w, img_h = self._read_image_with_size(file_path)
+            image_pages = [self._read_image_with_size(file_path)]
         else:
             raise ProviderPermanentError(
                 f"Unsupported file type: {suffix}. Supported: .pdf, .png, .jpg, .jpeg, .webp, .tiff, .bmp"
             )
 
         try:
-            raw_output = asyncio.run(self._run_inference_async(image_bytes, img_w, img_h))
+            raw_output = asyncio.run(self._run_inference_pages_async(image_pages))
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 
@@ -402,22 +413,27 @@ class NemotronOmniProvider(Provider):
 
         prompt_mode = raw_result.raw_output.get("prompt_mode", "parse")
 
+        page_results = raw_result.raw_output.get("page_results", [raw_result.raw_output])
+
         if prompt_mode == "layout":
-            layout_items = raw_result.raw_output.get("layout_items", [])
-            img_w = raw_result.raw_output.get("image_width", 0)
-            img_h = raw_result.raw_output.get("image_height", 0)
-
-            markdown = items_to_markdown(layout_items)
-            if markdown:
-                markdown = self._sanitize_html_attributes(markdown)
-
-            layout_pages = build_layout_pages(
-                items=layout_items,
-                image_width=img_w,
-                image_height=img_h,
-                markdown=markdown,
-                page_number=1,
-            )
+            page_markdowns: list[str] = []
+            layout_pages = []
+            for page_number, page_result in enumerate(page_results, start=1):
+                layout_items = page_result.get("layout_items", [])
+                markdown = items_to_markdown(layout_items)
+                if markdown:
+                    markdown = self._sanitize_html_attributes(markdown)
+                page_markdowns.append(markdown)
+                layout_pages.extend(
+                    build_layout_pages(
+                        items=layout_items,
+                        image_width=page_result.get("image_width", 0),
+                        image_height=page_result.get("image_height", 0),
+                        markdown=markdown,
+                        page_number=page_number,
+                    )
+                )
+            markdown = "\n\n".join(page_markdowns)
 
             output = ParseOutput(
                 task_type="parse",
@@ -428,10 +444,14 @@ class NemotronOmniProvider(Provider):
                 markdown=markdown,
             )
         else:
-            markdown = raw_result.raw_output.get("markdown", "")
-            if markdown:
-                markdown = self._convert_md_tables_to_html(markdown)
-                markdown = self._sanitize_html_attributes(markdown)
+            page_markdowns = []
+            for page_result in page_results:
+                markdown = page_result.get("markdown", "")
+                if markdown:
+                    markdown = self._convert_md_tables_to_html(markdown)
+                    markdown = self._sanitize_html_attributes(markdown)
+                page_markdowns.append(markdown)
+            markdown = "\n\n".join(page_markdowns)
 
             output = ParseOutput(
                 task_type="parse",

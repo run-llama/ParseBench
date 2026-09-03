@@ -63,16 +63,20 @@ class UnlimitedOCRProvider(Provider):
         self._timeout = self.base_config.get("timeout", 1200)
         self._dpi = self.base_config.get("dpi", 300)
 
-    def _pdf_to_image(self, pdf_path: Path) -> bytes:
+    def _pdf_to_images(self, pdf_path: Path) -> list[bytes]:
+        """Render every PDF page to PNG bytes in source order."""
         try:
             from pdf2image import convert_from_path
 
             images = convert_from_path(pdf_path, dpi=self._dpi)
             if not images:
                 raise ProviderPermanentError(f"No pages found in PDF: {pdf_path}")
-            buf = io.BytesIO()
-            images[0].save(buf, format="PNG")
-            return buf.getvalue()
+            encoded: list[bytes] = []
+            for image in images:
+                buf = io.BytesIO()
+                image.save(buf, format="PNG")
+                encoded.append(buf.getvalue())
+            return encoded
         except ImportError as e:
             raise ProviderPermanentError("pdf2image is required.") from e
         except Exception as e:
@@ -129,6 +133,16 @@ class UnlimitedOCRProvider(Provider):
             },
         }
 
+    async def _run_inference_pages_async(self, pages: list[bytes]) -> dict[str, Any]:
+        """Run every input page in source order, preserving one-page raw output."""
+        results = [await self._run_inference_async(page) for page in pages]
+        first = results[0]
+        if len(results) == 1:
+            return first
+        merged = dict(first)
+        merged["page_results"] = results
+        return merged
+
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         if request.product_type != ProductType.PARSE:
             raise ProviderPermanentError(
@@ -143,16 +157,16 @@ class UnlimitedOCRProvider(Provider):
 
         suffix = file_path.suffix.lower()
         if suffix == ".pdf":
-            image_bytes = self._pdf_to_image(file_path)
+            page_images = self._pdf_to_images(file_path)
         elif suffix in (".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp"):
-            image_bytes = self._read_image(file_path)
+            page_images = [self._read_image(file_path)]
         else:
             raise ProviderPermanentError(
                 f"Unsupported file type: {suffix}. Supported: .pdf, .png, .jpg, .jpeg, .webp, .tiff, .bmp"
             )
 
         try:
-            raw_output = asyncio.run(self._run_inference_async(image_bytes))
+            raw_output = asyncio.run(self._run_inference_pages_async(page_images))
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 
@@ -270,36 +284,46 @@ class UnlimitedOCRProvider(Provider):
                 f"UnlimitedOCRProvider only supports PARSE product type, got {raw_result.product_type}"
             )
 
-        markdown = raw_result.raw_output.get("markdown", "")
-        if markdown:
-            # Auto-close unclosed HTML table tags (model truncates at max_tokens)
-            markdown = self._close_unclosed_table_tags(markdown)
-            # Convert any markdown pipe tables to HTML (shared helper)
-            markdown = _convert_pipe_tables_to_html(markdown)
-            # Promote first row to <thead>/<th> (model outputs all <td>)
-            markdown = self._promote_first_row_to_thead(markdown)
-            markdown = self._sanitize_html_attributes(markdown)
+        page_results = raw_result.raw_output.get("page_results")
+        if not isinstance(page_results, list) or not page_results:
+            page_results = [raw_result.raw_output]
 
-        # Build layout pages from grounding items via the shared builder. The
-        # grounding bboxes are [x1,y1,x2,y2] on a 0-999 grid (build_layout_pages
-        # divides by 1000); aliasing maps grounding labels onto its LABEL_MAP.
-        grounding_items = raw_result.raw_output.get("grounding_items", [])
-        image_width = raw_result.raw_output.get("image_width", 0)
-        image_height = raw_result.raw_output.get("image_height", 0)
-        layout_items = [
-            {
-                "label": self._LABEL_ALIASES.get(str(gi.get("label", "")).lower(), gi.get("label", "")),
-                "bbox": gi.get("bbox", []),
-            }
-            for gi in grounding_items
-        ]
-        layout_pages = build_layout_pages(
-            items=layout_items,
-            image_width=image_width,
-            image_height=image_height,
-            markdown=markdown,
-            page_number=1,
-        )
+        layout_pages = []
+        page_markdowns: list[str] = []
+        for page_number, page_raw in enumerate(page_results, start=1):
+            markdown = page_raw.get("markdown", "")
+            if markdown:
+                # Apply model-output repairs independently to each source page.
+                # Auto-close unclosed HTML table tags (model truncates at max_tokens),
+                # convert markdown pipe tables to HTML, promote the first row to
+                # <thead>/<th> (model outputs all <td>), then quote attributes.
+                markdown = self._close_unclosed_table_tags(markdown)
+                markdown = _convert_pipe_tables_to_html(markdown)
+                markdown = self._promote_first_row_to_thead(markdown)
+                markdown = self._sanitize_html_attributes(markdown)
+                page_markdowns.append(markdown)
+
+            # Grounding bboxes are [x1,y1,x2,y2] on a 0-999 grid (build_layout_pages
+            # divides by 1000); aliasing maps grounding labels onto its LABEL_MAP.
+            grounding_items = page_raw.get("grounding_items", [])
+            layout_items = [
+                {
+                    "label": self._LABEL_ALIASES.get(str(gi.get("label", "")).lower(), gi.get("label", "")),
+                    "bbox": gi.get("bbox", []),
+                }
+                for gi in grounding_items
+            ]
+            layout_pages.extend(
+                build_layout_pages(
+                    items=layout_items,
+                    image_width=page_raw.get("image_width", 0),
+                    image_height=page_raw.get("image_height", 0),
+                    markdown=markdown,
+                    page_number=page_number,
+                )
+            )
+
+        markdown = "\n\n".join(page_markdowns)
 
         output = ParseOutput(
             task_type="parse",

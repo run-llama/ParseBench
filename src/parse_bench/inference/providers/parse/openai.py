@@ -5,7 +5,7 @@ import io
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from PIL import Image
 
@@ -66,24 +66,29 @@ USER_PROMPT = (
 )
 
 
-# OpenAI pricing: USD per million tokens (input, output)
+# OpenAI standard short-context pricing: USD per million tokens (input, output)
 # Reasoning tokens billed at output rate.
-# Source: https://developers.openai.com/api/docs/pricing (2026-03-25)
+# Source: https://developers.openai.com/api/docs/pricing (verified 2026-07-09)
 _OPENAI_PRICING_PER_M: dict[str, tuple[float, float]] = {
     # model-prefix: (input_per_M, output_per_M)
-    "gpt-5-mini": (0.75, 4.50),
+    "gpt-5-mini": (0.25, 2.00),
+    "gpt-5-nano": (0.05, 0.40),
+    "gpt-5": (1.25, 10.00),
     "gpt-5.4-mini": (0.75, 4.50),
-    "gpt-5.4": (2.50, 15.00),
     "gpt-5.4-nano": (0.20, 1.25),
+    "gpt-5.4": (2.50, 15.00),
     "gpt-5.5": (5.00, 30.00),
-    "gpt-5.6-sol": (5.00, 30.00),
-    "gpt-5.6-terra": (2.50, 15.00),
-    "gpt-5.6-luna": (1.00, 6.00),
+    "gpt-5.6-sol": (4.00, 20.00),
+    "gpt-5.6-terra": (2.00, 12.00),
+    "gpt-5.6-luna": (0.20, 1.20),
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
     "gpt-4.1-mini": (0.40, 1.60),
     "gpt-4.1-nano": (0.10, 0.40),
     "gpt-4.1": (2.00, 8.00),
+    "gpt-4-turbo": (10.00, 30.00),
+    "gpt-4-vision-preview": (10.00, 30.00),
+    "gpt-4.5-preview": (75.00, 150.00),
     "o3-mini": (1.10, 4.40),
     "o4-mini": (1.10, 4.40),
 }
@@ -108,8 +113,9 @@ class OpenAIProvider(Provider):
             - `dpi`: DPI for PDF to image conversion (default: 150)
             - `max_tokens`: Max tokens per response (default: 8192)
             - `timeout`: Request timeout in seconds (default: 120)
-            - `reasoning_effort`: Reasoning effort for OpenAI reasoning models
-              ("minimal", "low", "medium", "high"). If not set, uses model default.
+            - `reasoning_effort`: Reasoning effort for OpenAI reasoning models.
+              Supported values depend on the model; GPT-5.6 accepts "none", "low",
+              "medium", "high", "xhigh", and "max". If unset, uses the model default.
             - `mode`: "image" (default) to send page screenshots, or "file" to send raw PDF
         """
         super().__init__(provider_name, base_config)
@@ -160,6 +166,31 @@ class OpenAIProvider(Provider):
         """
         matches = [(p, r) for p, r in _OPENAI_PRICING_PER_M.items() if self._model.startswith(p)]
         return max(matches, key=lambda x: len(x[0]))[1] if matches else (0.0, 0.0)
+
+    def _raise_openai_error(self, e: Exception) -> NoReturn:
+        """Classify an OpenAI SDK exception as transient (retried) or permanent.
+
+        The gpt-5.6 models (sol/terra especially) intermittently return a
+        ``401 - You have insufficient permissions for this operation`` that
+        clears on retry — a server-side access/capacity blip on the newly
+        released models, not a real auth failure (the byte-identical gpt-5.5
+        request path never hits it). It is therefore treated as transient so
+        the runner retries it. Genuine auth errors ("invalid api key" /
+        "incorrect api key") do not match this phrase and stay permanent.
+        """
+        error_str = str(e).lower()
+        if any(kw in error_str for kw in ["timeout", "connection", "network"]):
+            raise ProviderTransientError(f"Transient error calling OpenAI API: {e}") from e
+        if any(kw in error_str for kw in ["rate_limit", "rate limit", "429"]):
+            raise ProviderTransientError(f"Rate limited: {e}") from e
+        status_code = getattr(e, "status_code", None)
+        is_401 = status_code == 401 or (status_code is None and "401" in error_str)
+        is_gpt56_permission_blip = (
+            self._model.startswith("gpt-5.6-") and is_401 and "insufficient permissions for this operation" in error_str
+        )
+        if is_gpt56_permission_blip:
+            raise ProviderTransientError(f"Transient OpenAI 401 (insufficient permissions, retryable): {e}") from e
+        raise ProviderPermanentError(f"Error calling OpenAI API: {e}") from e
 
     @staticmethod
     def _extract_usage(response) -> dict[str, int]:  # type: ignore[no-untyped-def]
@@ -317,12 +348,7 @@ class OpenAIProvider(Provider):
             return (content or ""), usage
 
         except Exception as e:
-            error_str = str(e).lower()
-            if any(kw in error_str for kw in ["timeout", "connection", "network"]):
-                raise ProviderTransientError(f"Transient error calling OpenAI API: {e}") from e
-            if any(kw in error_str for kw in ["rate_limit", "rate limit", "429"]):
-                raise ProviderTransientError(f"Rate limited: {e}") from e
-            raise ProviderPermanentError(f"Error calling OpenAI API: {e}") from e
+            self._raise_openai_error(e)
 
     def _parse_image_with_layout(self, image: Image.Image) -> tuple[list[dict[str, Any]], str, dict[str, int]]:
         """Send image to OpenAI with layout prompt and get annotated response.
@@ -367,12 +393,7 @@ class OpenAIProvider(Provider):
             return items, text, usage
 
         except Exception as e:
-            error_str = str(e).lower()
-            if any(kw in error_str for kw in ["timeout", "connection", "network"]):
-                raise ProviderTransientError(f"Transient error calling OpenAI API: {e}") from e
-            if any(kw in error_str for kw in ["rate_limit", "rate limit", "429"]):
-                raise ProviderTransientError(f"Rate limited: {e}") from e
-            raise ProviderPermanentError(f"Error calling OpenAI API: {e}") from e
+            self._raise_openai_error(e)
 
     def _parse_pdf_file(self, pdf_path: str) -> tuple[str, dict[str, int]]:
         """
@@ -425,12 +446,7 @@ class OpenAIProvider(Provider):
             return (content or ""), usage
 
         except Exception as e:
-            error_str = str(e).lower()
-            if any(kw in error_str for kw in ["timeout", "connection", "network"]):
-                raise ProviderTransientError(f"Transient error calling OpenAI API: {e}") from e
-            if any(kw in error_str for kw in ["rate_limit", "rate limit", "429"]):
-                raise ProviderTransientError(f"Rate limited: {e}") from e
-            raise ProviderPermanentError(f"Error calling OpenAI API: {e}") from e
+            self._raise_openai_error(e)
 
     def _parse_pdf_page_with_layout(self, pdf_bytes: bytes) -> tuple[list[dict[str, Any]], str, dict[str, int]]:
         """Send a single-page PDF to OpenAI with layout prompt.
@@ -476,19 +492,7 @@ class OpenAIProvider(Provider):
             return items, text, usage
 
         except Exception as e:
-            error_str = str(e).lower()
-            if any(kw in error_str for kw in ["timeout", "connection", "network"]):
-                raise ProviderTransientError(f"Transient error calling OpenAI API: {e}") from e
-            if any(kw in error_str for kw in ["rate_limit", "rate limit", "429"]):
-                raise ProviderTransientError(f"Rate limited: {e}") from e
-            # GPT-5.6 intermittently returns a 401 "insufficient permissions"
-            # that clears on retry; treat it as transient so the runner retries.
-            is_gpt56_401_blip = (
-                self._model.startswith("gpt-5.6-") and "insufficient permissions for this operation" in error_str
-            )
-            if is_gpt56_401_blip:
-                raise ProviderTransientError(f"Transient OpenAI 401 (retryable): {e}") from e
-            raise ProviderPermanentError(f"Error calling OpenAI API: {e}") from e
+            self._raise_openai_error(e)
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         """

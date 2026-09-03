@@ -16,6 +16,7 @@ from parse_bench.inference.renormalize import renormalize_results
 from parse_bench.inference.runner import InferenceRunner
 from parse_bench.schemas.product import ProductType
 from parse_bench.test_cases import load_test_cases
+from parse_bench.test_cases.loader import SUPPORTED_EXTENSIONS
 from parse_bench.test_cases.schema import (
     ExtractTestCase,
     LayoutDetectionTestCase,
@@ -41,6 +42,32 @@ def _detect_product_type(test_cases: list[TestCase]) -> ProductType | None:
         return ProductType.LAYOUT_DETECTION
     # Default to PARSE for ParseTestCase or unknown types
     return ProductType.PARSE
+
+
+def _print_unrecognized_extension_hint(test_cases_dir: Path) -> None:
+    """Say which files discovery skipped for their extension.
+
+    Discovery ignores any suffix outside SUPPORTED_EXTENSIONS silently, so pointing
+    the runner at a `.tif` (or anything else unlisted) reads as an empty dataset
+    rather than an unsupported file.
+    """
+    skipped = sorted(
+        {
+            path.suffix.lower()
+            for path in Path(test_cases_dir).rglob("*")
+            if path.is_file()
+            and path.suffix
+            and not path.name.endswith(".test.json")
+            and path.suffix.lower() not in SUPPORTED_EXTENSIONS
+        }
+    )
+    if not skipped:
+        return
+    print(
+        f"Skipped files with unrecognized extensions: {', '.join(skipped)}. "
+        f"Discovery only sees {', '.join(sorted(SUPPORTED_EXTENSIONS))}.",
+        file=sys.stderr,
+    )
 
 
 class InferenceCLI:
@@ -106,7 +133,7 @@ class InferenceCLI:
         no_rich: bool = False,
         group: str | None = None,
         tags: str | tuple[str, ...] | list[str] | None = None,
-        per_file_timeout: float = 600.0,
+        per_file_timeout: float | None = None,
         timeout_retries: int = 2,
         force_exit_on_completion: bool = True,
     ) -> int:
@@ -130,7 +157,9 @@ class InferenceCLI:
             no_rich: Disable Rich output for CI environments (default: False)
             group: Optional group name to filter test cases (e.g., 'arxiv_math')
             tags: Tags for this run - comma-separated string or list (e.g., 'nightly,production')
-            per_file_timeout: Max seconds per file before timeout (default: 600)
+            per_file_timeout: Explicit run-level max seconds per file. Overrides any
+                per-pipeline value. None (default) → use the pipeline's per_file_timeout,
+                then the global default (1800s).
             timeout_retries: Number of retries on per-file timeout (default: 2)
             force_exit_on_completion: Force process exit after inference completes to
                 avoid waiting on zombie provider threads (default: True)
@@ -172,7 +201,7 @@ class InferenceCLI:
         no_rich: bool,
         group: str | None,
         tags: str | tuple[str, ...] | list[str] | None,
-        per_file_timeout: float = 600.0,
+        per_file_timeout: float | None = None,
         timeout_retries: int = 2,
         force_exit_on_completion: bool = True,
     ) -> int:
@@ -253,6 +282,7 @@ class InferenceCLI:
             else:
                 if not test_cases:
                     print(f"No test cases found in {test_cases_dir}", file=sys.stderr)
+                    _print_unrecognized_extension_hint(test_cases_dir)
                     return 1
 
             # Deduplicate test cases by test_id for inference.
@@ -296,7 +326,8 @@ class InferenceCLI:
             # Create runner
             print(
                 f"Creating InferenceRunner with max_concurrent={max_concurrent}, "
-                f"per_file_timeout={per_file_timeout}s, timeout_retries={timeout_retries}"
+                f"per_file_timeout={per_file_timeout if per_file_timeout is not None else 'pipeline/default'}, "
+                f"timeout_retries={timeout_retries}"
             )
             runner = InferenceRunner(
                 provider=provider_instance,

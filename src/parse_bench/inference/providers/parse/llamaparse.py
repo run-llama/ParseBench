@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -58,7 +59,7 @@ class LlamaParseProvider(Provider):
     }
 
     # Parameters that are handled by the provider and should not be forwarded to the SDK
-    _PROVIDER_ONLY_PARAMS = {"use_staging", "use_europe", "api_key", "base_url"}
+    _PROVIDER_ONLY_PARAMS = {"use_staging", "use_europe", "api_key", "base_url", "create_timeout"}
 
     def __init__(
         self,
@@ -75,6 +76,8 @@ class LlamaParseProvider(Provider):
               LLAMA_CLOUD_BASE_URL env var). When set, it takes precedence over
               use_staging/use_europe and the default prod URL. Useful for
               custom deployments, e.g. http://localhost:8000.
+            - `create_timeout`: HTTP timeout in seconds for the job-creation
+              upload request (default: 120)
             - `use_staging`: Use staging environment (default: False)
             - `use_europe`: Use European Union (EU) region (default: False)
               Note: use_staging and use_europe cannot both be True
@@ -180,7 +183,8 @@ class LlamaParseProvider(Provider):
 
         return temp_path, image_size
 
-    def _output_tables_as_markdown(self) -> bool:
+    def _explicit_output_tables_as_markdown(self) -> bool | None:
+        """Tri-state table format: True/False when the config says so, None when unset."""
         output_options = self._sdk_config.get("output_options")
         if isinstance(output_options, dict):
             markdown_options = output_options.get("markdown")
@@ -195,7 +199,71 @@ class LlamaParseProvider(Provider):
         if isinstance(output_tables_as_html, bool):
             return not output_tables_as_html
 
-        return False
+        return None
+
+    def _output_tables_as_markdown(self) -> bool:
+        return self._explicit_output_tables_as_markdown() is True
+
+    def _should_request_forms(self) -> bool:
+        """Request the ``forms`` expand iff the job produces one (processing_options.forms="enrich")."""
+        processing_options = self._sdk_config.get("processing_options")
+        return isinstance(processing_options, dict) and processing_options.get("forms") == "enrich"
+
+    def _result_expand(self) -> list[str]:
+        """The result ``expand`` list: items/text/metadata/debug_logs plus optional ``forms``."""
+        expand = ["items", "text", "metadata", "debug_logs"]
+        if self._should_request_forms():
+            expand.append("forms")
+        return expand
+
+    def _new_client(self) -> "LlamaCloud":
+        client_kwargs: dict[str, Any] = {"api_key": self._api_key}
+        if self._base_url:
+            client_kwargs["base_url"] = self._base_url
+        return LlamaCloud(**client_kwargs)
+
+    @staticmethod
+    def _is_transient_parse_error(exc: Exception) -> bool:
+        error_str = str(exc).lower()
+        transient_keywords = ("timeout", "timed out", "network", "connection", "503", "502", "504")
+        return any(keyword in error_str for keyword in transient_keywords)
+
+    def _wait_for_completion_with_reconnect(
+        self,
+        *,
+        client: Any,
+        job_id: str,
+        timeout: float,
+    ) -> Any:
+        """Poll ``job_id`` until completion against a monotonic deadline.
+
+        A transient failure mid-poll (dropped connection, gateway 5xx, per-request
+        timeout) reconnects with a fresh SDK client and keeps polling on the
+        remaining budget instead of failing the whole job. Returns the client
+        that observed completion so the result fetch reuses it.
+        """
+        deadline = time.monotonic() + float(timeout)
+        current_client = client
+        transient_failures = 0
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"Timed out waiting for parse job_id={job_id}")
+            try:
+                current_client.parsing.wait_for_completion(job_id, timeout=remaining)
+                return current_client
+            except Exception as exc:
+                if not self._is_transient_parse_error(exc):
+                    raise
+                transient_failures += 1
+                if transient_failures > 5:
+                    raise
+                try:
+                    current_client.close()
+                except Exception:  # noqa: BLE001 - best-effort cleanup
+                    pass
+                current_client = self._new_client()
+                time.sleep(min(2.0, 0.25 * transient_failures))
 
     def _parse_pdf(self, pdf_path: str) -> dict[str, Any]:
         """
@@ -208,22 +276,19 @@ class LlamaParseProvider(Provider):
         job_id: str | None = None
         try:
             # Initialize LlamaCloud client
-            client_kwargs: dict[str, Any] = {"api_key": self._api_key}
-            if self._base_url:
-                client_kwargs["base_url"] = self._base_url
-
-            client = LlamaCloud(**client_kwargs)
+            client = self._new_client()
 
             # Build V2 parse kwargs
             # Expand "items" (md + text + bboxes per page),
-            # "text" (plain text fallback), and "metadata"
+            # "text" (plain text fallback), "metadata", and "forms" when the
+            # form pass runs.
             parse_kwargs: dict[str, Any] = {
                 "upload_file": pdf_path,
-                "expand": ["items", "text", "metadata", "debug_logs"],
+                "expand": self._result_expand(),
                 # Default tier and version if not specified
                 "tier": self._sdk_config.get("tier", "agentic"),
                 "version": self._sdk_config.get("version", "latest"),
-                "timeout": self._sdk_config.get("timeout", 600.0),
+                "timeout": self._sdk_config.get("timeout", 1200.0),
             }
 
             # Forward all remaining config keys directly to the V2 SDK
@@ -240,10 +305,14 @@ class LlamaParseProvider(Provider):
             expand = parse_kwargs.pop("expand")
             create_kwargs = dict(parse_kwargs.items())
 
-            job = client.parsing.create(**create_kwargs)
-            job_id = job.id
+            job = client.parsing.create(**create_kwargs, timeout=self.base_config.get("create_timeout", 120))
+            job_id = str(job.id)
 
-            client.parsing.wait_for_completion(job_id, timeout=polling_timeout)
+            client = self._wait_for_completion_with_reconnect(
+                client=client,
+                job_id=job_id,
+                timeout=polling_timeout,
+            )
             result = client.parsing.get(job_id, expand=expand)
             payload = result.model_dump(mode="json", by_alias=True)
 
@@ -266,7 +335,7 @@ class LlamaParseProvider(Provider):
             error_str = str(e).lower()
             if "429" in error_str or "rate limit" in error_str:
                 raise ProviderRateLimitError(f"Rate limit exceeded during parsing{job_id_str}: {e}") from e
-            transient_keywords = ["timeout", "network", "connection", "503", "502", "504"]
+            transient_keywords = ["timeout", "timed out", "cancelled", "network", "connection", "503", "502", "504"]
             if any(keyword in error_str for keyword in transient_keywords):
                 raise ProviderTransientError(f"Transient error during parsing{job_id_str}: {e}") from e
             raise ProviderPermanentError(f"Error during parsing{job_id_str}: {e}") from e
@@ -296,23 +365,32 @@ class LlamaParseProvider(Provider):
             # Logs endpoint should never break core parse execution.
             return None
 
+    def _extract_pages(self, raw_output: dict[str, Any]) -> list[dict[str, Any]] | None:
+        """Return the per-page list, preferring metadata pages for billing flags."""
+        metadata = raw_output.get("metadata")
+        if isinstance(metadata, dict):
+            metadata_pages = metadata.get("pages")
+            if isinstance(metadata_pages, list) and metadata_pages:
+                return [p for p in metadata_pages if isinstance(p, dict)]
+        legacy_pages = raw_output.get("pages")
+        if isinstance(legacy_pages, list) and legacy_pages:
+            return [p for p in legacy_pages if isinstance(p, dict)]
+        for section_key in ("items", "text"):
+            section_value = raw_output.get(section_key)
+            if isinstance(section_value, dict):
+                pages = section_value.get("pages")
+                if isinstance(pages, list) and pages:
+                    return [p for p in pages if isinstance(p, dict)]
+        return None
+
     def _extract_num_pages(self, raw_output: dict[str, Any]) -> int | None:
         """Infer page count from v2 payload sections."""
         existing_pages = raw_output.get("num_pages")
         if isinstance(existing_pages, (int, float)) and int(existing_pages) > 0:
             return int(existing_pages)
-
-        legacy_pages = raw_output.get("pages")
-        if isinstance(legacy_pages, list) and legacy_pages:
-            return len(legacy_pages)
-
-        for section_key in ("items", "text", "metadata"):
-            section_value = raw_output.get(section_key)
-            if isinstance(section_value, dict):
-                pages = section_value.get("pages")
-                if isinstance(pages, list) and pages:
-                    return len(pages)
-
+        pages = self._extract_pages(raw_output)
+        if pages:
+            return len(pages)
         return None
 
     def _extract_token_usage(self, raw_output: dict[str, Any]) -> dict[str, int]:
@@ -377,18 +455,30 @@ class LlamaParseProvider(Provider):
         """Attach bench usage metadata to raw payload for operational stats."""
         output = dict(raw_output)
 
+        pages = self._extract_pages(output)
         num_pages = self._extract_num_pages(output)
         if num_pages and num_pages > 0:
             output.setdefault("num_pages", num_pages)
 
-            tier = self._sdk_config.get("tier", "")
-            credits_per_page = self._CREDITS_PER_PAGE.get(str(tier), 0)
-            if credits_per_page > 0:
-                credits = num_pages * credits_per_page
-                output.setdefault("credits_used", credits)
+            # Pages the cost optimizer routed to the cheap path carry
+            # ``cost_optimized: true`` and are billed at the cost_effective rate;
+            # the rest bill at the tier rate. Cost fields are assigned (not
+            # setdefault) so re-normalizing a saved run re-prices it.
+            tier = str(self._sdk_config.get("tier", ""))
+            tier_credits = self._CREDITS_PER_PAGE.get(tier, 0)
+            if tier_credits > 0:
+                cost_optim_credits = self._CREDITS_PER_PAGE["cost_effective"]
+                cost_optim_pages = sum(1 for p in pages if p.get("cost_optimized")) if pages else 0
+                full_pages = num_pages - cost_optim_pages
+                credits = full_pages * tier_credits + cost_optim_pages * cost_optim_credits
                 cost_usd = float(credits) * self._credit_rate_usd
-                output.setdefault("cost_usd", cost_usd)
-                output.setdefault("cost_per_page_usd", cost_usd / float(num_pages))
+                output["credits_used"] = credits
+                output["cost_usd"] = cost_usd
+                output["cost_per_page_usd"] = cost_usd / float(num_pages)
+                if cost_optim_pages:
+                    output["cost_optimized_pages"] = cost_optim_pages
+                else:
+                    output.pop("cost_optimized_pages", None)
 
         job = output.get("job")
         if isinstance(job, dict):

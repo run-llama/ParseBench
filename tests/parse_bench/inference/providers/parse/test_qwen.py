@@ -10,6 +10,7 @@ import pytest
 
 from parse_bench.evaluation.layout_adapters.registry import create_layout_adapter
 from parse_bench.inference.pipelines import get_pipeline
+from parse_bench.inference.providers.base import ProviderConfigError
 from parse_bench.inference.providers.parse.qwen import QwenProvider
 from parse_bench.inference.providers.registry import create_provider
 from parse_bench.schemas.layout_detection_output import LayoutDetectionModel
@@ -193,3 +194,48 @@ def test_qwen38_layout_pipelines_differ_only_by_thinking(
     assert "mode" not in thinking.config
     assert type(create_provider(thinking)).__name__ == "QwenProvider"
     assert type(create_layout_adapter("qwen3_8")).__name__ == "QwenLayoutAdapter"
+
+
+def test_qwen_reasoning_effort_and_sampling_overrides() -> None:
+    provider = QwenProvider(
+        "qwen",
+        {
+            "server_url": "https://example.invalid",
+            "enable_thinking": True,
+            "reasoning_effort": "medium",
+            "top_p": 0.8,
+            "top_k": 20,
+        },
+    )
+    session = _FakeSession()
+
+    asyncio.run(provider._call_api(session, "encoded-image"))
+
+    payload = session.calls[0]["json"]
+    assert payload["chat_template_kwargs"] == {"enable_thinking": True, "reasoning_effort": "medium"}
+    assert payload["top_p"] == 0.8
+    assert payload["top_k"] == 20
+
+
+def test_qwen_omits_sampling_overrides_when_unset() -> None:
+    provider = QwenProvider("qwen", {"server_url": "https://example.invalid"})
+    session = _FakeSession()
+
+    asyncio.run(provider._call_api(session, "encoded-image"))
+
+    payload = session.calls[0]["json"]
+    assert "top_p" not in payload
+    assert "top_k" not in payload
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"enable_thinking": True, "reasoning_effort": "ultra"},
+        {"enable_thinking": False, "reasoning_effort": "low"},
+    ],
+)
+def test_qwen_rejects_invalid_reasoning_effort(config: dict[str, object]) -> None:
+    with pytest.raises(ProviderConfigError):
+        QwenProvider("qwen", {"server_url": "https://example.invalid", **config})

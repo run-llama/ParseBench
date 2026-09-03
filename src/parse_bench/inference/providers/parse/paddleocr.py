@@ -17,8 +17,9 @@ from parse_bench.inference.providers.base import (
     ProviderPermanentError,
     ProviderTransientError,
 )
+from parse_bench.inference.providers.parse._layout_utils import build_layout_pages
 from parse_bench.inference.providers.registry import register_provider
-from parse_bench.schemas.parse_output import ParseOutput
+from parse_bench.schemas.parse_output import ParseLayoutPageIR, ParseOutput
 from parse_bench.schemas.pipeline import PipelineSpec
 from parse_bench.schemas.pipeline_io import (
     InferenceRequest,
@@ -26,6 +27,47 @@ from parse_bench.schemas.pipeline_io import (
     RawInferenceResult,
 )
 from parse_bench.schemas.product import ProductType
+
+# PP-DocLayout label -> shared ``LABEL_MAP`` key (see ``_layout_utils``).
+# Labels NOT in this map are dropped silently (treated as "abandon" / page
+# furniture). Verified against actual PaddleOCRVL output: header, text,
+# paragraph_title, table, vision_footnote, chart, number, footer.
+_PADDLE_LABEL_ALIASES: dict[str, str] = {
+    "doc_title": "title",
+    "paragraph_title": "section_header",
+    "header": "page_header",
+    "footer": "page_footer",
+    "text": "text",
+    "content": "text",
+    "abstract": "text",
+    "aside_text": "text",
+    "number": "text",
+    "page_number": "text",
+    "formula_number": "text",
+    "reference": "text",
+    "reference_content": "text",
+    "footnote": "footnote",
+    "vision_footnote": "footnote",
+    "image": "picture",
+    "figure": "picture",
+    "chart": "picture",
+    "seal": "picture",
+    "header_image": "picture",
+    "footer_image": "picture",
+    "figure_title": "caption",
+    "figure_caption": "caption",
+    "table_title": "caption",
+    "table_caption": "caption",
+    "chart_title": "caption",
+    "chart_caption": "caption",
+    "figure_table_title": "caption",
+    "list": "list_item",
+    "list_item": "list_item",
+    "table": "table",
+    "formula": "formula",
+    "algorithm": "text",
+    # NB: "abandon" / page furniture is intentionally NOT mapped — dropped.
+}
 
 # Model name expected by vLLM server
 SERVED_MODEL_NAME = "PaddleOCR-VL-1.5-0.9B"
@@ -90,12 +132,12 @@ class PaddleOCRProvider(Provider):
         # via the ``served_model_name`` key for other releases (e.g. PaddleOCR-VL-1.6-0.9B).
         self._served_model_name = self.base_config.get("served_model_name", SERVED_MODEL_NAME)
 
-    def _pdf_to_image(self, pdf_path: Path) -> bytes:
+    def _pdf_to_images(self, pdf_path: Path) -> list[bytes]:
         """
-        Convert a PDF to a PNG image (first page only).
+        Render every PDF page to PNG bytes in source order.
 
         :param pdf_path: Path to the PDF file
-        :return: PNG image bytes
+        :return: PNG image bytes for every source page
         :raises ProviderPermanentError: If conversion fails
         """
         try:
@@ -105,10 +147,12 @@ class PaddleOCRProvider(Provider):
             if not images:
                 raise ProviderPermanentError(f"No pages found in PDF: {pdf_path}")
 
-            # Use first page only
-            buf = io.BytesIO()
-            images[0].save(buf, format="PNG")
-            return buf.getvalue()
+            encoded: list[bytes] = []
+            for image in images:
+                buf = io.BytesIO()
+                image.save(buf, format="PNG")
+                encoded.append(buf.getvalue())
+            return encoded
 
         except ImportError as e:
             raise ProviderPermanentError("pdf2image is required. Install with: pip install pdf2image") from e
@@ -191,14 +235,8 @@ class PaddleOCRProvider(Provider):
         self,
         session: aiohttp.ClientSession,
         image_b64: str,
-    ) -> str:
-        """
-        Call the simple pipeline API.
-
-        :param session: aiohttp session
-        :param image_b64: Base64-encoded image
-        :return: Markdown content from the API response
-        """
+    ) -> dict[str, Any]:
+        """Call the simple pipeline API; return ``{markdown, layout_pages?}``."""
         api_url = self._server_url.rstrip("/")  # type: ignore[union-attr]
 
         payload = {"image_base64": image_b64}
@@ -225,25 +263,33 @@ class PaddleOCRProvider(Provider):
             if not content:
                 raise ProviderPermanentError("Empty markdown response from API")
 
-            return content  # type: ignore[no-any-return]
+            return {
+                "markdown": content,
+                "layout_pages": result.get("layout_pages") or [],
+            }
 
     async def _run_inference_async(self, image_bytes: bytes) -> dict[str, Any]:
         """
         Run async inference on an image.
 
         :param image_bytes: Image bytes
-        :return: Raw response dictionary with markdown
+        :return: Raw response dictionary with markdown (and layout_pages when
+            the simple pipeline API is in use).
         """
         image_b64 = base64.b64encode(image_bytes).decode()
 
         async with aiohttp.ClientSession() as session:
             if self._api_format == "simple":
-                markdown = await self._call_simple_api(session, image_b64)
+                resp = await self._call_simple_api(session, image_b64)
+                markdown = resp["markdown"]
+                layout_pages = resp.get("layout_pages") or []
             else:
                 markdown = await self._call_openai_api(session, image_b64)
+                layout_pages = []
 
         return {
             "markdown": markdown,
+            "layout_pages": layout_pages,
             "_config": {
                 "server_url": self._server_url,
                 "api_format": self._api_format,
@@ -251,6 +297,16 @@ class PaddleOCRProvider(Provider):
                 "dpi": self._dpi,
             },
         }
+
+    async def _run_inference_pages_async(self, pages: list[bytes]) -> dict[str, Any]:
+        """Run every input page in source order, preserving one-page raw output."""
+        results = [await self._run_inference_async(page) for page in pages]
+        first = results[0]
+        if len(results) == 1:
+            return first
+        merged = dict(first)
+        merged["page_results"] = results
+        return merged
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         """
@@ -273,20 +329,19 @@ class PaddleOCRProvider(Provider):
         if not file_path.exists():
             raise ProviderPermanentError(f"Source file not found: {file_path}")
 
-        # Convert to image if needed
+        # Render PDFs into one input image per source page.
         suffix = file_path.suffix.lower()
         if suffix == ".pdf":
-            image_bytes = self._pdf_to_image(file_path)
+            page_images = self._pdf_to_images(file_path)
         elif suffix in (".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp"):
-            image_bytes = self._read_image(file_path)
+            page_images = [self._read_image(file_path)]
         else:
             raise ProviderPermanentError(
                 f"Unsupported file type: {suffix}. Supported types: .pdf, .png, .jpg, .jpeg, .webp, .tiff, .bmp"
             )
 
         try:
-            # Run async inference
-            raw_output = asyncio.run(self._run_inference_async(image_bytes))
+            raw_output = asyncio.run(self._run_inference_pages_async(page_images))
 
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -453,6 +508,59 @@ class PaddleOCRProvider(Provider):
 
         return "".join(out)
 
+    @staticmethod
+    def _build_layout_pages(
+        raw_layout_pages: list[dict[str, Any]],
+        *,
+        page_number: int | None = None,
+    ) -> list[ParseLayoutPageIR]:
+        """Build ``ParseOutput.layout_pages`` from the pipeline server response.
+
+        The server emits per-page ``items`` of ``{bbox: [x1,y1,x2,y2], label,
+        text, score}`` in pixel coords matching the input image. Paddle labels
+        are aliased onto the shared ``LABEL_MAP`` vocabulary; labels with no
+        alias (e.g. ``abandon``, page furniture the evaluator wouldn't score)
+        are dropped. When an input page number is supplied, it takes precedence
+        over the service's page number because some single-image responses
+        always report page 1.
+        """
+        layout_pages: list[ParseLayoutPageIR] = []
+        for page in raw_layout_pages:
+            if not isinstance(page, dict):
+                continue
+            img_w = int(page.get("width") or 0)
+            img_h = int(page.get("height") or 0)
+            if img_w <= 0 or img_h <= 0:
+                continue
+
+            items: list[dict[str, Any]] = []
+            for item in page.get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                bbox = item.get("bbox") or []
+                if len(bbox) < 4:
+                    continue
+                label = str(item.get("label") or "").strip().lower()
+                alias = _PADDLE_LABEL_ALIASES.get(label)
+                if alias is None:
+                    continue  # drop labels we can't map (e.g. abandon)
+                items.append({"label": alias, "bbox": list(bbox[:4]), "text": str(item.get("text") or "")})
+
+            if items:
+                layout_pages.extend(
+                    build_layout_pages(
+                        items=items,
+                        image_width=img_w,
+                        image_height=img_h,
+                        markdown="",
+                        page_number=page_number
+                        if page_number is not None
+                        else int(page.get("page_number") or len(layout_pages) + 1),
+                        bbox_scale=None,
+                    )
+                )
+        return layout_pages
+
     def normalize(self, raw_result: RawInferenceResult) -> InferenceResult:
         """
         Normalize raw inference result to produce ParseOutput.
@@ -466,22 +574,41 @@ class PaddleOCRProvider(Provider):
                 f"PaddleOCRProvider only supports PARSE product type, got {raw_result.product_type}"
             )
 
-        # Extract markdown from raw output
-        markdown = raw_result.raw_output.get("markdown", "")
+        page_results = raw_result.raw_output.get("page_results")
+        if not isinstance(page_results, list) or not page_results:
+            page_results = [raw_result.raw_output]
 
-        if markdown:
-            # PaddleOCR-VL-1.5 "Table Recognition:" returns OTSL tokens; convert
-            # to HTML so GriTS/TEDS can score it. No-op when OTSL tokens absent.
-            markdown = self._otsl_to_html(markdown)
-            # Quote bare HTML attributes for XML-based metric parsers (e.g. GriTS).
-            markdown = self._sanitize_html_attributes(markdown)
+        layout_pages: list[ParseLayoutPageIR] = []
+        page_markdowns: list[str] = []
+        for page_number, page_raw in enumerate(page_results, start=1):
+            markdown = page_raw.get("markdown", "")
+            if markdown:
+                # Apply model-output repairs independently to each source page.
+                # PaddleOCR-VL-1.5 "Table Recognition:" returns OTSL tokens; convert
+                # to HTML so GriTS/TEDS can score it. No-op when OTSL tokens absent.
+                markdown = self._otsl_to_html(markdown)
+                # Quote bare HTML attributes for XML-based metric parsers (e.g. GriTS).
+                markdown = self._sanitize_html_attributes(markdown)
+                page_markdowns.append(markdown)
+
+            # Bind layout results to the rendered input-page index, rather than
+            # trusting the service response's often-constant page number.
+            layout_pages.extend(
+                self._build_layout_pages(
+                    page_raw.get("layout_pages", []),
+                    page_number=page_number,
+                )
+            )
+
+        markdown = "\n\n".join(page_markdowns)
 
         # Create ParseOutput with document-level markdown
         output = ParseOutput(
             task_type="parse",
             example_id=raw_result.request.example_id,
             pipeline_name=raw_result.pipeline_name,
-            pages=[],  # PaddleOCR returns single page/document, leave pages empty
+            pages=[],
+            layout_pages=layout_pages,
             markdown=markdown,
         )
 

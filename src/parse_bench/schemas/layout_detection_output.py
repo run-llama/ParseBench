@@ -319,6 +319,7 @@ class LayoutDetectionModel(StrEnum):
     INFINITY_PARSER2_LAYOUT = "infinity_parser2_layout"
     OI_PARSER_LAYOUT = "oi_parser_layout"
     PYMUPDF4LLM_LAYOUT = "pymupdf4llm_layout"
+    LITEPARSE_LAYOUT = "liteparse_layout"
 
 
 LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
@@ -445,6 +446,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.PYMUPDF4LLM_LAYOUT: {
         "name": "PyMuPDF4LLM Layout",
         "hf_url": "https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/",
+    },
+    LayoutDetectionModel.LITEPARSE_LAYOUT: {
+        "name": "LiteParse Layout",
+        "hf_url": "https://developers.llamaindex.ai/liteparse/guides/extraction/#layout-blocks",
     },
 }
 
