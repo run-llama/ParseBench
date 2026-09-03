@@ -4,11 +4,7 @@ All notable changes to `parse-bench` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-Scoring-relevant changes (anything that can move a leaderboard number) are
-called out explicitly so that results produced by different versions can be
-compared with care.
-
-## [0.3.0] - 2026-09-02
+## [1.0.0] - 2026-09-02
 
 This release brings the public evaluator back to parity with the internal
 LlamaIndex benchmark harness, which had accumulated five months of fixes since
