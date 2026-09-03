@@ -278,6 +278,17 @@ class ParseTablesNumColsRule(ParseRuleBase):
     actual_num_cols: int | None = None
 
 
+class ParseTableMarkerCellsRule(ParseRuleBase):
+    """Require icon-like values to survive as cells in one parsed table."""
+
+    type: Literal[TestType.TABLE_MARKER_CELLS.value]
+    min_count: int = Field(default=2, ge=1)
+    min_distinct_rows: int = Field(default=2, ge=1)
+    min_distinct_columns: int = Field(default=1, ge=1)
+    marker_aliases: list[str] = Field(default_factory=list)
+    allow_repeated_ocr_glyphs: bool = True
+
+
 class ParseTableColspanRule(ParseRuleBase, _HasAnchorCells):
     type: Literal[TestType.TABLE_COLSPAN.value]
     cell: str = ""
@@ -391,6 +402,43 @@ class ParseChartDataArrayDataRule(ParseRuleBase):
     csv_path: str | None = Field(default=None, alias="_csv_path")
 
 
+class ParseFormFieldRule(ParseRuleBase):
+    """Schema for `form_field` rules.
+
+    Locates a labeled field in the parsed markdown/HTML and checks its value.
+    Used for benchmarking form (key-value, checkbox, signature) extraction.
+
+    `label` may be a list of strings for table-like form cells where one
+    value is identified by multiple visible keys (for example a row label
+    plus a column label). Label-list order is not significant.
+
+    For repeated yes/no checkbox groups, use a label list containing the
+    question and option text, e.g. `["Multistage cement?", "No"]`, with
+    `value_type: "checkbox"` and `value: true` or `false`.
+
+    For repeated row fields such as open-hole intervals, use the existing
+    row-index form, e.g. `"FROM (row 1)"` and `"TO (row 1)"`. This works for
+    markdown tables and flattened parser output such as `FROM none TO RRC`.
+
+    `label_max_diffs` may be a number or a list aligned with `label` to allow
+    limited OCR/handwriting variation in key text after normalization.
+    `value_max_diffs` is the equivalent tolerance for the extracted value.
+
+    `value` may be a list of strings to declare acceptable alternatives for
+    genuinely ambiguous fields (e.g. illegible handwriting). The evaluator
+    passes if the parsed value matches *any* alternative. Use sparingly —
+    most rules should be a single string. List form is only for value_type
+    "text" and "signature".
+    """
+
+    type: Literal[TestType.FORM_FIELD.value]
+    label: str | list[str] = ""
+    label_max_diffs: int | float | list[int | float] = 0
+    value_max_diffs: int | float = 0
+    value: str | bool | list[str] = ""
+    value_type: Literal["text", "checkbox", "signature"] = "text"
+
+
 class ParseFormattingRule(ParseRuleBase):
     type: Literal[
         TestType.IS_UNDERLINE.value,
@@ -425,15 +473,86 @@ class ParseMarkColorRule(ParseRuleBase):
     color: str = ""
 
 
+class ParseAbsentUnlessStrikeoutRule(ParseRuleBase):
+    """Schema for `absent_unless_strikeout` rules.
+
+    For text deleted in a revision (struck through in the source document):
+    the parse should either omit the text entirely, or keep it explicitly
+    marked as struck (``~~text~~``, ``<s>``, ``<del>``, ``<strike>`` or a
+    ``text-decoration: line-through`` style). The rule FAILS when the text
+    appears as regular, unmarked content — the failure mode where deleted
+    contract language becomes indistinguishable from current language.
+    """
+
+    type: Literal[TestType.ABSENT_UNLESS_STRIKEOUT.value]
+    text: str = ""
+
+
+class ParsePresentAsStrikeoutRule(ParseRuleBase):
+    """Schema for `present_as_strikeout` rules.
+
+    Stricter counterpart of `absent_unless_strikeout`: deleted (struck)
+    source text must be RETAINED in the output AND sit inside explicit
+    strikeout markup. Fails both when the text is dropped entirely and when
+    it appears only as plain content. Region-based like
+    `absent_unless_strikeout`, so wider-than-GT struck spans pass.
+    """
+
+    type: Literal[TestType.PRESENT_AS_STRIKEOUT.value]
+    text: str = ""
+
+
+class ParseTextColorRule(ParseRuleBase):
+    """Schema for `text_color` rules.
+
+    Validates that text appears inside an HTML tag whose attributes carry a
+    text color matching the expected color family (e.g. ``red``, ``blue``,
+    ``green``, ``orange``). Attribute colors may be named colors, hex codes
+    (``#c69200``) or ``rgb()`` values; matching is done by hue family, not
+    exact value, so ``#ffa6a6`` satisfies ``red``.
+
+    Primary use: colored revision text in legal redlines, where color encodes
+    revision semantics (e.g. red struck = deleted, blue underlined = inserted).
+    """
+
+    type: Literal[TestType.TEXT_COLOR.value]
+    text: str = ""
+    color: str = ""
+
+
 class ParseTitleRule(ParseRuleBase):
     type: Literal[TestType.IS_TITLE.value]
     text: str = ""
     level: int | None = None
 
 
+class ParseListLevelRule(ParseRuleBase):
+    """Schema for `list_level` rules.
+
+    Validates that `text` appears as a list item at nesting level `level`
+    (1 = top level). Levels are computed from the output with CommonMark
+    list-item semantics (https://spec.commonmark.org/0.31.2/#list-items): a
+    nested item's marker must sit at or beyond the column of the first content
+    character of the item it nests under - there is no fixed space count.
+    HTML `<ul>/<ol>/<li>` nesting is accepted as equivalent. Deliberately not
+    evaluated for indentation inside table cells.
+    """
+
+    type: Literal[TestType.LIST_LEVEL.value]
+    text: str = ""
+    level: int | None = None
+
+
 class ParseLatexRule(ParseRuleBase):
     type: Literal[TestType.IS_LATEX.value]
-    formula: str = ""
+    formula: str
+
+
+class ParseNotLatexRule(ParseRuleBase):
+    """Formula-like text that must remain ordinary Markdown."""
+
+    type: Literal[TestType.IS_NOT_LATEX.value]
+    text: str
 
 
 class ParseCodeBlockRule(ParseRuleBase):
@@ -445,6 +564,22 @@ class ParseCodeBlockRule(ParseRuleBase):
 class ParseTitleHierarchyPercentRule(ParseRuleBase):
     type: Literal[TestType.TITLE_HIERARCHY_PERCENT.value]
     title_hierarchy: dict[str, Any] = Field(default_factory=dict)
+
+
+class HeadingExpectation(DictCompatPydanticModel):
+    """One visible page heading in reading order."""
+
+    text: str = Field(min_length=1)
+    level: int = Field(ge=1, le=6)
+
+
+class ParseHeadingStructureRule(ParseRuleBase):
+    """Complete ordered heading inventory for one transcribed page."""
+
+    type: Literal[TestType.HEADING_STRUCTURE.value]
+    # Empty is a meaningful negative annotation, so callers must state it
+    # explicitly instead of silently getting a no-headings rule after a typo.
+    headings: list[HeadingExpectation]
 
 
 class ParsePageSectionRule(ParseRuleBase):
@@ -468,23 +603,143 @@ class ParseRotateCheckRule(ParseRuleBase):
     value: int | float | str | None = None
 
 
-class ParseFormFieldRule(ParseRuleBase):
-    """Schema for `form_field` rules.
+class ParseWatermarkRemovalRule(ParseRuleBase):
+    """Score watermark suppression without rewarding destroyed body text."""
 
-    Locates a labeled field in the parsed markdown/HTML and checks its value.
-    Used for benchmarking form (key-value, checkbox, signature) extraction.
+    type: Literal[TestType.WATERMARK_REMOVAL.value]
+    page: int = Field(ge=1)
+    watermark_texts: list[str] = Field(min_length=1)
+    allowed_occurrences: list[int] | None = Field(
+        default=None,
+        description=(
+            "Maximum output occurrences allowed for each watermark phrase. Use this when the same phrase "
+            "also occurs legitimately in the page body; defaults to zero for every phrase."
+        ),
+    )
+    preserve_texts: list[str] = Field(min_length=1)
+    watermark_match_threshold: float = Field(default=0.80, ge=0.0, le=1.0)
+    preserve_match_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
+    removal_pass_threshold: float = Field(default=1.0, ge=0.0, le=1.0)
+    preservation_pass_threshold: float = Field(default=0.80, ge=0.0, le=1.0)
 
-    `value` may be a list of strings to declare acceptable alternatives for
-    genuinely ambiguous fields (e.g. illegible handwriting). The evaluator
-    passes if the parsed value matches *any* alternative. Use sparingly —
-    most rules should be a single string. List form is only for value_type
-    "text" and "signature".
+    @model_validator(mode="after")
+    def validate_allowed_occurrences(self) -> ParseWatermarkRemovalRule:
+        if self.allowed_occurrences is None:
+            return self
+        if len(self.allowed_occurrences) != len(self.watermark_texts):
+            raise ValueError("allowed_occurrences must have one value per watermark_texts entry")
+        if any(value < 0 for value in self.allowed_occurrences):
+            raise ValueError("allowed_occurrences values must be non-negative")
+        return self
+
+
+class ParseDiagramGraphRule(ParseRuleBase):
+    """One diagram the parser must render as a mermaid block whose *graph* matches ``graph``.
+
+    Mermaid source is never compared: both sides are parsed into labelled nodes and edges,
+    nodes are aligned by fuzzy label similarity (Hungarian assignment) and edges are scored on
+    the aligned node ids. ``graph`` is ``{"nodes": [{"id","label"}], "edges": [{"from","to",
+    "label"?, "directed"?}], "groups"?: [{"id","label","members"}]}``. ``bbox`` is normalized
+    COCO ``[x, y, w, h]`` in page fractions, as for inline images.
     """
 
-    type: Literal[TestType.FORM_FIELD.value]
-    label: str = ""
-    value: str | bool | list[str] = ""
-    value_type: Literal["text", "checkbox", "signature"] = "text"
+    type: Literal[TestType.DIAGRAM_GRAPH.value]
+    graph: dict[str, Any] = Field(default_factory=dict, description="Ground-truth graph: nodes, edges, optional groups")
+    diagram_class: str = Field(default="flowchart", description="Annotated kind (flowchart, org_chart, process, ...)")
+    accepted_types: list[str] = Field(
+        default_factory=lambda: ["flowchart"],
+        description="Mermaid diagram types that may represent this figure (flowchart, state, sequence, mindmap, ...)",
+    )
+    bbox: list[float] = Field(default_factory=list, description="Normalized [x, y, w, h] of the diagram on the page")
+    caption: str | None = Field(default=None, description="Verbatim caption printed next to the diagram, if any")
+    reference_image: str | None = Field(default=None, description="Crop PNG next to the test case, for the report")
+    text_before: list[str] = Field(default_factory=list, description="Text lines just above the diagram, reading order")
+    text_after: list[str] = Field(default_factory=list, description="Text lines just below the diagram, reading order")
+    annotator_confidence: float | None = Field(default=None, description="Annotator confidence in the graph")
+    node_match_threshold: int = Field(
+        default=80, description="rapidfuzz token_set_ratio at or above which two labels align"
+    )
+    node_recall_threshold: float = Field(default=0.80, description="Minimum share of expected nodes found")
+    node_precision_threshold: float = Field(
+        default=0.70, description="Minimum share of predicted nodes that are expected"
+    )
+    edge_f1_threshold: float = Field(default=0.60, description="Minimum edge F1 over aligned nodes")
+    edge_label_threshold: int = Field(default=70, description="Fuzzy ratio for edge labels when the reference has one")
+
+    @field_validator("bbox")
+    @classmethod
+    def _validate_bbox(cls, v: list[float]) -> list[float]:
+        if v and (len(v) != 4 or any(not isinstance(x, (int, float)) for x in v)):
+            raise ValueError("bbox must be [x, y, w, h]")
+        return [float(x) for x in v]
+
+    @field_validator("graph")
+    @classmethod
+    def _validate_graph(cls, v: dict[str, Any]) -> dict[str, Any]:
+        nodes = v.get("nodes") or []
+        ids = {str(n.get("id")) for n in nodes if isinstance(n, dict)}
+        if not ids:
+            raise ValueError("graph must declare at least one node")
+        for e in v.get("edges") or []:
+            if str(e.get("from")) not in ids or str(e.get("to")) not in ids:
+                raise ValueError(f"edge {e} references an unknown node id")
+        return v
+
+
+class ParseDiagramEdgeRule(ParseRuleBase):
+    """One relation that must (or must not) hold between two labelled nodes of a mermaid diagram.
+
+    Anchors are the robust complement to the graph rule: they are cheap to annotate, easy to
+    verify by eye, and insensitive to how creatively the rest of the diagram was transcribed.
+    ``relation`` is ``edge`` (a direct link source→target), ``path`` (source reaches target
+    through any directed chain, tolerating inserted intermediate nodes) or ``no_edge``.
+    """
+
+    type: Literal[TestType.DIAGRAM_EDGE.value]
+    source: str = Field(description="Label of the source node")
+    target: str = Field(description="Label of the target node")
+    relation: Literal["edge", "path", "no_edge"] = Field(default="edge")
+    label: str | None = Field(default=None, description="Expected edge text (e.g. Yes / No), fuzzy-matched when set")
+    directed: bool = Field(default=True, description="False accepts the link in either direction")
+    diagram_id: str | None = Field(default=None, description="``id`` of the diagram_graph rule this anchor belongs to")
+    node_match_threshold: int = Field(default=80, description="rapidfuzz token_set_ratio to identify source/target")
+    edge_label_threshold: int = Field(default=70, description="Fuzzy ratio for the edge label when set")
+
+
+class ParseDiagramCountRule(ParseRuleBase):
+    """Page-level decision: the right number of *parseable* mermaid blocks, none where none belong.
+
+    ``expected_count`` is 0 on negative pages (charts, schematics, maps, infographics) where any
+    mermaid block fails the rule. Blocks that do not parse into at least one node count against
+    the page everywhere.
+    """
+
+    type: Literal[TestType.DIAGRAM_COUNT.value]
+    expected_count: int = Field(default=0, description="Number of mermaid blocks the page should carry")
+    strict: bool = Field(default=True, description="Penalise extra parseable blocks beyond expected_count")
+
+
+class ParsePageDecorationRule(ParseRuleBase):
+    """Running header, running footer and printed page number of one page.
+
+    ``None`` for a slot means the page has none and the parser must leave it empty; a string is
+    the verbatim furniture text (header/footer pieces joined by `` | `` in reading order). The
+    rule reads the parser's structured page fields when available, else the markdown tags, and
+    also checks that the furniture text does not remain in the body markdown.
+    """
+
+    type: Literal[TestType.PAGE_DECORATION.value]
+    header: str | None = Field(
+        default=None, description="Running header text, pieces joined by ' | '; None = no header"
+    )
+    footer: str | None = Field(
+        default=None, description="Running footer text, pieces joined by ' | '; None = no footer"
+    )
+    page_number: str | None = Field(default=None, description="Canonical printed page number (3, iv, A-3); None = none")
+    page_number_raw: str | None = Field(default=None, description="Page number as printed (Page 3 of 10), for leakage")
+    text_threshold: int = Field(default=85, description="token_set_ratio at or above which header/footer text matches")
+    leak_min_chars: int = Field(default=4, description="Furniture pieces shorter than this are not checked for leakage")
+    annotator_confidence: float | None = Field(default=None, description="Annotator confidence, informational")
 
 
 type ParseRule = (
@@ -510,6 +765,7 @@ type ParseRule = (
     | ParseTablesValuesRule
     | ParseTablesNumRowsRule
     | ParseTablesNumColsRule
+    | ParseTableMarkerCellsRule
     | ParseTableColspanRule
     | ParseTableRowspanRule
     | ParseTableSameRowRule
@@ -528,21 +784,32 @@ type ParseRule = (
     | ParseChartDataPointRule
     | ParseChartDataArrayLabelsRule
     | ParseChartDataArrayDataRule
+    | ParseFormFieldRule
     | ParseFormattingRule
     | ParseMarkColorRule
+    | ParseTextColorRule
+    | ParseAbsentUnlessStrikeoutRule
+    | ParsePresentAsStrikeoutRule
     | ParseLatexRule
+    | ParseNotLatexRule
     | ParseCodeBlockRule
     | ParseTitleRule
     | ParseTitleHierarchyPercentRule
+    | ParseHeadingStructureRule
+    | ParseListLevelRule
     | ParsePageSectionRule
     | ParseBagOfDigitPercentRule
     | ParseRotateCheckRule
-    | ParseFormFieldRule
+    | ParseWatermarkRemovalRule
+    | ParseDiagramGraphRule
+    | ParseDiagramEdgeRule
+    | ParseDiagramCountRule
+    | ParsePageDecorationRule
 )
 
 type ParseRuleInput = ParseRule | dict[str, Any]
 
-_RULE_TYPE_TO_MODEL: dict[str, type[ParseRule]] = {
+_RULE_TYPE_TO_MODEL: dict[str, type[ParseRuleBase]] = {
     TestType.PRESENT.value: ParsePresenceRule,
     TestType.ABSENT.value: ParsePresenceRule,
     TestType.UNEXPECTED_SENTENCE.value: ParseUnexpectedSentenceRule,
@@ -566,6 +833,7 @@ _RULE_TYPE_TO_MODEL: dict[str, type[ParseRule]] = {
     TestType.TABLES_VALUES.value: ParseTablesValuesRule,
     TestType.TABLES_NUM_ROWS.value: ParseTablesNumRowsRule,
     TestType.TABLES_NUM_COLS.value: ParseTablesNumColsRule,
+    TestType.TABLE_MARKER_CELLS.value: ParseTableMarkerCellsRule,
     TestType.TABLE_COLSPAN.value: ParseTableColspanRule,
     TestType.TABLE_ROWSPAN.value: ParseTableRowspanRule,
     TestType.TABLE_SAME_ROW.value: ParseTableSameRowRule,
@@ -584,6 +852,7 @@ _RULE_TYPE_TO_MODEL: dict[str, type[ParseRule]] = {
     TestType.CHART_DATA_POINT.value: ParseChartDataPointRule,
     TestType.CHART_DATA_ARRAY_LABELS.value: ParseChartDataArrayLabelsRule,
     TestType.CHART_DATA_ARRAY_DATA.value: ParseChartDataArrayDataRule,
+    TestType.FORM_FIELD.value: ParseFormFieldRule,
     TestType.IS_UNDERLINE.value: ParseFormattingRule,
     TestType.IS_NOT_UNDERLINE.value: ParseFormattingRule,
     TestType.IS_BOLD.value: ParseFormattingRule,
@@ -595,19 +864,29 @@ _RULE_TYPE_TO_MODEL: dict[str, type[ParseRule]] = {
     TestType.IS_MARK.value: ParseFormattingRule,
     TestType.IS_NOT_MARK.value: ParseFormattingRule,
     TestType.MARK_COLOR.value: ParseMarkColorRule,
+    TestType.TEXT_COLOR.value: ParseTextColorRule,
+    TestType.ABSENT_UNLESS_STRIKEOUT.value: ParseAbsentUnlessStrikeoutRule,
+    TestType.PRESENT_AS_STRIKEOUT.value: ParsePresentAsStrikeoutRule,
     TestType.IS_SUP.value: ParseFormattingRule,
     TestType.IS_NOT_SUP.value: ParseFormattingRule,
     TestType.IS_SUB.value: ParseFormattingRule,
     TestType.IS_NOT_SUB.value: ParseFormattingRule,
     TestType.IS_LATEX.value: ParseLatexRule,
+    TestType.IS_NOT_LATEX.value: ParseNotLatexRule,
     TestType.IS_CODE_BLOCK.value: ParseCodeBlockRule,
     TestType.IS_TITLE.value: ParseTitleRule,
     TestType.TITLE_HIERARCHY_PERCENT.value: ParseTitleHierarchyPercentRule,
+    TestType.HEADING_STRUCTURE.value: ParseHeadingStructureRule,
+    TestType.LIST_LEVEL.value: ParseListLevelRule,
     TestType.IS_HEADER.value: ParsePageSectionRule,
     TestType.IS_FOOTER.value: ParsePageSectionRule,
     TestType.BAG_OF_DIGIT_PERCENT.value: ParseBagOfDigitPercentRule,
     TestType.ROTATE_CHECK.value: ParseRotateCheckRule,
-    TestType.FORM_FIELD.value: ParseFormFieldRule,
+    TestType.WATERMARK_REMOVAL.value: ParseWatermarkRemovalRule,
+    TestType.DIAGRAM_GRAPH.value: ParseDiagramGraphRule,
+    TestType.DIAGRAM_EDGE.value: ParseDiagramEdgeRule,
+    TestType.DIAGRAM_COUNT.value: ParseDiagramCountRule,
+    TestType.PAGE_DECORATION.value: ParsePageDecorationRule,
 }
 
 
@@ -724,7 +1003,7 @@ def rule_to_dict(rule: ParseRuleInput | Any) -> dict[str, Any]:
     raise TypeError(f"Expected ParseRule or dict, got {type(rule)!r}")
 
 
-def coerce_parse_rule(rule_data: ParseRuleInput | Any) -> ParseRule:
+def coerce_parse_rule(rule_data: ParseRuleInput | Any) -> ParseRuleBase:
     """Coerce raw rule payloads into the typed parse rule model.
 
     Idempotent: already-typed rules are returned as-is.
@@ -749,7 +1028,7 @@ def coerce_parse_rule(rule_data: ParseRuleInput | Any) -> ParseRule:
     return model_cls.model_validate(rule_dict)
 
 
-def coerce_parse_rule_list(rules: list[dict[str, Any]] | list[ParseRule]) -> list[ParseRule]:
+def coerce_parse_rule_list(rules: list[dict[str, Any]] | list[ParseRule]) -> list[ParseRuleBase]:
     """Validate a list of parse rule payloads and return typed objects."""
 
     parsed: list[ParseRule] = []
@@ -760,7 +1039,7 @@ def coerce_parse_rule_list(rules: list[dict[str, Any]] | list[ParseRule]) -> lis
 
 def coerce_parse_rule_list_or_none(
     rules: list[dict[str, Any]] | list[ParseRule] | None,
-) -> list[ParseRule] | None:
+) -> list[ParseRuleBase] | None:
     """Coerce rule lists while preserving explicit None for optional fields."""
 
     if rules is None:

@@ -43,15 +43,12 @@ class TextSimilarityMetric(Metric):
         levenshtein = Levenshtein()
         result = levenshtein(expected, actual)
 
-        # Convert to similarity score (0.0 to 1.0)
-        # Levenshtein returns a score where higher is better
-        # We normalize it to 0-1 range
-        max_len = max(len(expected), len(actual))
-        if max_len == 0:
-            similarity = 1.0
-        else:
-            # Levenshtein score is typically normalized, but we ensure 0-1 range
-            similarity = max(0.0, min(1.0, result.score / 100.0))
+        # autoevals ``Levenshtein`` already returns a normalized score in
+        # [0, 1] (1.0 identical, 0.0 fully disjoint), so use it directly.
+        # Clamp only as a defensive guard against float drift — do NOT divide
+        # by 100 (that collapsed every value by two orders of magnitude, e.g.
+        # 0.76 -> 0.0076).
+        similarity = max(0.0, min(1.0, result.score))
 
         return MetricValue(
             metric_name=self.name,

@@ -9,6 +9,7 @@ dropped silently (model bug — dropped tables count as unmatched_expected
 for any GT they would have paired with, so the model still pays the score).
 """
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,9 @@ from parse_bench.evaluation.metrics.parse.table_parsing import TableData, parse_
 
 if TYPE_CHECKING:
     from parse_bench.evaluation.metrics.parse.table_title_stripping import HeaderHints
+
+_TABLE_OPEN_RE = re.compile(r"<table(?=[>\s])", re.IGNORECASE)
+_TABLE_CLOSE_RE = re.compile(r"</table\s*>", re.IGNORECASE)
 
 
 def extract_html_tables(content: str) -> list[str]:
@@ -29,47 +33,31 @@ def extract_html_tables(content: str) -> list[str]:
         return []
 
     tables: list[str] = []
-    lower = content.lower()
     search_start = 0
     while True:
-        start = lower.find("<table", search_start)
-        if start == -1:
+        open_match = _TABLE_OPEN_RE.search(content, search_start)
+        if open_match is None:
             break
-        # Verify this is a real <table> tag, not e.g. <tabledata>
-        tag_name_end = start + len("<table")
-        if tag_name_end < len(lower) and lower[tag_name_end] not in (">", " ", "\t", "\n", "\r"):
-            search_start = start + 1
-            continue
+        start = open_match.start()
 
         # Track nesting depth to find the matching </table>
         depth = 0
-        pos = start
+        pos = open_match.end()
         end = -1
-        while pos < len(lower):
-            next_open = lower.find("<table", pos + 1)
-            next_close = lower.find("</table>", pos + 1)
-            if next_close == -1:
+        while pos < len(content):
+            next_open = _TABLE_OPEN_RE.search(content, pos)
+            next_close = _TABLE_CLOSE_RE.search(content, pos)
+            if next_close is None:
                 break
-            # Verify nested <table> is a real tag too
-            if next_open != -1 and next_open < next_close:
-                nested_name_end = next_open + len("<table")
-                if nested_name_end < len(lower) and lower[nested_name_end] not in (
-                    ">",
-                    " ",
-                    "\t",
-                    "\n",
-                    "\r",
-                ):
-                    pos = next_open  # Not a real tag, skip
-                    continue
+            if next_open is not None and next_open.start() < next_close.start():
                 depth += 1
-                pos = next_open
+                pos = next_open.end()
             else:
                 if depth == 0:
-                    end = next_close + len("</table>")
+                    end = next_close.end()
                     break
                 depth -= 1
-                pos = next_close
+                pos = next_close.end()
         if end == -1:
             tables.append(content[start:])
             break
