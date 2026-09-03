@@ -121,7 +121,7 @@ Content Faithfulness and Semantic Formatting share the same 507 underlying text 
 - **Tables** — Structural fidelity of merged cells and hierarchical headers. A misaligned header means the agent reads the wrong column when looking up a value.
 - **Charts** — Exact data point extraction with correct series and axis labels from bar, line, pie, and compound charts. Most parsers return raw text instead of structured data, leaving agents unable to extract precise values.
 - **Content Faithfulness** — Omissions, hallucinations, and reading-order violations. If the agent's context is incomplete or contains fabricated content, every downstream decision is compromised.
-- **Semantic Formatting** — Preservation of formatting that carries meaning: strikethrough (marks superseded content), superscript/subscript (footnotes, formulas), bold (defined terms, key values), and title hierarchy. A strikethrough price is not the current price.
+- **Semantic Formatting** — Preservation of formatting that carries meaning: strikethrough (marks superseded content), superscript/subscript (footnotes, formulas), bold (defined terms, key values), and title hierarchy. A strikethrough price is not the current price. Italic, underline, and mark/highlight are evaluated as rule-level metrics but intentionally excluded from the headline Semantic Formatting score.
 - **Visual Grounding** — Tracing every extracted element back to its source location on the page. Required for auditability in regulated workflows where every value must be traceable.
 
 The dataset is automatically downloaded when you run a pipeline. To manage it manually:
