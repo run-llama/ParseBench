@@ -1,10 +1,28 @@
 """
 Normalized output schema for parse tasks.
+
+Besides the page markdown and the layout items that back attribution, the IR
+carries the optional payloads a parser may expose: printed line numbers,
+hyperlinks, tracked revisions, granular (line / word / cell / checkbox)
+grounding layers, per-segment rotation and grounded page sidecars. All are
+empty by default, so a provider that emits none of them is unaffected.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+
+
+class LineNumberIR(BaseModel):
+    """One printed gutter label attributed to a final-Markdown span.
+
+    Offsets are UTF-16 code-unit indices, matching JavaScript ``String.slice``
+    and the public Parse response contract.
+    """
+
+    line_number: str = Field(validation_alias=AliasChoices("line_number", "lineNumber"))
+    start_index: int = Field(ge=0, validation_alias=AliasChoices("start_index", "from"))
+    end_index: int = Field(ge=0, validation_alias=AliasChoices("end_index", "to"))
 
 
 class PageIR(BaseModel):
@@ -12,6 +30,7 @@ class PageIR(BaseModel):
 
     page_index: int = Field(ge=0, description="0-indexed page number")
     markdown: str = Field(description="Markdown content of the page")
+    line_numbers: list[LineNumberIR] = Field(default_factory=list)
 
 
 class LayoutSegmentIR(BaseModel):
@@ -19,10 +38,22 @@ class LayoutSegmentIR(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    x: float
-    y: float
-    w: float
-    h: float
+    x: float = Field(
+        description="Literal unrotated bbox x coordinate. Normalize before storage when page coords are [0,1]."
+    )
+    y: float = Field(
+        description="Literal unrotated bbox y coordinate. Normalize before storage when page coords are [0,1]."
+    )
+    w: float = Field(description="Literal unrotated bbox width. Normalize by page width when page coords are [0,1].")
+    h: float = Field(description="Literal unrotated bbox height. Normalize by page height when page coords are [0,1].")
+    r: float | None = Field(
+        default=None,
+        description=(
+            "Optional page/SVG rotation in degrees applied clockwise around the "
+            "center of the literal bbox. Scale normalized x/y/w/h to page units "
+            "before applying this rotation."
+        ),
+    )
     confidence: float | None = None
     label: str | None = None
     start_index: int | None = Field(
@@ -82,6 +113,86 @@ class LayoutItemIR(BaseModel):
         return str(value)
 
 
+class LinkIR(BaseModel):
+    """A page-local hyperlink and the bboxes of its visible anchor/container."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    url: str
+    text: str = ""
+    bboxes: list[LayoutSegmentIR] = Field(default_factory=list)
+
+
+class RevisionTargetSpanIR(BaseModel):
+    """One physical/logical fragment attributed to a revision."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    target: str
+    target_bbox: LayoutSegmentIR
+    start_index: int | None = None
+    end_index: int | None = None
+
+
+class RevisionIR(BaseModel):
+    """A structured revision emitted alongside corrected page Markdown."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    type: Literal["comment", "deleted", "inserted", "formatted", "moved_from", "moved_to"]
+    target: str
+    content: str
+    author: str | None = None
+    target_bbox: LayoutSegmentIR
+    revision_bbox: LayoutSegmentIR
+    target_spans: list[RevisionTargetSpanIR] = Field(default_factory=list)
+    start_index: int | None = None
+    end_index: int | None = None
+
+
+GranularUnitType = Literal["line", "word", "cell", "checkbox"]
+GranularLayerAvailability = Literal["available", "empty", "unavailable"]
+
+
+class GranularUnitIR(BaseModel):
+    """Provider-neutral granular grounding unit for page overlays."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    unit_id: str
+    granularity: GranularUnitType
+    order_index: int
+    text: str = ""
+    bbox: LayoutSegmentIR
+    bboxes: list[LayoutSegmentIR] = Field(default_factory=list)
+    label: str | None = None
+    row_index: int | None = None
+    column_index: int | None = None
+    row_span: int | None = None
+    column_span: int | None = None
+    source_path: str | None = None
+    provider: str | None = None
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def _normalize_text(cls, value: object) -> str:
+        if value is None:
+            return ""
+        return str(value)
+
+
+class GranularLayerIR(BaseModel):
+    """Provider-neutral layer of granular grounding units for one page."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    granularity: GranularUnitType
+    availability: GranularLayerAvailability
+    units: list[GranularUnitIR] = Field(default_factory=list)
+    reason: str | None = None
+    source: str | None = None
+
+
 class ParseLayoutPageIR(BaseModel):
     """Normalized per-page layout payload embedded in ParseOutput."""
 
@@ -121,6 +232,21 @@ class ParseLayoutPageIR(BaseModel):
         ),
     )
     items: list[LayoutItemIR] = Field(default_factory=list)
+    links: list[LinkIR] = Field(
+        default_factory=list,
+        description="Page-local hyperlinks retained separately from semantic layout detections.",
+    )
+    revisions: list[RevisionIR] = Field(
+        default_factory=list,
+        description="Page-local revision map attributed to the corrected Markdown surface.",
+    )
+    granular_layers: list[GranularLayerIR] = Field(
+        default_factory=list,
+        description=(
+            "Provider-neutral line/word/cell/checkbox grounding layers with "
+            "normalized [0,1] literal bboxes and optional center rotation."
+        ),
+    )
 
     @field_validator(
         "md",
@@ -147,6 +273,10 @@ class ParseOutput(BaseModel):
     layout_pages: list[ParseLayoutPageIR] = Field(
         default_factory=list,
         description=("Normalized page/item/segment layout payload used by layout attribution and overlays"),
+    )
+    grounded_pages: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=("Optional grounded line/word sidecar payload exposed by providers that support granular bboxes"),
     )
     markdown: str = Field(description="Markdown content of the entire document")
     job_id: str | None = Field(default=None, description="Optional job ID from the provider (e.g., LlamaParse job ID)")

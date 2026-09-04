@@ -1,13 +1,26 @@
-"""Rule-based metric for executing parse test rules."""
+"""Rule-based metric for executing parse test rules.
+
+Besides the markdown, some rules need side inputs: the structured parse
+payload, the raw provider response (rotation checks), the staged source file
+and the test case's own path (reference renders live next to it), and chart
+rules share one parsed-table cache per document so a 200-rule chart page does
+not re-parse its tables 200 times. :meth:`RuleBasedMetric.compute` accepts
+these as keyword arguments and :meth:`RuleBasedMetric._prepare_rule` injects
+them into every rule that declares the matching attribute. A harness that
+scores extra rule types subclasses the metric and extends ``_prepare_rule``.
+"""
 
 import os
 import signal
 import time
 from collections import Counter
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from parse_bench.evaluation.metrics.base import Metric
-from parse_bench.evaluation.metrics.parse.rules_base import RuleNotApplicable
+from parse_bench.evaluation.metrics.parse.rules_base import ParseTestRule, RuleNotApplicable
+from parse_bench.evaluation.metrics.parse.rules_chart import parse_chart_tables
+from parse_bench.evaluation.metrics.parse.table_parsing import TableData
 from parse_bench.evaluation.metrics.parse.test_rules import (
     MissingSpecificWordRule,
     RotateCheckRule,
@@ -64,8 +77,39 @@ class _RuleTimeoutError(Exception):
     """Raised when a single rule exceeds its time budget."""
 
 
+# Rule types that consume the shared per-document table parse.
+CHART_RULE_TYPES = frozenset({"chart_data_point", "chart_data_array_labels", "chart_data_array_data"})
+
+
+@dataclass
+class ChartTableCache:
+    """One ``compute`` call's parsed chart tables.
+
+    Pass an instance as ``chart_table_cache=`` to share the parse with a
+    caller (a judge stage that re-reads the same tables, for example);
+    otherwise the metric creates a private one per call. ``populated``
+    distinguishes a cached table-free document from a cache that has not been
+    attempted yet.
+    """
+
+    tables: list[TableData] = field(default_factory=list)
+    populated: bool = False
+
+    def tables_for(self, content: str) -> list[TableData]:
+        """Parse ``content`` once; later calls reuse the same table objects."""
+        if not self.populated:
+            self.tables = parse_chart_tables(content)
+            self.populated = True
+        return self.tables
+
+
 def _alarm_handler(signum: int, frame: Any) -> None:
     raise _RuleTimeoutError()
+
+
+# Sentinel for ``getattr`` probes: distinguishes "attribute declared as None"
+# (inject) from "attribute not declared" (this rule does not take the input).
+_ABSENT = object()
 
 
 class RuleBasedMetric(Metric):
@@ -75,6 +119,41 @@ class RuleBasedMetric(Metric):
     def name(self) -> str:
         """Return the name of this metric."""
         return "rule_pass_rate"
+
+    def _prepare_rule(self, rule: ParseTestRule, actual: str, kwargs: dict[str, Any]) -> None:
+        """Hand a freshly created rule the side inputs it declares.
+
+        Runs inside the per-rule timeout and error boundary, before
+        ``rule.run``. Injection is attribute-driven so extension rule types get
+        it for free: a rule that sets ``self.raw_output = None`` (or
+        ``source_file_path`` / ``test_case_path``) in its constructor receives
+        the matching ``compute`` keyword argument; a value the rule already
+        carries is left alone. Chart rules receive the shared per-call table
+        parse. Subclasses extend this to inject harness-specific inputs.
+        """
+        parse_output = kwargs.get("parse_output")
+        if isinstance(parse_output, ParseOutput) and hasattr(rule, "parse_output"):
+            rule.parse_output = parse_output
+
+        raw_output = kwargs.get("raw_output")
+        if isinstance(raw_output, dict) and getattr(rule, "raw_output", _ABSENT) is None:
+            rule.raw_output = raw_output  # type: ignore[attr-defined]
+
+        source_file_path = kwargs.get("source_file_path")
+        if source_file_path and getattr(rule, "source_file_path", _ABSENT) is None:
+            rule.source_file_path = str(source_file_path)  # type: ignore[attr-defined]
+
+        test_case_path = kwargs.get("test_case_file_path")
+        if test_case_path and getattr(rule, "test_case_path", _ABSENT) is None:
+            rule.test_case_path = str(test_case_path)  # type: ignore[attr-defined]
+
+        chart_table_cache = kwargs.get("chart_table_cache")
+        if (
+            rule.type in CHART_RULE_TYPES
+            and rule.parsed_tables is None
+            and isinstance(chart_table_cache, ChartTableCache)
+        ):
+            rule.parsed_tables = chart_table_cache.tables_for(actual)
 
     def compute(
         self,
@@ -89,9 +168,15 @@ class RuleBasedMetric(Metric):
         :param expected: List of test rule definitions (from test_rules)
         :param actual: Actual markdown content to test
         :param page: Optional page number (1-indexed) to filter rules
-        :param kwargs: Additional parameters (e.g. raw_output for RotateCheckRule)
+        :param kwargs: Side inputs handed to rules that declare them (see
+            ``_prepare_rule``): ``parse_output``, ``raw_output``,
+            ``source_file_path``, ``test_case_file_path`` and
+            ``chart_table_cache``.
         :return: MetricValue with pass rate and per-rule results
         """
+        chart_table_cache = kwargs.get("chart_table_cache")
+        if not isinstance(chart_table_cache, ChartTableCache):
+            kwargs["chart_table_cache"] = ChartTableCache()
         if not expected:
             return MetricValue(
                 metric_name=self.name,
@@ -273,14 +358,7 @@ class RuleBasedMetric(Metric):
                         signal.alarm(RULE_TIMEOUT_SECONDS)
 
                     rule = create_test_rule(rule_data)
-                    parse_output = kwargs.get("parse_output")
-                    if isinstance(parse_output, ParseOutput) and hasattr(rule, "parse_output"):
-                        rule.parse_output = parse_output
-
-                    if isinstance(rule, RotateCheckRule):
-                        raw_output = kwargs.get("raw_output")
-                        if isinstance(raw_output, dict):
-                            rule.raw_output = raw_output
+                    self._prepare_rule(rule, actual, kwargs)
                     if isinstance(rule, MissingSpecificWordRule):
                         if missing_specific_word_cache is None:
                             missing_specific_word_cache = (

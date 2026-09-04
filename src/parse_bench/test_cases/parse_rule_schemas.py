@@ -807,7 +807,8 @@ type ParseRule = (
     | ParsePageDecorationRule
 )
 
-type ParseRuleInput = ParseRule | dict[str, Any]
+# Any registered rule model (built-in or extension) or its raw dict payload.
+type ParseRuleInput = ParseRuleBase | dict[str, Any]
 
 _RULE_TYPE_TO_MODEL: dict[str, type[ParseRuleBase]] = {
     TestType.PRESENT.value: ParsePresenceRule,

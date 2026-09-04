@@ -16,6 +16,7 @@ Reference paper:
 import itertools
 import os
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import replace
 from difflib import SequenceMatcher
 from functools import lru_cache
@@ -921,6 +922,41 @@ _ZERO_RESULT: dict[str, Any] = {
     "_con_col_alignment": {},
 }
 
+# Page-parallel pairwise scoring. Off by default (``pair_workers=1``); the
+# evaluation runner passes a per-document budget so ``doc_workers x
+# pair_workers`` stays within the core count, and ``BENCH_GRITS_PAIR_WORKERS``
+# is the standalone knob. Tasks are cut at PAGE granularity (one task = all
+# pairs on one page) so a page's tables stay together in one worker (memo
+# locality) and only that page's tables are pickled. Below this many eligible
+# pairs the pool spawn costs more than it saves.
+_PAIR_PARALLEL_MIN_PAIRS = 16
+
+
+def _pair_workers() -> int:
+    """Env fallback for the intra-document page-parallelism width (>=1)."""
+    try:
+        return max(1, int(os.environ.get("BENCH_GRITS_PAIR_WORKERS", "1")))
+    except ValueError:
+        return 1
+
+
+def _score_pair_block(
+    gt_tds: list[Any],
+    pred_tds: list[Any],
+    local_pairs: list[tuple[int, int]],
+) -> dict[tuple[int, int], dict[str, Any]]:
+    """Score a block of (gt, pred) table pairs in a worker process.
+
+    ``gt_tds`` / ``pred_tds`` are the *page-local* table lists and ``local_pairs``
+    indexes into them; the caller maps the local indices back to document-global
+    ones. Module-level so ``ProcessPoolExecutor`` can pickle it.
+    """
+    out: dict[tuple[int, int], dict[str, Any]] = {}
+    for a, b in local_pairs:
+        result = grits_con_from_table_data(gt_tds[a], pred_tds[b])
+        out[(a, b)] = result if result is not None else dict(_ZERO_RESULT)
+    return out
+
 
 # =============================================================================
 # GriTSMetric class (Metric interface)
@@ -934,6 +970,16 @@ class GriTSMetric(Metric):
     and actual HTML tables. Uses the Hungarian algorithm for optimal table
     matching when documents contain multiple tables.
     """
+
+    def __init__(self, pair_workers: int | None = None):
+        """:param pair_workers: explicit per-document page-parallelism width.
+
+        When set (by the evaluation runner's CPU budget), the per-page blocks of
+        pairwise GriTS scoring run across this many processes. When ``None``,
+        falls back to the ``BENCH_GRITS_PAIR_WORKERS`` env var (default 1).
+        Scores are identical either way; only the work distribution changes.
+        """
+        self._pair_workers = pair_workers
 
     @property
     def name(self) -> str:
@@ -1027,13 +1073,54 @@ class GriTSMetric(Metric):
         results_cache: dict[tuple[int, int], dict[str, Any]] = {}
         cost_matrix = np.zeros((n_expected, n_actual))
 
-        for pair_idx, (i, j) in enumerate(allowed_pairs, start=1):
-            if total_pairs > 1:
-                print(f"  GriTS: table pair {pair_idx}/{total_pairs}", flush=True)
-            maybe_result = grits_con_from_table_data(expected_td[i], actual_td[j])
-            result = maybe_result if maybe_result is not None else dict(_ZERO_RESULT)
-            results_cache[(i, j)] = result
-            cost_matrix[i, j] = -result["grits_con"]
+        workers = self._pair_workers if self._pair_workers is not None else _pair_workers()
+        use_parallel = workers > 1 and blocked and total_pairs >= _PAIR_PARALLEL_MIN_PAIRS
+
+        if use_parallel:
+            # Page-wise parallelism: one task per page (all of that page's pairs),
+            # so a page's tables stay together in one worker and only that page's
+            # tables are pickled. Identical scores to the sequential path; this
+            # only redistributes the same per-pair calls across processes.
+            gt_by_page: dict[int, list[int]] = defaultdict(list)
+            for i in range(n_expected):
+                gt_by_page[expected_pages[i]].append(i)  # type: ignore[index]
+            pred_by_page: dict[int, list[int]] = defaultdict(list)
+            for j in range(n_actual):
+                pred_by_page[actual_pages[j]].append(j)  # type: ignore[index]
+
+            blocks: list[tuple[list[int], list[int], list[Any], list[Any], list[tuple[int, int]]]] = []
+            for page, gt_idxs in gt_by_page.items():
+                pred_idxs = pred_by_page.get(page)
+                if not pred_idxs:
+                    continue
+                gt_sub = [expected_td[i] for i in gt_idxs]
+                pred_sub = [actual_td[j] for j in pred_idxs]
+                local_pairs = [(a, b) for a in range(len(gt_idxs)) for b in range(len(pred_idxs))]
+                blocks.append((gt_idxs, pred_idxs, gt_sub, pred_sub, local_pairs))
+
+            print(
+                f"  GriTS: scoring {total_pairs} pair(s) across {len(blocks)} page-block(s) with {workers} worker(s)",
+                flush=True,
+            )
+            with ProcessPoolExecutor(max_workers=workers) as pool:
+                futs = {
+                    pool.submit(_score_pair_block, gt_sub, pred_sub, local_pairs): (gt_idxs, pred_idxs)
+                    for gt_idxs, pred_idxs, gt_sub, pred_sub, local_pairs in blocks
+                }
+                for fut in as_completed(futs):
+                    gt_idxs, pred_idxs = futs[fut]
+                    for (a, b), result in fut.result().items():
+                        i, j = gt_idxs[a], pred_idxs[b]
+                        results_cache[(i, j)] = result
+                        cost_matrix[i, j] = -result["grits_con"]
+        else:
+            for pair_idx, (i, j) in enumerate(allowed_pairs, start=1):
+                if total_pairs > 1:
+                    print(f"  GriTS: table pair {pair_idx}/{total_pairs}", flush=True)
+                maybe_result = grits_con_from_table_data(expected_td[i], actual_td[j])
+                result = maybe_result if maybe_result is not None else dict(_ZERO_RESULT)
+                results_cache[(i, j)] = result
+                cost_matrix[i, j] = -result["grits_con"]
 
         # Solve assignment (per page when page labels are supplied, else global).
         row_ind, col_ind = assign_tables(cost_matrix, expected_pages, actual_pages)

@@ -4,6 +4,67 @@ All notable changes to `parse-bench` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-09-03
+
+Harness-facing release: no evaluation number changes. Everything here lets a
+downstream benchmark harness build on `parse-bench` without overriding
+built-in rule classes or patching package models at import time.
+
+### Fixed
+- `diagram_graph` rules with a `reference_image` never received the test case
+  or source file path from the evaluator, so the reference render was never
+  found. `ParseEvaluator` now forwards `source_file_path` and
+  `test_case_file_path` to the rule metric.
+
+### Added
+- `RuleBasedMetric._prepare_rule(rule, actual, kwargs)`: one hook, run inside
+  the per-rule timeout, that hands a freshly created rule its side inputs.
+  Injection is attribute-driven, so any rule (built-in or extension) that
+  declares `raw_output`, `source_file_path` or `test_case_path` receives the
+  matching `compute` keyword argument. Subclasses extend it for
+  harness-specific inputs.
+- `ChartTableCache`: chart rules on one document share a single parsed-table
+  pass. Pass `chart_table_cache=` to `compute` to read the parse back.
+- Page-parallel GriTS pairwise scoring: `GriTSMetric(pair_workers=N)`,
+  `ParseEvaluator(grits_pair_workers=N)`, or `BENCH_GRITS_PAIR_WORKERS`.
+  The evaluation runner splits the CPU budget so `doc_workers x pair_workers`
+  stays within the core count. Scores are identical to the sequential path
+  (guarded by `test_grits_perf_equivalence`).
+- `py.typed` marker: the package is now typed for downstream mypy.
+- Rotated-box geometry: `parse_bench.geometry.rotated_bbox` (`xywh_r` <->
+  polygon conversion, containment) and rotated polygon IoU / IoA in
+  `evaluation.metrics.layoutdet.iou` for datasets whose layout ground truth
+  carries an `r` rotation.
+
+### Layout adapters and schemas (changes layout numbers for the providers named)
+- Azure Document Intelligence: checkbox items carry `scope=mark`, so mark-scope
+  checkbox datasets score them; Textract and Azure DI adapters build granular
+  (line / word) pages for granular layout scoring.
+- LlamaParse: the adapter also matches results whose `ParseOutput` carries
+  `grounded_pages`, and builds granular pages from that payload before falling
+  back to the raw response; merged granular bboxes keep a shared rotation `r`.
+- Projection prefers `layout_pages[*].items` over the legacy flat
+  `predictions` list when any page has items (canonical labels coerced
+  directly), and a missing detector score projects as 0.0 in both paths.
+- `LayoutOutput` gains the `ParseOutput`-parity fields (`pages`,
+  `grounded_pages`, `job_id`); `LayoutDetectionModel` gains
+  `OPENAI_COMPATIBLE_VLM_LAYOUT`, `CHECKBOX_DETECTOR_YOLOV8`, `COHERE_PARSE_LAYOUT`.
+- Parse IR: `LineNumberIR`, `LinkIR`, `RevisionIR`, `GranularUnitIR` /
+  `GranularLayerIR`, `LayoutSegmentIR.r`, `ParseLayoutPageIR.links /
+  revisions / granular_layers` and `ParseOutput.grounded_pages`.
+- `register_pipeline_resolver` (in `parse_bench.extensions`): a harness with
+  its own pipeline registry can map `pipeline_name` to a provider key, so the
+  adapter and mapper registries resolve its pipelines too.
+- Adapter aliases: `anthropic_haiku` resolves to the Anthropic adapter.
+
+### Changed
+- `MetricValue` and `RunStat` accept extra fields (`extra="allow"`) so
+  provenance a harness attaches round-trips losslessly.
+- `ParseRuleInput` and `ParseTestRule.__init__` accept any `ParseRuleBase`
+  subclass, not only the closed built-in union, so extension rule classes
+  need no cast to call `super().__init__`.
+- `FieldCitation.bbox` is optional: a page-only citation carries `bbox=None`.
+
 ## [1.0.0] - 2026-09-02
 
 This release brings the public evaluator back to parity with the internal

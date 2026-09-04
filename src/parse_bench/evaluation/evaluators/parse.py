@@ -228,6 +228,7 @@ class ParseEvaluator(BaseEvaluator):
         enable_table_record_match: bool = True,
         enable_table_composite: bool = False,
         teds_variants: set[str] | None = None,
+        grits_pair_workers: int | None = None,
     ):
         """
         Initialize the ParseEvaluator.
@@ -243,6 +244,9 @@ class ParseEvaluator(BaseEvaluator):
         :param enable_structural_consistency: Enable structural consistency metric (default: True)
         :param teds_variants: Set of TEDS variant names to compute. Defaults to
             {TEDS_CONTENT} (standard TEDS only). Use ALL_TEDS_VARIANTS for all.
+        :param grits_pair_workers: Per-document page-parallelism width for GriTS
+            (the runner passes a CPU budget so ``doc_workers x pair_workers`` stays
+            within the core count). ``None`` defers to ``BENCH_GRITS_PAIR_WORKERS``.
         """
         self._enable_rule_based = enable_rule_based
         self._enable_text_similarity = enable_text_similarity
@@ -256,7 +260,7 @@ class ParseEvaluator(BaseEvaluator):
         logger.info("Chart LLM normalization mode: %s", get_normalization_mode().value)
         self._text_similarity_metric = TextSimilarityMetric()
         self._teds_metric = TEDSMetric(variants=teds_variants if teds_variants is not None else {TEDS_CONTENT})
-        self._grits_metric = GriTSMetric()
+        self._grits_metric = GriTSMetric(pair_workers=grits_pair_workers)
         self._header_accuracy_metric = HeaderAccuracyMetric()
         self._header_accuracy_generous_metric = HeaderAccuracyMetricGenerous()
         self._structural_consistency_metric = StructuralConsistencyMetric()
@@ -362,6 +366,11 @@ class ParseEvaluator(BaseEvaluator):
                     page=None,  # Document-level for now
                     raw_output=inference_result.raw_output,
                     parse_output=inference_result.output,
+                    source_file_path=inference_result.request.source_file_path,
+                    # Rules that read side files (reference renders next to the
+                    # test case) need the test case's own location: providers may
+                    # stage the input elsewhere.
+                    test_case_file_path=str(test_case.file_path),
                 )
                 metrics.append(rule_result)
                 if "judge_pass_rate" in rule_result.metadata:

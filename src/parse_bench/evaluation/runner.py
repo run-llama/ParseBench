@@ -123,6 +123,7 @@ def _evaluate_single_worker(
     enable_teds: bool = False,
     skip_rules: bool = False,
     verified_only: bool = False,
+    grits_pair_workers: int = 1,
 ) -> dict[str, Any]:
     """
     Worker function for parallel evaluation using ProcessPoolExecutor.
@@ -141,6 +142,8 @@ def _evaluate_single_worker(
     :param enable_teds: Enable TEDS metric computation in parse evaluation
     :param skip_rules: Skip rule-based metric computation in parse evaluation
     :param verified_only: Discard test rules explicitly marked verified=false
+    :param grits_pair_workers: Per-document GriTS page-parallelism width (CPU budget
+        split with the document pool, see ``EvaluationRunner.run``)
     :return: Serialized EvaluationResult dict
     """
     # Import here to avoid circular imports and ensure fresh state in worker
@@ -186,6 +189,7 @@ def _evaluate_single_worker(
             "parse": ParseEvaluator(
                 enable_teds=enable_teds,
                 enable_rule_based=not skip_rules,
+                grits_pair_workers=grits_pair_workers,
             ),
             "layout_detection": LayoutDetectionEvaluator(default_ontology=default_layout_ontology),
         }
@@ -1072,6 +1076,12 @@ class EvaluationRunner:
             # Process non-QA evaluations in parallel using ProcessPoolExecutor
             # Default to CPU count, but cap at 8 for CI environments
             num_workers = max_workers or min(os.cpu_count() or 4, 8)
+            # Per-document GriTS page-parallelism budget. GriTS runs *inside* each
+            # doc worker, so to avoid nested-pool oversubscription the CPU budget is
+            # split: doc_workers x pair_workers ~ core count. With few large
+            # multi-page documents this lets a straggler fan its per-page table
+            # scoring across the cores the document pool is not using.
+            grits_pair_workers = max(1, (os.cpu_count() or num_workers) // num_workers)
 
             if parallelizable_evaluations:
                 # Prepare tasks for ProcessPoolExecutor
@@ -1087,6 +1097,7 @@ class EvaluationRunner:
                         bool,
                         bool,
                         bool,
+                        int,
                     ]
                 ] = []
                 for inf_result, tc, _eval_obj, mode in parallelizable_evaluations:
@@ -1121,6 +1132,7 @@ class EvaluationRunner:
                             self.enable_teds,
                             self.skip_rules,
                             self.verified_only,
+                            grits_pair_workers,
                         )
                     )
 
