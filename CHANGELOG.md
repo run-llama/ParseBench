@@ -4,6 +4,13 @@ All notable changes to `parse-bench` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.4] - 2026-09-04
+
+### Added
+- `LayoutDetectionModel.FIRECRAWL_LAYOUT` (with a `LAYOUT_MODEL_INFO` entry) so
+  Firecrawl parse output can be cross-evaluated on the layout-attribution
+  datasets, matching the other layout-capable parse providers.
+
 ## [Unreleased]
 
 ### Changed
