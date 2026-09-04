@@ -13,6 +13,8 @@ Google Gemini 3.5 Flash (Thinking Medium),VLM - Proprietary,69.92,91.12,44.01,90
 Google Gemini 3.5 Flash (Thinking Minimal),VLM - Proprietary,63.09,86.24,18.74,88.22,68.09,54.18,1.82,1.13,2.53,1.47,2.15,
 Google Gemini 3.6 Flash (Thinking Medium),VLM - Proprietary,66.78,89.47,31.0,87.7,58.46,67.27,3.76,3.25,4.21,3.22,4.35,
 Google Gemini 3.6 Flash (Thinking Minimal),VLM - Proprietary,65.60,85.5,24.76,83.3,64.49,69.94,1.48,0.98,1.90,1.24,1.80,
+Google Gemini 3.8 Flash (Thinking High),VLM - Proprietary,72.08,89.12,32.34,89.68,76.36,72.91,3.41,3.46,3.48,2.67,4.02,
+Google Gemini 3.8 Flash (Thinking Low),VLM - Proprietary,70.15,88.18,35.09,88.25,66.99,72.24,0.71,0.48,0.89,0.62,0.85,
 Anthropic Opus 4.6,VLM - Proprietary,54.07,86.52,13.49,89.70,64.19,16.47,5.78,4.02,8.16,5.19,6.40,
 Anthropic Opus 4.7,VLM - Proprietary,63.34,87.17,55.84,90.26,69.42,13.99,7.14,5.69,8.63,6.07,8.17,
 Anthropic Opus 4.8,VLM - Proprietary,63.70,89.65,49.75,89.02,71.38,18.69,7.30,5.82,8.78,6.24,8.36,
