@@ -83,3 +83,47 @@ def test_legacy_fast_kernel_flag_still_disables(monkeypatch):
     assert G._kernel_mode() == "array"
     arr = grits_con_from_table_data(gt, pred)
     assert slow["grits_con"] == arr["grits_con"]
+
+
+def _paged_tables(n_pages: int, per_page: int):
+    """``per_page`` GT/pred tables on each of ``n_pages`` pages, mismatched so
+    scores are non-trivial and the assignment is not the identity."""
+    variants = [T_A, T_A_PERTURBED, T_WIDE, T_TALL]
+    expected, actual, exp_pages, act_pages = [], [], [], []
+    for page in range(1, n_pages + 1):
+        for k in range(per_page):
+            gt_html = variants[(page + k) % len(variants)]
+            pred_html = variants[(page + k + 1) % len(variants)]
+            exp, act, _ = extract_table_pairs(gt_html, pred_html)
+            expected.append(exp[0])
+            actual.append(act[0])
+            exp_pages.append(page)
+            act_pages.append(page)
+    return expected, actual, exp_pages, act_pages
+
+
+def test_page_parallel_pair_workers_match_sequential(monkeypatch) -> None:
+    # 3 pages x 3 tables = 27 same-page pairs, above the parallel threshold.
+    expected, actual, exp_pages, act_pages = _paged_tables(3, 3)
+    assert len(exp_pages) * 3 >= G._PAIR_PARALLEL_MIN_PAIRS
+
+    sequential = G.GriTSMetric(pair_workers=1).compute(
+        expected, actual, expected_pages=exp_pages, actual_pages=act_pages
+    )
+    parallel = G.GriTSMetric(pair_workers=2).compute(expected, actual, expected_pages=exp_pages, actual_pages=act_pages)
+    monkeypatch.setenv("BENCH_GRITS_PAIR_WORKERS", "2")
+    via_env = G.GriTSMetric().compute(expected, actual, expected_pages=exp_pages, actual_pages=act_pages)
+
+    for candidate in (parallel, via_env):
+        assert [m.value for m in candidate] == [m.value for m in sequential]
+        assert candidate[0].metadata["pairing"] == sequential[0].metadata["pairing"]
+        assert candidate[0].metadata["per_table_details"] == sequential[0].metadata["per_table_details"]
+
+
+def test_pair_workers_env_fallback_is_at_least_one(monkeypatch) -> None:
+    monkeypatch.setenv("BENCH_GRITS_PAIR_WORKERS", "0")
+    assert G._pair_workers() == 1
+    monkeypatch.setenv("BENCH_GRITS_PAIR_WORKERS", "junk")
+    assert G._pair_workers() == 1
+    monkeypatch.delenv("BENCH_GRITS_PAIR_WORKERS")
+    assert G._pair_workers() == 1

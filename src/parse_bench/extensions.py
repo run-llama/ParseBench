@@ -10,6 +10,8 @@ products, rule types and output models without forking parse-bench:
   schema and the class that scores it.
 - :func:`register_layout_adapter` / :func:`register_layout_label_mapper` — how a
   provider's layout output maps onto the canonical ontology.
+- :func:`register_pipeline_resolver` — let the package resolve a result's
+  ``pipeline_name`` to a provider key through the harness's own pipeline registry.
 - ``EvaluationRunner.register_evaluator(product_type, evaluator)`` — scoring for
   a registered product.
 
@@ -17,7 +19,7 @@ Registrations take effect when the extension module is imported, so an
 extension package typically performs them in its top-level ``__init__``.
 """
 
-from parse_bench.evaluation.layout_adapters.registry import register_layout_adapter
+from parse_bench.evaluation.layout_adapters.registry import register_layout_adapter, register_pipeline_resolver
 from parse_bench.evaluation.layout_label_mappers.registry import register_layout_label_mapper
 from parse_bench.evaluation.metrics.parse.rules_base import (
     ParseTestRule,
@@ -58,6 +60,7 @@ __all__ = [
     "ParseTestRule",
     "register_layout_adapter",
     "register_layout_label_mapper",
+    "register_pipeline_resolver",
     "register_output_model",
     "register_pipeline",
     "register_product_type",

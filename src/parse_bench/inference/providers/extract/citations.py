@@ -491,7 +491,7 @@ def _dedupe(citations: list[FieldCitation]) -> list[FieldCitation]:
         key = (
             citation.field_path,
             citation.page,
-            tuple(citation.bbox),
+            tuple(citation.bbox) if citation.bbox is not None else None,
             citation.reference_text,
             citation.source,
         )

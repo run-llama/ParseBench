@@ -20,7 +20,7 @@ from parse_bench.test_cases.parse_rule_schemas import (
     ParseMissingSentenceRule,
     ParseMissingWordPercentRule,
     ParseMissingWordRule,
-    ParseRule,
+    ParseRuleBase,
     ParseRuleInput,
     ParseTableAdjacentDownRule,
     ParseTableAdjacentLeftRule,
@@ -422,9 +422,12 @@ def _unescape_html_entities(text: str) -> str:
 class ParseTestRule:
     """Base class for parse test rules."""
 
-    def __init__(self, rule_data: ParseRule | dict):
+    def __init__(self, rule_data: ParseRuleBase | dict):
         """
         Initialize a test rule from a typed payload or raw dict.
+
+        Accepts any registered rule model (built-in or extension) so extension
+        rule classes can call ``super().__init__`` without a cast.
 
         :param rule_data: Rule payload containing rule definition
         """

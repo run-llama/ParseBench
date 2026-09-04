@@ -3,13 +3,19 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from parse_bench.schemas.metrics import ConfusionMatrixMetrics
 
 
 class RunStat(BaseModel):
-    """A single operational measurement (latency, cost, tokens, etc.)."""
+    """A single operational measurement (latency, cost, tokens, etc.).
+
+    ``extra="allow"`` so a harness that decorates stats with its own fields
+    round-trips them losslessly through ``model_dump`` / ``model_validate``.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     name: str = Field(description="Stat name, e.g. 'latency_ms', 'credits_used'")
     value: float = Field(description="Raw numeric value")
@@ -17,7 +23,13 @@ class RunStat(BaseModel):
 
 
 class MetricValue(BaseModel):
-    """Individual metric score with metadata."""
+    """Individual metric score with metadata.
+
+    ``extra="allow"`` for the same reason as :class:`RunStat`: downstream
+    harnesses attach provenance fields and must read them back unchanged.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     metric_name: str = Field(description="Name of the metric")
     value: float = Field(description="Metric score (typically 0.0 to 1.0)")
