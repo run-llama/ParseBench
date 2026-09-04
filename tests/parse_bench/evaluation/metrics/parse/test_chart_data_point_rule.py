@@ -5,6 +5,7 @@ import pytest
 from parse_bench.evaluation.metrics.parse.rules_chart import (
     ChartDataPointRule,
     extract_numeric_parts,
+    numbers_match,
 )
 from parse_bench.evaluation.metrics.parse.table_parsing import (
     parse_html_tables,
@@ -36,6 +37,9 @@ class TestExtractNumericParts:
 
     def test_thousands_separator(self):
         assert extract_numeric_parts("1,234 (56.7%)") == ["1,234", "56.7%"]
+
+    def test_billion_abbreviation_matches_full_value(self):
+        assert numbers_match("$4.2bn", "4,200,000,000", tolerance=0)
 
 
 # ---------------------------------------------------------------------------
@@ -809,6 +813,76 @@ class TestChartDataPointRuleCandidateScope:
 
         assert rule.run(within)[0]
         assert not rule.run(outside)[0]
+
+    def test_single_numeric_token_with_axis_unit_matches(self) -> None:
+        table = """\
+| Category | Actual |
+| --- | --- |
+| Series A | 68.7 days |
+"""
+
+        passed, message, score = _chart_rule(
+            "68.7",
+            ["Series A", "Actual"],
+            normalize_numbers=True,
+        ).run(table)
+
+        assert passed, message
+        assert score == 1.0
+
+    def test_multiple_numeric_tokens_in_one_cell_stay_ambiguous(self) -> None:
+        table = """\
+| Country | Panel A |
+| --- | --- |
+| Finland | 249, 188 |
+"""
+
+        passed, message, score = _chart_rule(
+            "249",
+            ["Finland", "Panel A"],
+            normalize_numbers=True,
+        ).run(table)
+
+        assert not passed, message
+        assert score == 0.0
+
+    def test_paired_body_section_and_repeated_header_supply_local_scope(self) -> None:
+        table = """\
+<table>
+  <thead><tr><th></th><th>Total</th><th>Rural</th></tr></thead>
+  <tbody>
+    <tr><td>FY2016</td><td>926</td><td>637</td></tr>
+    <tr><td>Urban</td><td></td><td></td></tr>
+    <tr><td></td><td>Total</td><td>Rural</td></tr>
+    <tr><td>FY2016</td><td>960</td><td>715</td></tr>
+    <tr><td>Rural</td><td></td><td></td></tr>
+    <tr><td></td><td>Total</td><td>Rural</td></tr>
+    <tr><td>FY2016</td><td>1,042</td><td>774</td></tr>
+  </tbody>
+</table>
+"""
+
+        urban_passed, urban_message, _ = _chart_rule("960", ["Urban", "FY2016", "Total"]).run(table)
+        rural_passed, rural_message, _ = _chart_rule("774", ["Rural", "FY2016", "Rural"]).run(table)
+        stale_passed, _, stale_score = _chart_rule("774", ["Urban", "FY2016", "Rural"]).run(table)
+
+        assert urban_passed, urban_message
+        assert rural_passed, rural_message
+        assert not stale_passed
+        assert stale_score == 0.0
+
+    def test_body_section_without_repeated_header_does_not_leak(self) -> None:
+        table = """\
+<table><tbody>
+  <tr><td>Urban</td><td></td></tr>
+  <tr><td>FY2016</td><td>960</td></tr>
+</tbody></table>
+"""
+
+        passed, message, score = _chart_rule("960", ["Urban", "FY2016"]).run(table)
+
+        assert not passed, message
+        assert score == 0.0
 
     def test_later_correct_duplicate_value_is_selected(self) -> None:
         table = """\

@@ -4,6 +4,24 @@ All notable changes to `parse-bench` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.2] - 2026-09-04
+
+Ports two fixes that landed in the internal harness while 1.0.1 was being cut.
+
+### Scoring (changes evaluation numbers)
+- `chart_data_point`: number parsing accepts accounting negatives (`(4)`,
+  `$(4)`, `($4)`, trailing minus), the `bn` billion suffix, and no longer
+  reads a comma followed by a space as a decimal separator. A numeric rule
+  value no longer fuzzy-matches a compound cell (`249` vs `249, 188`); a cell
+  that carries one numeric token plus an axis unit (`68.7 days`) does match.
+  A repeated column header after a body section label counts as local scope
+  only when the complete pair precedes the candidate.
+
+### Added
+- Granular pages carry a `cells` layer; the LlamaParse adapter reads the
+  provider-neutral `granular_layers` on normalized pages before falling back
+  to the grounded-page payload.
+
 ## [1.0.1] - 2026-09-03
 
 Harness-facing release: no evaluation number changes. Everything here lets a

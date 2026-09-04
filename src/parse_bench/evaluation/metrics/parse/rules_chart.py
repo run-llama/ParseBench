@@ -45,6 +45,7 @@ def normalize_number_string(s: str) -> float | None:
 
     Handles:
     - Currency symbols: $, €, £, ¥
+    - Accounting negatives: (4), $(4), ($4), and trailing minus
     - Thousands separators: commas
     - Suffixes: k, K, m, M, million, billion, b, B, etc.
     - Percentage signs
@@ -61,15 +62,19 @@ def normalize_number_string(s: str) -> float | None:
     if not s:
         return None
 
-    # Remove whitespace and normalize
-    s = s.strip()
+    # Remove whitespace / approximate prefixes and normalize sign glyphs.
+    s = re.sub(r"^[~≈]\s*", "", s.strip().replace("−", "-"))
 
-    # Remove currency symbols
-    s = re.sub(r"^[$€£¥]\s*", "", s)
-    s = re.sub(r"\s*[$€£¥]$", "", s)
-
-    # Remove approximate prefixes
-    s = re.sub(r"^[~≈]\s*", "", s)
+    # Accounting reports commonly print negatives with parentheses, sometimes with
+    # the currency symbol outside them ("$(4)") and sometimes inside ("($4)").
+    negative = False
+    s = re.sub(r"[$€£¥]", "", s).strip()
+    if len(s) >= 2 and s.startswith("(") and s.endswith(")"):
+        negative = True
+        s = s[1:-1].strip()
+    if s.endswith("-"):
+        negative = not negative
+        s = s[:-1].strip()
 
     # Remove percentage sign (but remember the value)
     s = s.rstrip("%")
@@ -85,7 +90,7 @@ def normalize_number_string(s: str) -> float | None:
     multiplier = 1.0
     suffix_patterns = [
         (r"(?i)\s*(trillion|trill|trn)$", 1e12),
-        (r"(?i)\s*(billion|bill|bln)$", 1e9),
+        (r"(?i)\s*(billion|bill|bln|bn)$", 1e9),
         (r"(?i)\s*(million|mill|mln)$", 1e6),
         (r"(?i)\s*t$", 1e12),
         (r"(?i)\s*g$", 1e9),  # G = giga = billion
@@ -102,7 +107,8 @@ def normalize_number_string(s: str) -> float | None:
 
     # Try to parse as float
     try:
-        return float(s) * multiplier
+        value = float(s) * multiplier
+        return -value if negative else value
     except ValueError:
         return None
 
@@ -120,7 +126,7 @@ def _normalize_number_candidates(s: str) -> list[float]:
     if val is not None:
         candidates.append(val)
     # If s contains a comma, also try the decimal-separator interpretation.
-    if "," in s:
+    if "," in s and not re.search(r",\s", s):
         val2 = normalize_number_string(s.replace(",", "."))
         if val2 is not None and val2 not in candidates:
             candidates.append(val2)
@@ -264,11 +270,28 @@ class ChartDataPointRule(ParseTestRule):
                 # Try exact fuzzy match first
                 threshold = max(0.5, 1.0 - (self.max_diffs / max(len(value), 1)))
                 similarity = fuzz.ratio(value, cell_text) / 100.0
+                numeric_rule = self.normalize_numbers and bool(extract_numeric_parts(value))
 
-                if similarity >= threshold:
+                # Fuzzy text distance is not meaningful for numeric rules:
+                # ``249`` must not match the compound cell ``249, 188``.
+                if not numeric_rule and similarity >= threshold:
                     matches.append((row_idx, col_idx))
                 elif self.normalize_numbers and numbers_match(value, cell_text, self.relative_tolerance):
                     matches.append((row_idx, col_idx))
+                elif self.normalize_numbers:
+                    # Parsers often retain the axis unit in a numeric cell
+                    # (for example ``68.7 days``) even when the chart rule
+                    # stores only the numeric datum.  Accept that form only
+                    # when the cell contains one numeric token; a cell such as
+                    # ``249, 188`` remains ambiguous and must not satisfy
+                    # either value independently.
+                    numeric_parts = extract_numeric_parts(cell_text)
+                    if len(numeric_parts) == 1 and numbers_match(
+                        value,
+                        numeric_parts[0],
+                        self.relative_tolerance,
+                    ):
+                        matches.append((row_idx, col_idx))
 
         # Fallback: try composite value decomposition for values like "25 (13.0%)"
         # where the number and percentage are in adjacent cells.
@@ -499,7 +522,57 @@ class ChartDataPointRule(ParseTestRule):
             if (header_row, value_col) not in table_data.header_cells:
                 add(table_array[header_row, value_col])
 
+        # A chart data table may repeat a column header after a body section
+        # label, for example ``Urban`` followed by ``[blank], Total, Rural``.
+        # Some parsers preserve both rows as ``td`` cells.  Treat them as local
+        # scope only when the complete pair occurs before this candidate.  A
+        # lone body row or a lone header-like row is never allowed to leak.
+        body_section_scope = self._candidate_body_section_scope(
+            table_array,
+            value_row,
+            value_col,
+            table_data,
+        )
+        for item in body_section_scope:
+            add(item)
+
         return scope
+
+    def _candidate_body_section_scope(  # type: ignore[no-untyped-def]
+        self,
+        table_array,
+        value_row: int,
+        value_col: int,
+        table_data: TableData,
+    ) -> list[str]:
+        """Return a paired body section label and repeated column header."""
+        if value_row not in table_data.tbody_rows:
+            return []
+
+        _, cols = table_array.shape
+        repeated_header: str | None = None
+
+        for row_idx in range(value_row - 1, -1, -1):
+            if row_idx not in table_data.tbody_rows:
+                break
+
+            cells = [normalize_text(str(table_array[row_idx, col_idx])) for col_idx in range(cols)]
+            nonempty = [cell for cell in cells if cell]
+            if not nonempty:
+                continue
+
+            all_text = all(not extract_numeric_parts(cell) for cell in nonempty)
+            if repeated_header is None:
+                if all_text and not cells[0] and value_col < cols and cells[value_col]:
+                    repeated_header = cells[value_col]
+                continue
+
+            # Colspan expansion may repeat the section label in every cell,
+            # so compare unique non-empty text rather than physical cells.
+            if all_text and len(set(nonempty)) == 1:
+                return [nonempty[0], repeated_header]
+
+        return []
 
     def _labels_match_candidate_scope(  # type: ignore[no-untyped-def]
         self,
