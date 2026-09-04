@@ -1870,6 +1870,36 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Gemini 3.8 Flash - Parse with Layout File - Thinking High
+    register_fn(
+        PipelineSpec(
+            pipeline_name="google_gemini_3_8_flash_thinking_high_parse_with_layout_file",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-3.8-flash",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+                "thinking_level": "high",
+            },
+        )
+    )
+
+    # Gemini 3.8 Flash - Parse with Layout File - Thinking Low
+    register_fn(
+        PipelineSpec(
+            pipeline_name="google_gemini_3_8_flash_thinking_low_parse_with_layout_file",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-3.8-flash",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+                "thinking_level": "low",
+            },
+        )
+    )
+
     # =========================================================================
     # Gemini - Agentic Vision
     # =========================================================================
