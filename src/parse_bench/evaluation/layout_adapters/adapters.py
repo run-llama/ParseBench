@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from parse_bench.evaluation.layout_adapters.base import LayoutAdapter
@@ -60,6 +60,7 @@ class _GranularPage:
     page_number: int
     lines: list[_GranularTextUnit]
     words: list[_GranularTextUnit]
+    cells: list[_GranularTextUnit] = field(default_factory=list)
 
 
 @register_layout_adapter("__default__", priority=-100)
@@ -213,8 +214,12 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
         )
 
     def to_granular_pages(self, inference_result: InferenceResult) -> list[_GranularPage]:
-        if isinstance(inference_result.output, ParseOutput) and inference_result.output.grounded_pages:
-            return _build_llamaparse_granular_pages_from_payload(inference_result.output.grounded_pages)
+        if isinstance(inference_result.output, ParseOutput):
+            normalized_pages = _build_normalized_granular_pages(inference_result.output.layout_pages)
+            if normalized_pages:
+                return normalized_pages
+            if inference_result.output.grounded_pages:
+                return _build_llamaparse_granular_pages_from_payload(inference_result.output.grounded_pages)
 
         raw_output = inference_result.raw_output if isinstance(inference_result.raw_output, dict) else {}
         grounded_pages = raw_output.get("v2_grounded_items", raw_output.get("grounded_items"))
@@ -282,6 +287,44 @@ class WarpIngestLayoutAdapter(LayoutAdapter):
             content=content,
             provider_metadata=provider_metadata,
         )
+
+
+def _build_normalized_granular_pages(layout_pages: list[Any]) -> list[_GranularPage]:
+    """Read provider-neutral granular layers retained on normalized Parse pages."""
+    pages: list[_GranularPage] = []
+    for page in layout_pages:
+        units_by_granularity: dict[str, list[_GranularTextUnit]] = {
+            "line": [],
+            "word": [],
+            "cell": [],
+        }
+        for layer in page.granular_layers:
+            if layer.granularity not in units_by_granularity:
+                continue
+            for unit in layer.units:
+                units_by_granularity[layer.granularity].append(
+                    _GranularTextUnit(
+                        text=unit.text,
+                        bbox=_GranularSegment(
+                            x=unit.bbox.x,
+                            y=unit.bbox.y,
+                            w=unit.bbox.w,
+                            h=unit.bbox.h,
+                            r=unit.bbox.r,
+                        ),
+                        order_index=unit.order_index,
+                    )
+                )
+        if any(units_by_granularity.values()):
+            pages.append(
+                _GranularPage(
+                    page_number=page.page_number,
+                    lines=units_by_granularity["line"],
+                    words=units_by_granularity["word"],
+                    cells=units_by_granularity["cell"],
+                )
+            )
+    return pages
 
 
 def _build_llamaparse_granular_pages_from_payload(grounded_pages: Any) -> list[_GranularPage]:
