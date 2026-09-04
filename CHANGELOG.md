@@ -4,6 +4,14 @@ All notable changes to `parse-bench` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Dropped the `scikit-learn` dependency. Layout-detection average precision is
+  now computed with a small numpy implementation that matches
+  `sklearn.metrics.average_precision_score` (including tied-score handling),
+  so evaluation numbers are unchanged. `scipy` remains a core dependency.
+
 ## [1.0.2] - 2026-09-04
 
 Ports two fixes that landed in the internal harness while 1.0.1 was being cut.
