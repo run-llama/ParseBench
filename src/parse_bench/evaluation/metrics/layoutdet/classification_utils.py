@@ -8,11 +8,42 @@ from collections import defaultdict
 from collections.abc import Callable
 
 import numpy as np
-from sklearn.metrics import average_precision_score
 
 from parse_bench.evaluation.metrics.layoutdet.iou import compute_iou_matrix
 
 OverlapFn = Callable[[dict, dict], float]
+
+
+def average_precision_score(y_true: np.ndarray, y_score: np.ndarray) -> float:
+    """
+    Binary average precision, matching ``sklearn.metrics.average_precision_score``.
+
+    AP = sum_n (R_n - R_{n-1}) * P_n, where precision/recall are evaluated at each
+    distinct score threshold (tied scores are grouped, as in scikit-learn).
+
+    :param y_true: Binary labels, shape (N,)
+    :param y_score: Confidence scores, shape (N,)
+    :return: Average precision in [0, 1]; 0.0 if there are no positives
+    """
+    y_true = np.asarray(y_true, dtype=float).ravel()
+    y_score = np.asarray(y_score, dtype=float).ravel()
+    n_pos = float(y_true.sum())
+    if len(y_true) == 0 or n_pos == 0:
+        return 0.0
+
+    order = np.argsort(-y_score, kind="stable")
+    y_true = y_true[order]
+    y_score = y_score[order]
+
+    # Indices of the last element in each group of tied scores
+    distinct = np.where(np.diff(y_score) != 0)[0]
+    threshold_idx = np.concatenate([distinct, [len(y_true) - 1]])
+
+    tps = np.cumsum(y_true)[threshold_idx]
+    precision = tps / (threshold_idx + 1)
+    recall = tps / n_pos
+    prev_recall = np.concatenate([[0.0], recall[:-1]])
+    return float(np.sum((recall - prev_recall) * precision))
 
 
 def match_predictions_to_gt(
