@@ -3445,9 +3445,13 @@ class CognitaLayoutAdapter(LayoutAdapter):
         if not layout_pages:
             raise ValueError("CognitaLayoutAdapter requires non-empty layout_pages")
 
-        first_page = layout_pages[0]
-        output_width = int(first_page.width or 1)
-        output_height = int(first_page.height or 1)
+        # Reference dimensions come from the page being scored (page_filter),
+        # not always the first page — mixed-size documents would otherwise
+        # normalize a selected page's pixel bboxes against the wrong frame.
+        selected_pages = [p for p in layout_pages if page_filter is None or p.page_number == page_filter]
+        reference_page = selected_pages[0] if selected_pages else layout_pages[0]
+        output_width = int(reference_page.width or 1)
+        output_height = int(reference_page.height or 1)
 
         predictions: list[LayoutPrediction] = []
         for lp in layout_pages:

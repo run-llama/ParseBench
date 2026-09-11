@@ -2640,10 +2640,10 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             pipeline_name="cognita",
             provider_name="cognita",
             product_type=ProductType.PARSE,
-            # server_url resolves in the provider: config → COGNITA_SERVER_URL env
-            # → default below. Override with COGNITA_SERVER_URL to point elsewhere.
+            # server_url is intentionally not set here so COGNITA_SERVER_URL can
+            # override it; the provider resolves config → COGNITA_SERVER_URL env
+            # → its built-in default. Point it at your own Cognita deployment.
             config={
-                "server_url": "https://api.cognita.rahulrawat.in",
                 "timeout": 300,
             },
         )

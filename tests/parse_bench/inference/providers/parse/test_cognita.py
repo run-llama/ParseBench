@@ -36,6 +36,16 @@ def test_gfm_converter_leaves_non_tables_alone() -> None:
     assert _gfm_tables_to_html(md) == md
 
 
+def test_gfm_converter_ignores_pipe_tables_inside_fenced_code() -> None:
+    md = "```\n| A | B |\n| --- | --- |\n| 1 | 2 |\n```\n\n| X | Y |\n| --- | --- |\n| 3 | 4 |"
+    out = _gfm_tables_to_html(md)
+    # The fenced block is preserved verbatim (no <table>).
+    assert "```\n| A | B |\n| --- | --- |\n| 1 | 2 |\n```" in out
+    # The real table outside the fence is still converted.
+    assert "<th>X</th><th>Y</th>" in out
+    assert out.count("<table>") == 1
+
+
 def test_canonical_label_by_type_and_heading_level() -> None:
     assert _canonical_label({"type": "heading", "level": 1}) == "Title"
     assert _canonical_label({"type": "heading", "level": 3}) == "Section-header"

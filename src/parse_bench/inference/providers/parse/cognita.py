@@ -112,7 +112,23 @@ def _gfm_tables_to_html(md: str) -> str:
     out: list[str] = []
     i = 0
     n = len(lines)
+    fence: str | None = None  # active fenced-code marker ("```" or "~~~"), if any
     while i < n:
+        stripped = lines[i].lstrip()
+        # Track fenced code blocks so a pipe/separator sequence inside code is
+        # never mistaken for a table.
+        if fence is not None:
+            out.append(lines[i])
+            if stripped.startswith(fence):
+                fence = None
+            i += 1
+            continue
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            fence = stripped[:3]
+            out.append(lines[i])
+            i += 1
+            continue
+
         # A table needs a header row, a separator row, then >=0 body rows.
         if (
             i + 1 < n
