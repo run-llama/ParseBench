@@ -2631,3 +2631,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             config={},
         )
     )
+
+    # =========================================================================
+    # Cognita (self-hosted, pure-code deterministic engine)
+    # =========================================================================
+    register_fn(
+        PipelineSpec(
+            pipeline_name="cognita",
+            provider_name="cognita",
+            product_type=ProductType.PARSE,
+            # server_url resolves in the provider: config → COGNITA_SERVER_URL env
+            # → default below. Override with COGNITA_SERVER_URL to point elsewhere.
+            config={
+                "server_url": "https://api.cognita.rahulrawat.in",
+                "timeout": 300,
+            },
+        )
+    )
