@@ -65,7 +65,7 @@ def main() -> None:
     table = build_table(rows)
     block = (
         f"{START_MARKER}\n"
-        f"_Top {TOP_N} by Overall score. For the full sortable, filterable leaderboard, "
+        f"_Top {TOP_N} of {len(rows)} systems by Overall score. For the full sortable, filterable leaderboard, "
         f"see [parsebench.ai](https://parsebench.ai); for raw data, "
         f"see [leaderboard.csv](leaderboard.csv)._\n\n"
         f"{table}\n"
