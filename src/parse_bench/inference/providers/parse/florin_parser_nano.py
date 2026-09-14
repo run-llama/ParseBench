@@ -427,6 +427,63 @@ def _bold_run_in_labels(md: str) -> str:
 
 
 # =============================================================================
+# (e) whole-line bold for standalone short lines
+# =============================================================================
+# Added 2026-09 (retake update). Short standalone lines in business documents are
+# headings, captions and labels, which are set bold/prominent in print; the model
+# emits them plain. ``normalize_text`` strips ``**``, so this rule cannot move
+# Content Faithfulness (replay-verified: +0.0004 points over 506 documents, i.e.
+# zero; table markup byte-identical on 503/503 table documents).
+#: word cap reused from the F-patch analysis in our public measurement repo.
+_WL_WORD_CAP = 14
+
+
+def _plain_boldable(line: str, in_table: bool) -> bool:
+    """A line whose whole body may be wrapped in ``**...**`` without touching
+    structure: not in a table, not blank/heading/HTML/fence/image/page marker,
+    not a list item, no existing bold, at most ``_WL_WORD_CAP`` words."""
+    if in_table:
+        return False
+    s = line.strip()
+    if not s or _skippable(line) or _HAS_BOLD.search(line):
+        return False
+    if _LIST_PREFIX.match(line):
+        return False
+    return len(s.split()) <= _WL_WORD_CAP
+
+
+def _fence_mask(lines: List[str]) -> List[bool]:
+    mask, in_fence = [], False
+    for ln in lines:
+        if _FENCE_LINE.match(ln):
+            in_fence = not in_fence
+            mask.append(True)  # the fence marker line itself is untouchable
+        else:
+            mask.append(in_fence)
+    return mask
+
+
+def _whole_line_bold(md: str) -> str:
+    """Change (e): wrap a standalone plain-text line (blank line or document edge
+    both above and below) of at most ``_WL_WORD_CAP`` words in ``**...**``."""
+    if not md:
+        return md
+    lines = md.split("\n")
+    tbl = _table_line_mask(md)
+    fen = _fence_mask(lines)
+    n = len(lines)
+    out = list(lines)
+    for i, line in enumerate(lines):
+        if fen[i] or not _plain_boldable(line, tbl[i]):
+            continue
+        above_blank = i == 0 or not lines[i - 1].strip()
+        below_blank = i + 1 >= n or not lines[i + 1].strip()
+        if above_blank and below_blank:
+            out[i] = f"**{line.strip()}**"
+    return "\n".join(out)
+
+
+# =============================================================================
 # document-level post-processing
 # =============================================================================
 def _postprocess_markdown(md: str, *, title_variant: str = "aggressive") -> str:
@@ -451,6 +508,12 @@ def _postprocess_markdown(md: str, *, title_variant: str = "aggressive") -> str:
         pass
     try:
         md = _bold_run_in_labels(md)
+    except Exception:  # noqa: BLE001
+        pass
+    # change (e), added 2026-09: runs last, after heading promotion, so promoted
+    # headings and existing bold spans are skipped.
+    try:
+        md = _whole_line_bold(md)
     except Exception:  # noqa: BLE001
         pass
     return md
