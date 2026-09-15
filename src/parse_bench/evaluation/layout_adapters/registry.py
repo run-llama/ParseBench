@@ -90,13 +90,25 @@ def resolve_layout_provider_name(inference_result: InferenceResult) -> str | Non
         return None
 
 
+def _lookup_registration_by_key(provider_name: str) -> _LayoutAdapterRegistration | None:
+    """Find the highest-priority registration for an exact provider key, or None.
+
+    Unlike `create_layout_adapter`, this never falls back to the default adapter,
+    so callers can tell "no adapter claims this key" apart from "the default was
+    chosen" instead of that distinction always resolving to a value.
+    """
+    candidates = [registration for registration in _LAYOUT_ADAPTER_REGISTRY if provider_name in registration.keys]
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda entry: entry.priority, reverse=True)[0]
+
+
 def create_layout_adapter(provider_name: str | None) -> LayoutAdapter:
     """Instantiate a layout adapter for an optional provider key."""
     if provider_name is not None:
-        candidates = [registration for registration in _LAYOUT_ADAPTER_REGISTRY if provider_name in registration.keys]
-        if candidates:
-            chosen = sorted(candidates, key=lambda entry: entry.priority, reverse=True)[0]
-            return chosen.adapter_cls()
+        registration = _lookup_registration_by_key(provider_name)
+        if registration is not None:
+            return registration.adapter_cls()
 
     default_candidates = [
         registration for registration in _LAYOUT_ADAPTER_REGISTRY if _DEFAULT_LAYOUT_ADAPTER_KEY in registration.keys
@@ -117,10 +129,9 @@ def create_layout_adapter_for_result(inference_result: InferenceResult) -> Layou
     """Resolve and instantiate adapter using provider key first, matcher fallback second."""
     provider_name = resolve_layout_provider_name(inference_result)
     if provider_name is not None:
-        try:
-            return create_layout_adapter(provider_name)
-        except ValueError:
-            pass
+        registration = _lookup_registration_by_key(provider_name)
+        if registration is not None:
+            return registration.adapter_cls()
 
     candidates: list[_LayoutAdapterRegistration] = []
     for registration in _LAYOUT_ADAPTER_REGISTRY:
