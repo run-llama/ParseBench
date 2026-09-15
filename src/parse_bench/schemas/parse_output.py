@@ -66,6 +66,16 @@ class LayoutSegmentIR(BaseModel):
     )
 
 
+class LayoutRegionIR(BaseModel):
+    """One layout detection composing an item: where it is and what it was detected as."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    type: str = "text"
+    bbox: LayoutSegmentIR | None = None
+    text: str = ""
+
+
 class LayoutItemIR(BaseModel):
     """Normalized layout item used for attribution/layout reconstruction."""
 
@@ -85,6 +95,10 @@ class LayoutItemIR(BaseModel):
     layout_segments: list[LayoutSegmentIR] = Field(
         default_factory=list,
         validation_alias=AliasChoices("layout_segments", "layoutAwareBbox"),
+    )
+    regions: list["LayoutRegionIR"] = Field(
+        default_factory=list,
+        description="Detections this item is made of; its bbox is their union.",
     )
     # Populated by layout-detection providers; left default for parse providers.
     score: float | None = Field(

@@ -148,6 +148,40 @@ class OIParserLabelMapper(LayoutLabelMapper):
         return canonical
 
 
+@register_layout_label_mapper("anyformat", "model:anyformat_layout", priority=90)
+class AnyformatLabelMapper(LayoutLabelMapper):
+    """Mapper for anyformat block types.
+
+    The API emits Canonical17 names in lowercase-hyphenated form plus ``other`` and ``chart``,
+    which have no Canonical17 counterpart of their own.
+    """
+
+    _BY_LOWER: dict[str, CanonicalLabel] = {label.value.lower(): label for label in CanonicalLabel}
+    _EXTRA: dict[str, CanonicalLabel] = {
+        "other": CanonicalLabel.TEXT,
+        "chart": CanonicalLabel.PICTURE,
+        "figure": CanonicalLabel.PICTURE,
+        "image": CanonicalLabel.PICTURE,
+        "list_item": CanonicalLabel.LIST_ITEM,
+        "section_header": CanonicalLabel.SECTION_HEADER,
+        "page_header": CanonicalLabel.PAGE_HEADER,
+        "page_footer": CanonicalLabel.PAGE_FOOTER,
+    }
+
+    def to_canonical(
+        self,
+        label: str,
+        prediction: LayoutPrediction,
+        context: MappingContext,
+    ) -> CanonicalLabel:
+        del prediction, context
+        key = label.strip().lower()
+        canonical = self._BY_LOWER.get(key) or self._EXTRA.get(key)
+        if canonical is None:
+            raise UnknownRawLayoutLabelError(f"Unknown anyformat layout label '{label}'")
+        return canonical
+
+
 @register_layout_label_mapper(
     "pymupdf4llm",
     "model:pymupdf4llm_layout",

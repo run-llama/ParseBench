@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 _PROVIDER_MODULES = [
     "amazon_nova",
     "anthropic",
+    "anyformat",
     "azure_document_intelligence",
     "chandra2",
     "chunkr",

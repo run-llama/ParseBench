@@ -2670,3 +2670,17 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             config={},
         )
     )
+
+    # =========================================================================
+    # anyformat (hosted v3 API, one-node parse workflow per tier)
+    # =========================================================================
+    for tier in ("standard", "agentic", "lite", "flash"):
+        register_fn(
+            PipelineSpec(
+                pipeline_name=f"anyformat_{tier}",
+                provider_name="anyformat",
+                product_type=ProductType.PARSE,
+                config={"mode": tier},
+                per_file_timeout=900.0,
+            )
+        )

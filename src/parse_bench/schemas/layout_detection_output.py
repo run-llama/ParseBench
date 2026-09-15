@@ -324,6 +324,7 @@ class LayoutDetectionModel(StrEnum):
     PYMUPDF4LLM_LAYOUT = "pymupdf4llm_layout"
     LITEPARSE_LAYOUT = "liteparse_layout"
     FIRECRAWL_LAYOUT = "firecrawl_layout"
+    ANYFORMAT_LAYOUT = "anyformat_layout"
 
 
 LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
@@ -378,6 +379,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.OI_PARSER_LAYOUT: {
         "name": "oi-parser",
         "hf_url": "https://oi-parser.ai/",
+    },
+    LayoutDetectionModel.ANYFORMAT_LAYOUT: {
+        "name": "anyformat",
+        "hf_url": "https://anyformat.ai/",
     },
     LayoutDetectionModel.CHECKBOX_DETECTOR_YOLOV8: {
         "name": "YOLOv8 Checkbox Detector (mark-scope)",

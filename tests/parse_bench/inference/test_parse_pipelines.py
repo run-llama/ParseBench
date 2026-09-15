@@ -33,6 +33,10 @@ def test_amazon_nova_with_layout_pipeline_enables_layout_mode() -> None:
         ("nemotron_omni_30b_vllm", "nemotron_omni"),
         ("qwen3_8_flash_next_parse_with_layout", "qwen3_8"),
         ("qwen3_8_flash_next_thinking_parse_with_layout", "qwen3_8"),
+        ("anyformat_standard", "anyformat"),
+        ("anyformat_agentic", "anyformat"),
+        ("anyformat_lite", "anyformat"),
+        ("anyformat_flash", "anyformat"),
     ],
 )
 def test_ported_pipelines_are_registered(pipeline_name: str, provider_name: str) -> None:
@@ -77,3 +81,9 @@ def test_self_hosted_pipelines_do_not_ship_internal_endpoints() -> None:
             value = config.get(key)
             if isinstance(value, str):
                 assert "modal.run" not in value, f"{name}.{key} points at an internal deployment"
+
+
+def test_anyformat_pipelines_differ_only_by_tier() -> None:
+    configs = {tier: get_pipeline(f"anyformat_{tier}").config for tier in ("standard", "agentic", "lite", "flash")}
+    assert configs == {tier: {"mode": tier} for tier in configs}
+    assert get_pipeline("anyformat_standard").per_file_timeout == 900.0

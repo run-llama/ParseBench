@@ -1763,6 +1763,111 @@ class DatabricksAiParseLayoutAdapter(LayoutAdapter):
         )
 
 
+@register_layout_adapter("anyformat", priority=90)
+class AnyformatLayoutAdapter(LayoutAdapter):
+    """Adapter that extracts LayoutOutput from anyformat ParseOutput.layout_pages
+    (normalized [0,1] xywh + the API's block type as raw label; ``AnyformatLabelMapper``
+    canonicalizes it)."""
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput) or not inference_result.output.layout_pages:
+            return False
+        raw_output = inference_result.raw_output
+        return isinstance(raw_output, dict) and isinstance(raw_output.get("results"), dict)
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            filtered = [p for p in inference_result.output.predictions if p.page == page_filter]
+            return inference_result.output.model_copy(update={"predictions": filtered})
+
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("AnyformatLayoutAdapter requires ParseOutput or LayoutOutput")
+
+        layout_pages = inference_result.output.layout_pages
+        if not layout_pages:
+            return LayoutOutput(
+                task_type="layout_detection",
+                example_id=inference_result.request.example_id,
+                pipeline_name=inference_result.pipeline_name,
+                model=LayoutDetectionModel.ANYFORMAT_LAYOUT,
+                image_width=1,
+                image_height=1,
+                predictions=[],
+            )
+
+        first_page = layout_pages[0]
+        output_width = int(first_page.width or 1)
+        output_height = int(first_page.height or 1)
+
+        predictions: list[LayoutPrediction] = []
+        for lp in layout_pages:
+            if page_filter is not None and lp.page_number != page_filter:
+                continue
+            page_w = float(lp.width or output_width)
+            page_h = float(lp.height or output_height)
+            for item in lp.items:
+                regions = getattr(item, "regions", None) or []
+                region_texts = [r.text for r in regions if r.bbox is not None]
+                segments = (
+                    [r.bbox for r in regions if r.bbox is not None]
+                    or item.layout_segments
+                    or ([item.bbox] if item.bbox is not None else [])
+                )
+                # The ground truth annotates a figure both whole and by its parts, so a block of
+                # several detections is scored at both levels.
+                item_box = [
+                    min(sg.x for sg in segments) * page_w,
+                    min(sg.y for sg in segments) * page_h,
+                    max(sg.x + sg.w for sg in segments) * page_w,
+                    max(sg.y + sg.h for sg in segments) * page_h,
+                ]
+                if len(segments) > 1:
+                    block_label = (item.bbox.label if item.bbox is not None else None) or item.type or "Text"
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=item_box,
+                            score=1.0,
+                            label=block_label,
+                            page=lp.page_number,
+                            content=_build_vendor_content(block_label, item.value),
+                            provider_metadata={"order_index": len(predictions)},
+                        )
+                    )
+                for region_index, seg in enumerate(segments):
+                    label = seg.label or item.type or "Text"
+                    text = region_texts[region_index] if region_index < len(region_texts) else ""
+                    if not text and len(segments) == 1:
+                        text = item.value
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[seg.x * page_w, seg.y * page_h, (seg.x + seg.w) * page_w, (seg.y + seg.h) * page_h],
+                            score=float(seg.confidence) if seg.confidence is not None else 1.0,
+                            label=label,
+                            page=lp.page_number,
+                            content=_build_vendor_content(label, text) if text else None,
+                            provider_metadata={"order_index": len(predictions)},
+                        )
+                    )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.ANYFORMAT_LAYOUT,
+            image_width=max(output_width, 1),
+            image_height=max(output_height, 1),
+            predictions=predictions,
+        )
+
+
 @register_layout_adapter("textract", priority=89)
 class TextractLayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from Textract ParseOutput.layout_pages.

@@ -2596,6 +2596,9 @@ anthropic = [
     { name = "pillow" },
     { name = "pymupdf" },
 ]
+anyformat = [
+    { name = "httpx" },
+]
 aws = [
     { name = "amazon-textract-textractor" },
     { name = "boto3" },
@@ -2720,6 +2723,7 @@ requires-dist = [
     { name = "google-cloud-documentai", marker = "extra == 'runners'", specifier = ">=2.20.0" },
     { name = "google-genai", marker = "extra == 'google'", specifier = ">=1.0.0" },
     { name = "google-genai", marker = "extra == 'runners'", specifier = ">=1.0.0" },
+    { name = "httpx", marker = "extra == 'anyformat'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'docling'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'llamaparse'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'runners'", specifier = ">=0.28.0" },
@@ -2778,7 +2782,7 @@ requires-dist = [
     { name = "unstructured-client", marker = "extra == 'unstructured'", specifier = ">=0.26.0" },
     { name = "warp-ingest", extras = ["ocr"], marker = "extra == 'runners'", specifier = ">=2.0.1" },
 ]
-provides-extras = ["anthropic", "aws", "azure", "chunkr", "datalab", "dev", "docling", "extend", "fast", "google", "landingai", "liteparse", "llamaparse", "local", "openai", "pymupdf4llm", "reducto", "runners", "unstructured"]
+provides-extras = ["anthropic", "anyformat", "aws", "azure", "chunkr", "datalab", "dev", "docling", "extend", "fast", "google", "landingai", "liteparse", "llamaparse", "local", "openai", "pymupdf4llm", "reducto", "runners", "unstructured"]
 
 [[package]]
 name = "partial-json-parser"

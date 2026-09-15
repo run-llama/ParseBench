@@ -208,6 +208,25 @@ Hosted document-parsing API. Sign up at [oi-parser.ai](https://oi-parser.ai/) to
 |---|---|---|
 | **`oi_parser`** | oi-parser hosted `/v1/extract` API | `OI_PARSER_API_KEY`, `OI_PARSER_BASE_URL` (optional) |
 
+### anyformat
+
+Hosted parse API. Each pipeline creates a one-node parse workflow for its tier (cache off) on first
+use, runs every document through `POST /v3/workflows/{id}/upload/run/` and polls `GET /v3/runs/{id}/`.
+Cost is the public list price of the tier (credits per page × credit rate); the API reports no usage.
+Layout bboxes come from the response's `blocks[]` and feed the layout vertical through the
+`anyformat` layout adapter.
+
+| Pipeline | Description | Env Vars |
+|---|---|---|
+| **`anyformat_standard`** | Standard tier (25 credits/page) | `ANYFORMAT_API_KEY`, `ANYFORMAT_BASE_URL` (optional) |
+| `anyformat_agentic` | Agentic tier (100 credits/page) | same |
+| `anyformat_lite` | Fast tier (12 credits/page) | same |
+| `anyformat_flash` | Flash tier (7 credits/page) | same |
+
+Config keys accepted through `PipelineSpec.config`: `mode`, `workflow_id` (reuse an existing one-node
+parse workflow), `effort`, `prompt_hint`, `figure_enhancement`, `credit_rate_usd`, `poll_interval`,
+`request_timeout`, `job_timeout`. Recommended `--max_concurrent 10` (submission tier: 60 requests/min).
+
 ---
 
 ## Self-hosted Model Pipelines
