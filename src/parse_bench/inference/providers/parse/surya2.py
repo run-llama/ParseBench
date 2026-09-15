@@ -113,16 +113,20 @@ class Surya2Provider(Provider):
         self._timeout = self.base_config.get("timeout", 600)
         self._dpi = self.base_config.get("dpi", 192)
 
-    def _pdf_to_image(self, pdf_path: Path) -> bytes:
+    def _pdf_to_images(self, pdf_path: Path) -> list[bytes]:
+        """Render every PDF page to PNG bytes in source order."""
         try:
             from pdf2image import convert_from_path
 
             images = convert_from_path(pdf_path, dpi=self._dpi)
             if not images:
                 raise ProviderPermanentError(f"No pages found in PDF: {pdf_path}")
-            buf = io.BytesIO()
-            images[0].save(buf, format="PNG")
-            return buf.getvalue()
+            encoded: list[bytes] = []
+            for image in images:
+                buf = io.BytesIO()
+                image.save(buf, format="PNG")
+                encoded.append(buf.getvalue())
+            return encoded
         except ImportError as e:
             raise ProviderPermanentError("pdf2image is required. Install with: pip install pdf2image") from e
         except Exception as e:
@@ -177,6 +181,16 @@ class Surya2Provider(Provider):
                 },
             }
 
+    async def _run_inference_pages_async(self, pages: list[bytes]) -> dict[str, Any]:
+        """Run each input page in order, retaining the legacy one-page shape."""
+        results = [await self._run_inference_async(page) for page in pages]
+        first = results[0]
+        if len(results) == 1:
+            return first
+        merged = dict(first)
+        merged["page_results"] = results
+        return merged
+
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         if request.product_type != ProductType.PARSE:
             raise ProviderPermanentError(f"Surya2Provider only supports PARSE product type, got {request.product_type}")
@@ -189,16 +203,16 @@ class Surya2Provider(Provider):
 
         suffix = file_path.suffix.lower()
         if suffix == ".pdf":
-            image_bytes = self._pdf_to_image(file_path)
+            page_images = self._pdf_to_images(file_path)
         elif suffix in (".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp"):
-            image_bytes = self._read_image(file_path)
+            page_images = [self._read_image(file_path)]
         else:
             raise ProviderPermanentError(
                 f"Unsupported file type: {suffix}. Supported: .pdf, .png, .jpg, .jpeg, .webp, .tiff, .bmp"
             )
 
         try:
-            raw_output = asyncio.run(self._run_inference_async(image_bytes))
+            raw_output = asyncio.run(self._run_inference_pages_async(page_images))
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 
@@ -249,8 +263,10 @@ class Surya2Provider(Provider):
 
         return re.sub(r"<[^>]+>", _quote_attrs, markdown)
 
-    def _build_layout_pages(self, blocks: list[dict[str, Any]], width: float, height: float) -> list[ParseLayoutPageIR]:
-        """Build layout pages from Surya OCR 2 per-block polygons (pixel coords)."""
+    def _build_layout_pages(
+        self, blocks: list[dict[str, Any]], width: float, height: float, page_number: int = 1
+    ) -> list[ParseLayoutPageIR]:
+        """Build one layout page from Surya OCR 2 per-block polygons (pixel coords)."""
         if not blocks or width <= 0 or height <= 0:
             return []
 
@@ -300,7 +316,7 @@ class Surya2Provider(Provider):
 
         return [
             ParseLayoutPageIR(
-                page_number=1,
+                page_number=page_number,
                 width=float(width),
                 height=float(height),
                 items=items,
@@ -313,14 +329,27 @@ class Surya2Provider(Provider):
                 f"Surya2Provider only supports PARSE product type, got {raw_result.product_type}"
             )
 
-        markdown = raw_result.raw_output.get("markdown", "")
-        if markdown:
-            markdown = self._sanitize_html_attributes(markdown)
+        page_results = raw_result.raw_output.get("page_results")
+        if not isinstance(page_results, list) or not page_results:
+            page_results = [raw_result.raw_output]
 
-        blocks = raw_result.raw_output.get("blocks", []) or []
-        width = float(raw_result.raw_output.get("image_width", 0) or 0)
-        height = float(raw_result.raw_output.get("image_height", 0) or 0)
-        layout_pages = self._build_layout_pages(blocks, width, height)
+        page_markdowns: list[str] = []
+        layout_pages: list[ParseLayoutPageIR] = []
+        for page_number, page_raw in enumerate(page_results, start=1):
+            markdown = page_raw.get("markdown", "")
+            if markdown:
+                markdown = self._sanitize_html_attributes(markdown)
+                page_markdowns.append(markdown)
+
+            layout_pages.extend(
+                self._build_layout_pages(
+                    page_raw.get("blocks", []) or [],
+                    float(page_raw.get("image_width", 0) or 0),
+                    float(page_raw.get("image_height", 0) or 0),
+                    page_number,
+                )
+            )
+        markdown = "\n\n".join(page_markdowns)
 
         output = ParseOutput(
             task_type="parse",

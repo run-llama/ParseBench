@@ -64,7 +64,11 @@ from parse_bench.evaluation.metrics.parse.grits_metric import (
 )
 from parse_bench.evaluation.metrics.parse.table_extraction import extract_html_tables
 from parse_bench.evaluation.metrics.parse.table_parsing import _sup_sub_to_unicode
-from parse_bench.evaluation.metrics.parse.utils import normalize_cell_text, normalize_text
+from parse_bench.evaluation.metrics.parse.utils import (
+    cells_match_leader_insensitive,
+    normalize_cell_text,
+    normalize_text,
+)
 from parse_bench.schemas.evaluation import MetricValue
 
 
@@ -586,6 +590,9 @@ def _header_data_alignment_score(
 
     Returns fraction of GT header cells whose text matches at the
     aligned position. Returns 1.0 when GT has no headers.
+
+    The text check is leader-insensitive — a trailing dot/period run is
+    decoration, not content. See ``utils.cells_match_leader_insensitive``.
     """
     if not gt_cells:
         return 1.0
@@ -598,7 +605,7 @@ def _header_data_alignment_score(
         mapped_c = col_map.get(gc.col)
         if mapped_r is not None and mapped_c is not None:
             pred_text = pred_text_lookup.get((mapped_r, mapped_c), "")
-            if gc.text == pred_text:
+            if cells_match_leader_insensitive(gc.text, pred_text):
                 hits += 1
 
     return hits / len(gt_cells)
@@ -707,6 +714,10 @@ def _header_content_bag_score(
     For each GT header cell text, check if any pred header cell text
     matches exactly (after formatting normalization).
     Score = matched / total GT.
+
+    "Exactly" is leader-insensitive: a header that differs only in a trailing
+    dot/period run ("no." vs "no") is the same header. See
+    ``utils.cells_match_leader_insensitive``.
     """
     if not gt_cells and not pred_cells:
         return 1.0
@@ -721,7 +732,7 @@ def _header_content_bag_score(
         for j, pt in enumerate(pred_texts):
             if used[j]:
                 continue
-            if gt_cell.text == pt:
+            if cells_match_leader_insensitive(gt_cell.text, pt):
                 used[j] = True
                 matched += 1
                 break
@@ -737,6 +748,12 @@ def _header_perfect_score(
 
     Returns 1.0 iff the header cells have the same count and each
     (text, row, col, rowspan, colspan) matches exactly (in sorted order).
+
+    Geometry must match exactly; the text is compared leader-insensitively,
+    the same way ``header_content_bag`` and ``header_data_alignment`` compare
+    it, so the three submetrics cannot disagree about whether a trailing dot
+    run makes two headers different. Sorting still uses the raw text, which
+    is inert here: (row, col, rowspan, colspan) is already unique per cell.
     """
     if not gt_cells and not pred_cells:
         return 1.0
@@ -750,7 +767,7 @@ def _header_perfect_score(
     pred_sorted = sorted(pred_cells, key=_key)
 
     for g, p in zip(gt_sorted, pred_sorted, strict=True):
-        if _key(g) != _key(p):
+        if _key(g)[:4] != _key(p)[:4] or not cells_match_leader_insensitive(g.text, p.text):
             return 0.0
     return 1.0
 

@@ -21,10 +21,10 @@ import numpy as np
 from apted import APTED, Config
 from apted.helpers import Tree
 from lxml import etree, html
-from scipy.optimize import linear_sum_assignment
 
 from parse_bench.evaluation.metrics.base import Metric
 from parse_bench.evaluation.metrics.parse import fast_tree_edit
+from parse_bench.evaluation.metrics.parse.table_pairing import assign_tables, page_blocking_active
 from parse_bench.evaluation.metrics.parse.utils import normalize_cell_text
 from parse_bench.schemas.evaluation import MetricValue
 
@@ -416,6 +416,9 @@ class TEDSMetric(Metric):
         self,
         expected: str,
         actual: str,
+        *,
+        expected_pages: list[int] | None = None,
+        actual_pages: list[int] | None = None,
         **kwargs: Any,
     ) -> list[MetricValue]:
         """
@@ -428,6 +431,13 @@ class TEDSMetric(Metric):
         Args:
             expected: Expected markdown with HTML tables (ground truth)
             actual: Actual markdown with HTML tables (from inference)
+            expected_pages: Optional page number (1-indexed) per GT table, aligned
+                with the tables extracted from ``expected``. When supplied with
+                ``actual_pages`` (and length-consistent), table matching is solved
+                per page so a GT table only pairs with a prediction on the same
+                page. Omit for the document-global assignment.
+            actual_pages: Optional page number per predicted table, aligned with
+                the tables extracted from ``actual``.
             kwargs: Additional parameters (not used)
 
         Returns:
@@ -471,34 +481,43 @@ class TEDSMetric(Metric):
         teds_calculator = TEDS(variants=self.variants)
         n_expected = len(expected_tables)
         n_actual = len(actual_tables)
-        total_pairs = n_expected * n_actual
+
+        # When per-table page labels are supplied, only same-page pairs are
+        # eligible to match — so only those need a (costly) TEDS comparison.
+        blocked = page_blocking_active(expected_pages, actual_pages, n_expected, n_actual)
+        allowed_pairs = [
+            (i, j)
+            for i in range(n_expected)
+            for j in range(n_actual)
+            if not blocked or expected_pages[i] == actual_pages[j]  # type: ignore[index]
+        ]
+        total_pairs = len(allowed_pairs)
 
         print(
-            f"  TEDS: comparing {n_expected} expected x {n_actual} actual = {total_pairs} table pair(s)",
+            f"  TEDS: comparing {n_expected} expected x {n_actual} actual = {total_pairs} table pair(s)"
+            f"{' (same-page only)' if blocked else ''}",
             flush=True,
         )
 
         # Build cost matrix (negative TEDS scores for minimization)
         # Rows: expected tables, Columns: actual tables
-        # Also store full results to avoid recomputation later
+        # Also store full results to avoid recomputation later. Disallowed
+        # (cross-page) cells keep cost 0.0 and are never read.
         cost_matrix = np.zeros((n_expected, n_actual))
         results_cache: dict[tuple[int, int], tuple[dict[str, float], int, int]] = {}
 
         # Use TEDS-Content for matching if available, else first variant
         matching_variant = TEDS_CONTENT if TEDS_CONTENT in self.variants else next(iter(sorted(self.variants)))
 
-        pair_idx = 0
-        for i, gt_table in enumerate(expected_tables):
-            for j, pred_table in enumerate(actual_tables):
-                pair_idx += 1
-                if total_pairs > 1:
-                    print(f"  TEDS: table pair {pair_idx}/{total_pairs}", flush=True)
-                scores, gt_nodes, pred_nodes = teds_calculator.evaluate(pred_table, gt_table)
-                results_cache[(i, j)] = (scores, gt_nodes, pred_nodes)
-                cost_matrix[i, j] = -scores[matching_variant]
+        for pair_idx, (i, j) in enumerate(allowed_pairs, start=1):
+            if total_pairs > 1:
+                print(f"  TEDS: table pair {pair_idx}/{total_pairs}", flush=True)
+            scores, gt_nodes, pred_nodes = teds_calculator.evaluate(actual_tables[j], expected_tables[i])
+            results_cache[(i, j)] = (scores, gt_nodes, pred_nodes)
+            cost_matrix[i, j] = -scores[matching_variant]
 
-        # Solve assignment problem using Hungarian algorithm
-        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+        # Solve assignment (per page when page labels are supplied, else global).
+        row_ind, col_ind = assign_tables(cost_matrix, expected_pages, actual_pages)
 
         # Build one MetricValue per variant
         metric_values: list[MetricValue] = []
@@ -513,15 +532,17 @@ class TEDSMetric(Metric):
                 scores, gt_nodes, pred_nodes = results_cache[(gt_idx_int, pred_idx_int)]
                 score = scores[variant]
                 per_table_scores.append(score)
-                per_table_details.append(
-                    {
-                        "gt_table_index": gt_idx_int,
-                        "pred_table_index": pred_idx_int,
-                        "score": score,
-                        "gt_nodes": gt_nodes,
-                        "pred_nodes": pred_nodes,
-                    }
-                )
+                detail: dict[str, Any] = {
+                    "gt_table_index": gt_idx_int,
+                    "pred_table_index": pred_idx_int,
+                    "score": score,
+                    "gt_nodes": gt_nodes,
+                    "pred_nodes": pred_nodes,
+                }
+                if blocked:
+                    detail["gt_page"] = expected_pages[gt_idx_int]  # type: ignore[index]
+                    detail["pred_page"] = actual_pages[pred_idx_int]  # type: ignore[index]
+                per_table_details.append(detail)
                 matched_gt_indices.add(gt_idx_int)
 
             # If there are unmatched expected tables, count them as 0

@@ -65,7 +65,7 @@ def renormalize_results(
         return 1
 
     # Find all raw result files
-    raw_files = list(output_dir.rglob("*.raw.json"))
+    raw_files = [path for path in output_dir.rglob("*.raw.json") if not path.name.endswith(".error.raw.json")]
     if not raw_files:
         console.print(f"[yellow]No raw result files found in {output_dir}")
         return 0
@@ -114,6 +114,13 @@ def renormalize_results(
                 with open(raw_file) as f:
                     raw_data = json.load(f)
                 raw_result = RawInferenceResult.model_validate(raw_data)
+
+                # Generic re-pricing seam: recompute cost from the recorded usage
+                # and the provider's current rates, so a pricing-table correction
+                # lands on renormalize without re-running inference. Provider-
+                # agnostic -- the runner never names a provider; a provider that
+                # cannot re-price leaves cost as recorded (base no-op).
+                provider.recompute_cost(raw_result.raw_output)
 
                 # Normalize
                 normalized_result = provider.normalize(raw_result)

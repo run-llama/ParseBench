@@ -140,27 +140,3 @@ def register_layout_pipelines(register_fn) -> None:  # type: ignore[no-untyped-d
             config={},  # Uses LAYOUT_V3_BYOC_GPU_URL env var or localhost:8002
         )
     )
-
-    # =========================================================================
-    # LlamaParse Staging Layout Detection (uses V3 labels)
-    # =========================================================================
-
-    register_fn(
-        PipelineSpec(
-            pipeline_name="staging_ours_agentic",
-            provider_name="llamaparse",
-            product_type=ProductType.LAYOUT_DETECTION,
-            config={
-                "use_staging": True,
-                "max_pages": 25,
-                "invalidate_cache": True,
-                "tier": "agentic",
-                "version": "latest",
-                "high_res_ocr": True,
-                "adaptive_long_table": True,
-                "outlined_table_extraction": True,
-                "output_tables_as_HTML": True,
-                "precise_bounding_box": True,
-            },
-        )
-    )

@@ -14,6 +14,12 @@ high-confidence patterns:
   glyph-first (``☐ Single ☑ Married``) and label-first
   (``Single ☐ Married ☑``) orderings.
 - Markdown task-list checkboxes (``- [x] Label`` / ``- [ ] Label``).
+- Multi-label yes/no checkbox groups, e.g.
+  ``["Multistage cement?", "No"]`` matches
+  ``Multistage cement? Yes [ ] No [x]``.
+- Multi-label table cells where one value is identified by a row/column
+  label set, e.g. ``["PLUG #1", "Cementing Date"]``. Label-list order is
+  ignored; all labels must match anchors around the same value cell.
 
 When the rule has a ``page`` and the metric injects a ``parse_output``,
 matching is scoped to that page's markdown only.
@@ -98,7 +104,11 @@ def _strip_label_punct(s: str) -> str:
     return s
 
 
-def _label_match_score(candidate: str, label: str) -> float:
+def _compact_label_text_for_distance(s: str) -> str:
+    return re.sub(r"[^0-9a-z]+", "", normalize_text(s))
+
+
+def _label_match_score(candidate: str, label: str, max_diffs: int | float = 0) -> float:
     """Score how well *candidate* matches *label* on the ``_label_matches`` axes.
 
     Returns ``0.0`` when the candidate fails every path (same as
@@ -162,10 +172,21 @@ def _label_match_score(candidate: str, label: str) -> float:
         if 1.0 > best:
             best = 1.0
 
+    allowed = int(max_diffs) if max_diffs and max_diffs > 0 else 0
+    if allowed > 0:
+        cand_compact = _compact_label_text_for_distance(candidate)
+        lbl_compact = _compact_label_text_for_distance(label)
+        if cand_compact and lbl_compact:
+            dist = _levenshtein_distance_at_most(cand_compact, lbl_compact, allowed)
+            if dist <= allowed:
+                tolerant_score = max(0.01, 1.0 - (dist / max(len(cand_compact), len(lbl_compact), 1)))
+                if tolerant_score > best:
+                    best = tolerant_score
+
     return best
 
 
-def _label_matches(candidate: str, label: str) -> bool:
+def _label_matches(candidate: str, label: str, max_diffs: int | float = 0) -> bool:
     """Boolean predicate over :func:`_label_match_score` for legacy callers.
 
     Used by callers that only need a boolean (adjacent-line fallback,
@@ -174,7 +195,7 @@ def _label_matches(candidate: str, label: str) -> bool:
     can score-and-pick-best across multiple candidate KV pairs.
     """
 
-    return _label_match_score(candidate, label) > 0.0
+    return _label_match_score(candidate, label, max_diffs) > 0.0
 
 
 def _coerce_bool(value: str | bool | list[str]) -> bool | None:
@@ -189,6 +210,10 @@ def _coerce_bool(value: str | bool | list[str]) -> bool | None:
     if isinstance(value, list):
         return None
     text = str(value).strip().lower()
+    if len(text) == 1 and text in _CHECKED_GLYPHS:
+        return True
+    if len(text) == 1 and text in _UNCHECKED_GLYPHS:
+        return False
     if text in _TRUTHY_TEXT:
         return True
     if text in _FALSY_TEXT:
@@ -208,6 +233,57 @@ def _value_alternatives(value: str | bool | list[str]) -> list[str]:
     if isinstance(value, list):
         return [str(v) for v in value]
     return [str(value)]
+
+
+def _label_parts_with_indexes(label: str | list[str]) -> list[tuple[str, int]]:
+    """Normalize form-field labels and keep original indexes for aligned tolerances."""
+    if isinstance(label, list):
+        return [(text, idx) for idx, part in enumerate(label) if (text := str(part).strip())]
+    text = str(label).strip()
+    return [(text, 0)] if text else []
+
+
+def _label_parts(label: str | list[str]) -> list[str]:
+    """Normalize a form-field label into one or more required visible keys."""
+
+    return [part for part, _ in _label_parts_with_indexes(label)]
+
+
+def _format_label_for_message(label: str | list[str]) -> str:
+    parts = _label_parts(label)
+    if len(parts) <= 1:
+        return repr(parts[0] if parts else "")
+    return repr(parts)
+
+
+def _label_max_diffs_parts(
+    value: int | float | list[int | float],
+    count: int,
+    source_indexes: list[int] | None = None,
+) -> list[int]:
+    if isinstance(value, list):
+        indexes = source_indexes or list(range(count))
+        return [
+            int(value[idx]) if idx < len(value) and isinstance(value[idx], (int, float)) and value[idx] > 0 else 0
+            for idx in indexes[:count]
+        ] + [0] * max(count - len(indexes), 0)
+    n = int(value) if isinstance(value, (int, float)) and value > 0 else 0
+    return [n] * count
+
+
+def _dedupe_nonempty_text(parts: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        clean = str(part).strip()
+        if not clean:
+            continue
+        key = normalize_text(clean)
+        if key in seen:
+            continue
+        out.append(clean)
+        seen.add(key)
+    return out
 
 
 def _multi_col_header_data_pairs(table: TableData) -> list[tuple[str, str]]:
@@ -504,6 +580,21 @@ _BOLD_COLON_RE = re.compile(
     r"\*\*[ \t]*([^*\n]+?)[ \t]*\*\*[ \t]*:?[ \t]*([^\n*]*?)(?=[ \t]*\*\*|$)",
     re.MULTILINE,
 )
+_EXPLICIT_BOLD_COLON_RE = re.compile(
+    r"\*\*[ \t]*([^*\n]+?)[ \t]*(?:[ \t]*:[ \t]*\*\*[ \t]*|\*\*[ \t]*:[ \t]*)([^\n*]*?)(?=[ \t]*\*\*|$)",
+    re.MULTILINE,
+)
+_ANY_BOLD_COLON_ON_LINE_RE = re.compile(r"\*\*[ \t]*[^*\n]+?[ \t]*\*\*[ \t]*:")
+_ANY_BOLD_INTERNAL_COLON_ON_LINE_RE = re.compile(r"\*\*[ \t]*[^*\n]+?:[ \t]*\*\*")
+_BOLD_VALUE_RE = re.compile(r"\*\*[ \t]*([^*\n]+?)[ \t]*\*\*")
+_LIST_LINE_RE = re.compile(r"^\s*\\?[-*+]\s+")
+
+
+def _has_bold_colon_label(content: str) -> bool:
+    """Return true if any line contains an explicit bold label marker."""
+
+    return bool(_ANY_BOLD_COLON_ON_LINE_RE.search(content) or _ANY_BOLD_INTERNAL_COLON_ON_LINE_RE.search(content))
+
 
 # Connector words that the parser sometimes wraps in bold inside a numeric
 # range, e.g. ``**Depth Drilled**: 105 **to**: 15437`` or
@@ -549,7 +640,7 @@ def _extend_value_across_bold_connectors(content: str, value_end_offset: int, ba
     return joined
 
 
-def _iter_bold_colon_pairs(content: str) -> list[tuple[str, str]]:
+def _iter_bold_colon_pairs_from_regex(content: str, pattern: re.Pattern[str]) -> list[tuple[str, str]]:
     """Yield every (label, value) pair surfaced via bold-colon syntax.
 
     Generic post-processing applied to every yielded pair: HTML tags
@@ -560,7 +651,7 @@ def _iter_bold_colon_pairs(content: str) -> list[tuple[str, str]]:
     """
 
     out: list[tuple[str, str]] = []
-    for match in _BOLD_COLON_RE.finditer(content):
+    for match in pattern.finditer(content):
         cand_label = match.group(1).strip(": ").strip()
         # Strip trailing markdown line-continuation backslash before whitespace.
         # Some parsers emit ``**Label**: \`` for empty fields; without this
@@ -581,6 +672,25 @@ def _iter_bold_colon_pairs(content: str) -> list[tuple[str, str]]:
         # Recover any sibling pipe-concatenated pairs riding the same line.
         out.extend(_split_pipe_concatenated_pairs(raw_value))
     return out
+
+
+def _iter_bold_colon_pairs(content: str) -> list[tuple[str, str]]:
+    """Yield every (label, value) pair surfaced via bold-colon syntax.
+
+    Kept intentionally backward-compatible with older generated rules: this
+    accepts both ``**Label:** value`` / ``**Label**: value`` and the historical
+    no-colon form. New rule generation should use
+    :func:`_iter_explicit_bold_colon_pairs` so bold emphasis on values is not
+    mistaken for a label.
+    """
+
+    return _iter_bold_colon_pairs_from_regex(content, _BOLD_COLON_RE)
+
+
+def _iter_explicit_bold_colon_pairs(content: str) -> list[tuple[str, str]]:
+    """Yield only explicit ``**Label:** value`` / ``**Label**: value`` pairs."""
+
+    return _iter_bold_colon_pairs_from_regex(content, _EXPLICIT_BOLD_COLON_RE)
 
 
 # Plain-colon pattern. Inter-token whitespace is restricted to horizontal
@@ -648,6 +758,166 @@ def _iter_plain_colon_pairs(content: str) -> list[tuple[str, str]]:
             out.append((cand_label, cand_value))
         # Recover any sibling pipe-concatenated pairs riding the same line.
         out.extend(_split_pipe_concatenated_pairs(raw_value))
+    return out
+
+
+_LABEL_BEFORE_BOLD_KNOWN_SUFFIXES = (
+    "Name of Field in which well is located",
+    "Date well was plugged",
+    "Name of Company or Operator",
+    "Name of Farm or Lease",
+    "Name of Party Plugging Well",
+    "Name of Lease",
+    "No. of Acres",
+    "Well No.",
+    "Sec. No.",
+    "Blk No.",
+    "Company",
+    "Address",
+    "Survey",
+    "County",
+    "Has this well ever produced oil or gas?",
+    "Located",
+    "Oil",
+    "Gas",
+    "Dry",
+    "Total Depth",
+    "Top of each producing sand",
+    "Name",
+    "Title",
+)
+_LABEL_BEFORE_BOLD_REJECT_PREFIXES = (
+    "i,",
+    "i ",
+    "if you answered",
+    "subscribed ",
+    "being ",
+)
+_LABEL_BEFORE_BOLD_REJECT_SUFFIXES = (
+    " and",
+    " at",
+    " by",
+    " for",
+    " from",
+    " in",
+    " of",
+    " on",
+    " or",
+    " to",
+)
+
+
+def _clean_label_before_bold(raw: str) -> str:
+    """Normalize the label chunk immediately before a bold value span."""
+
+    label = raw
+    # Empty fill lines often sit between two fields:
+    # ``Blk No. ______ Survey **T.E.&L.**``. The label for the bold value is the
+    # suffix after the blank, not the earlier empty field.
+    label = re.split(r"(?:\\?_){3,}", label)[-1]
+    label = re.sub(r"<br\s*/?>", " ", label, flags=re.IGNORECASE)
+    label = re.sub(r"^[\s\\*_#>\-+|]+", "", label)
+    label = _LABEL_TAG_PREFIX_RE.sub("", label)
+    label = _strip_html_tags(label).strip()
+    label = label.strip("*_ \t:-,;")
+    if ":" in label:
+        label = label.rsplit(":", 1)[-1].strip()
+
+    lowered = label.lower()
+    best: str | None = None
+    for suffix in _LABEL_BEFORE_BOLD_KNOWN_SUFFIXES:
+        idx = lowered.rfind(suffix.lower())
+        if idx < 0:
+            continue
+        if lowered[idx:].strip() != suffix.lower():
+            continue
+        if best is None or len(suffix) > len(best):
+            best = suffix
+    if best is not None:
+        label = label[-len(best) :].strip()
+
+    return label.strip("*_ \t:-,;")
+
+
+def _looks_like_label_before_bold(label: str) -> bool:
+    if not label or len(label) > 100:
+        return False
+    lowered = label.lower()
+    if lowered.startswith(_LABEL_BEFORE_BOLD_REJECT_PREFIXES):
+        return False
+    if not any(ch.isalpha() for ch in label):
+        return False
+    if ")" in label and "(" not in label:
+        return False
+    if len(label) <= 2:
+        return False
+    if lowered.endswith(_LABEL_BEFORE_BOLD_REJECT_SUFFIXES):
+        return False
+    if re.fullmatch(r"(?:19|20)?\d{1,2}", label):
+        return False
+    first_alpha = next((ch for ch in label if ch.isalpha()), "")
+    if first_alpha and first_alpha.islower():
+        return False
+    return True
+
+
+def _extend_inline_year_suffix(
+    value: str,
+    between_this_and_next: str,
+    next_match: re.Match[str] | None,
+) -> str:
+    """Join ``**June 17,** 194 **3**`` into ``June 17, 1943``."""
+
+    if next_match is None:
+        return value
+    year_prefix = re.sub(r"\s+", "", between_this_and_next)
+    if not re.fullmatch(r"(?:19|20)?\d{0,2}", year_prefix):
+        return value
+    suffix = next_match.group(1).strip()
+    if not re.fullmatch(r"\d{1,2}", suffix):
+        return value
+    year = f"{year_prefix}{suffix}"
+    if not re.fullmatch(r"(?:19|20)\d{2}", year):
+        return value
+    return re.sub(r"\s+", " ", f"{value} {year}").strip()
+
+
+def _iter_label_before_bold_value_pairs(content: str) -> list[tuple[str, str]]:
+    """Yield ``(label, value)`` for visual rows shaped as ``Label **Value**``.
+
+    Gemini-style parse output often preserves the printed form row as
+    ``Well No. **Z-5** Name of Lease **W. H. Portwood**`` rather than normalizing
+    it to ``**Well No.**: Z-5``. This matcher treats the text immediately before
+    each bold span as the label and the bold span as the value. It is deliberately
+    lower priority than explicit colon/table sources.
+    """
+
+    out: list[tuple[str, str]] = []
+    for line in content.splitlines():
+        if "**" not in line:
+            continue
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", ">", "|", "[Figure")):
+            continue
+        if re.search(r"\binstructions?\b", stripped, flags=re.IGNORECASE):
+            continue
+        if _LIST_LINE_RE.match(line):
+            continue
+        if _has_bold_colon_label(line):
+            continue
+        matches = list(_BOLD_VALUE_RE.finditer(line))
+        if not matches:
+            continue
+        prev_end = 0
+        for idx, match in enumerate(matches):
+            label = _clean_label_before_bold(line[prev_end : match.start()])
+            value = _strip_html_tags(match.group(1)).strip()
+            next_match = matches[idx + 1] if idx + 1 < len(matches) else None
+            next_start = next_match.start() if next_match is not None else len(line)
+            value = _extend_inline_year_suffix(value, line[match.end() : next_start], next_match)
+            if _looks_like_label_before_bold(label) and value:
+                out.append((label, value))
+            prev_end = match.end()
     return out
 
 
@@ -723,7 +993,11 @@ def _iter_underscore_blank_pairs(content: str) -> list[tuple[str, str]]:
 _ITALIC_LABEL_LINE_RE = re.compile(r"^\s*([*_])\s*(\S.*?\S)\s*\1[\s)\\]*$")
 
 
-def _find_text_value_adjacent_line(content: str, label: str) -> tuple[bool, str | None]:
+def _find_text_value_adjacent_line(
+    content: str,
+    label: str,
+    label_max_diffs: int | float = 0,
+) -> tuple[bool, str | None]:
     """Fallback for label-on-its-own-line layouts adjacent to an unlabelled value.
 
     Two layouts share this scanner:
@@ -771,7 +1045,9 @@ def _find_text_value_adjacent_line(content: str, label: str) -> tuple[bool, str 
         cand_norm = normalize_text(cleaned)
         if not cand_norm:
             continue
-        if fuzz.ratio(cand_norm, lbl_norm) / 100.0 < CELL_FUZZY_MATCH_THRESHOLD:
+        strict_match = fuzz.ratio(cand_norm, lbl_norm) / 100.0 >= CELL_FUZZY_MATCH_THRESHOLD
+        tolerant_match = label_max_diffs > 0 and _label_match_score(cleaned, label, label_max_diffs) > 0.0
+        if not strict_match and not tolerant_match:
             continue
         if italic_match:
             search_orders = [
@@ -959,6 +1235,8 @@ def _find_text_value_for_label(
     content: str,
     label: str,
     expected_values: list[str] | None = None,
+    max_diffs: int | float = 0,
+    label_max_diffs: int | float = 0,
 ) -> tuple[bool, str | None]:
     """Look up the value for *label*. Returns (label_found, value).
 
@@ -1019,7 +1297,7 @@ def _find_text_value_for_label(
     ) -> None:
         nonlocal label_seen
         for idx, (cand_label, cand_value) in enumerate(pairs):
-            score = _label_match_score(cand_label, label)
+            score = _label_match_score(cand_label, label, label_max_diffs)
             if score <= 0.0:
                 continue
             label_seen = True
@@ -1034,13 +1312,14 @@ def _find_text_value_for_label(
     _collect(_iter_plain_colon_pairs(content), priority=3, source_name="plain_colon")
     _collect(_iter_md_table_kv_rows(content), priority=2, source_name="md_table")
     _collect(_iter_html_table_kv_rows(content), priority=1, source_name="html_table")
+    _collect(_iter_label_before_bold_value_pairs(content), priority=0, source_name="label_before_bold")
 
     # Underscore blank fields (``Label ____``) — label seen, value empty.
     # The yielded value is always ""; we just record label presence so an
     # empty-expected text rule can pass via the ``label_seen`` short-circuit
     # below.
     for cand_label, _ in _iter_underscore_blank_pairs(content):
-        if _label_matches(cand_label, label):
+        if _label_matches(cand_label, label, label_max_diffs):
             label_seen = True
 
     # Last-resort sources — only fire when no higher-confidence source
@@ -1083,14 +1362,14 @@ def _find_text_value_for_label(
                 if neg_score != best_score_key:
                     break
                 for exp in expected_values:
-                    if _values_match_text(value, exp):
+                    if _values_match_text(value, exp, max_diffs):
                         return True, value
         return True, candidates[0][3]
 
     # Adjacent-line fallback (italic caption below value, or numbered label
     # above value). Only fires when no other matcher located the label.
     if not label_seen:
-        adj_seen, adj_value = _find_text_value_adjacent_line(content, label)
+        adj_seen, adj_value = _find_text_value_adjacent_line(content, label, label_max_diffs)
         if adj_seen:
             return True, adj_value
 
@@ -1145,6 +1424,90 @@ def _tokenize_checkbox_line(line: str) -> list[tuple[str, bool]]:
     return pairs
 
 
+_TRAILING_BOOL_OPTION_RE = re.compile(
+    r"^(?P<context>.*?)(?P<option>\b(?:yes|no|y|n)\b)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _tokenize_checkbox_line_with_context(line: str) -> list[tuple[list[str], bool]]:
+    """Pair inline yes/no checkbox markers with their question context.
+
+    Typical form parsers render a yes/no row as one line:
+
+    ``Multistage cement? Yes [ ] No [x]``
+
+    The plain tokenizer sees ``"Multistage cement? Yes" -> False`` and
+    ``"No" -> True``. For a multi-label checkbox rule we want the more precise
+    candidates ``["Multistage cement?", "Yes"] -> False`` and
+    ``["Multistage cement?", "No"] -> True`` so repeated Yes/No options can be
+    disambiguated by the surrounding question without adding a new schema.
+    """
+
+    marker_matches = list(_MARKER_RE.finditer(line))
+    if not marker_matches:
+        return []
+
+    text_before_first = line[: marker_matches[0].start()].strip()
+    if not text_before_first:
+        return []
+
+    pairs: list[tuple[list[str], bool]] = []
+    current_context: str | None = None
+    prev_end = 0
+    for marker in marker_matches:
+        label_text = line[prev_end : marker.start()].strip()
+        prev_end = marker.end()
+        if not label_text:
+            continue
+
+        labels = [label_text]
+        option_match = _TRAILING_BOOL_OPTION_RE.match(label_text)
+        if option_match:
+            context = option_match.group("context").strip(" :;-")
+            option = option_match.group("option").strip()
+            if context:
+                current_context = context
+                labels = [context, option]
+            elif current_context:
+                labels = [current_context, option]
+
+        parts = _dedupe_nonempty_text(labels)
+        if parts:
+            pairs.append((parts, _marker_is_checked(marker.group())))
+
+    return pairs
+
+
+def _checkbox_label_list_match_score(
+    candidate_labels: list[str],
+    required_labels: list[str],
+    label_max_diffs: list[int],
+) -> float:
+    if len(candidate_labels) < len(required_labels):
+        return 0.0
+
+    used: set[int] = set()
+    total = 0.0
+    for req_idx, required in enumerate(required_labels):
+        allowed = label_max_diffs[req_idx] if req_idx < len(label_max_diffs) else 0
+        best_idx = -1
+        best_score = 0.0
+        for cand_idx, candidate in enumerate(candidate_labels):
+            if cand_idx in used:
+                continue
+            score = _label_match_score(candidate, required, allowed)
+            if score > best_score:
+                best_idx = cand_idx
+                best_score = score
+        if best_idx < 0 or best_score <= 0.0:
+            return 0.0
+        used.add(best_idx)
+        total += best_score
+
+    return total / max(len(required_labels), 1)
+
+
 # Markdown task-list. Allows optional ``\`` escapes around the list marker
 # AND the brackets — some parsers emit ``\[x\]`` (or even ``\- \[x\]`` for a
 # nested escaped bullet) so the markdown source survives literal-character
@@ -1162,7 +1525,7 @@ _MD_TASKLIST_RE = re.compile(
 # trailing widget marker. Both the bullet marker and the brackets may be
 # preceded by a literal backslash escape.
 _MD_BULLET_LABEL_FIRST_RE = re.compile(
-    rf"^\s*\\?{_LIST_MARKER_RE_INLINE}\s+(.+?)\s+\\?\[([ xX])\\?\]\s*$",
+    rf"^\s*\\?{_LIST_MARKER_RE_INLINE}\s+([^\[\n]+?)\s+\\?\[([ xX])\\?\]\s*$",
     re.MULTILINE,
 )
 
@@ -1179,7 +1542,11 @@ _MD_BARE_TASKLIST_RE = re.compile(
 )
 
 
-def _find_checkbox_state_for_label(content: str, label: str) -> bool | None:
+def _find_checkbox_state_for_label(
+    content: str,
+    label: str,
+    label_max_diffs: int | float = 0,
+) -> bool | None:
     """Return True/False if *label* has a checkbox-style state nearby, else None.
 
     Like :func:`_find_text_value_for_label`, this collects every candidate
@@ -1193,7 +1560,7 @@ def _find_checkbox_state_for_label(content: str, label: str) -> bool | None:
     candidates: list[tuple[float, int, int, bool]] = []
 
     def _try_add(cand_label: str, state: bool, priority: int, idx: int) -> None:
-        score = _label_match_score(cand_label, label)
+        score = _label_match_score(cand_label, label, label_max_diffs)
         if score > 0.0:
             candidates.append((-score, -priority, idx, state))
 
@@ -1228,6 +1595,30 @@ def _find_checkbox_state_for_label(content: str, label: str) -> bool | None:
     return None
 
 
+def _find_checkbox_state_for_label_list(
+    content: str,
+    labels: list[str],
+    label_max_diffs: list[int],
+) -> bool | None:
+    """Return the checkbox state for a multi-label yes/no option."""
+
+    candidates: list[tuple[float, int, bool]] = []
+    candidate_idx = 0
+    for line in content.splitlines():
+        if not _MARKER_RE.search(line):
+            continue
+        for candidate_labels, state in _tokenize_checkbox_line_with_context(line):
+            score = _checkbox_label_list_match_score(candidate_labels, labels, label_max_diffs)
+            if score > 0.0:
+                candidates.append((-score, candidate_idx, state))
+            candidate_idx += 1
+
+    if candidates:
+        candidates.sort()
+        return candidates[0][2]
+    return None
+
+
 # Strikethrough span — match a ``~~...~~`` block AND its contents so an edit
 # history like ``~~old~~ new`` collapses to just ``new``. ``normalize_text``
 # only strips the ``~~`` markers (leaving the crossed-out text behind), which
@@ -1240,12 +1631,46 @@ def _strip_strikethrough_spans(s: str) -> str:
     return _STRIKETHROUGH_SPAN_RE.sub("", s).strip()
 
 
-def _values_match_text(found: str, expected: str) -> bool:
-    """Compare two form-field text values strictly.
+def _compact_value_text_for_distance(s: str) -> str:
+    """Keep only alphanumeric content after the normal form-value cleanup."""
 
-    Form values are *extracted*, not estimated, so there is no role for
-    similarity ratios or relative tolerance — a wrong digit, a wrong letter,
-    or a swapped name component is a real mismatch. Two paths only:
+    return re.sub(r"[^0-9a-z]+", "", normalize_text(s))
+
+
+def _levenshtein_distance_at_most(left: str, right: str, max_distance: int) -> int:
+    """Compute edit distance, stopping once it is already above the limit."""
+
+    if left == right:
+        return 0
+    if abs(len(left) - len(right)) > max_distance:
+        return max_distance + 1
+    if len(left) < len(right):
+        left, right = right, left
+
+    previous = list(range(len(right) + 1))
+    for i, lch in enumerate(left, start=1):
+        current = [i]
+        row_min = current[0]
+        for j, rch in enumerate(right, start=1):
+            cost = 0 if lch == rch else 1
+            current.append(
+                min(
+                    previous[j] + 1,
+                    current[j - 1] + 1,
+                    previous[j - 1] + cost,
+                )
+            )
+            row_min = min(row_min, current[-1])
+        if row_min > max_distance:
+            return max_distance + 1
+        previous = current
+    return previous[-1]
+
+
+def _values_match_text(found: str, expected: str, max_diffs: int | float = 0) -> bool:
+    """Compare two form-field text values with optional character tolerance.
+
+    Form values default to strict comparison on the meaningful text:
 
     1. Exact match after normalization (``normalize_text`` already case-folds
        and collapses whitespace), which handles ``Madison`` vs ``madison``,
@@ -1253,6 +1678,13 @@ def _values_match_text(found: str, expected: str) -> bool:
     2. Strict numeric equality via ``normalize_number_string``, which lets
        ``1,234`` match ``1234`` and ``$1,234.00`` match ``1234`` (the same
        value written differently) — but rejects ``53703`` vs ``53704``.
+    3. Exact match after dropping separators/punctuation from the normalized
+       value, which handles handwritten/date separators such as ``9-29`` vs
+       ``9 29`` without making any character substitutions.
+
+    When ``max_diffs`` is positive, the compact normalized values may differ
+    by that many Levenshtein edits. This is intended for hard-to-read form
+    values where one digit/letter may be ambiguous; the default remains 0.
 
     Strikethrough spans (``~~old~~ new``) are stripped from the *found*
     value before comparison so the parser's edit-history rendering matches
@@ -1274,15 +1706,26 @@ def _values_match_text(found: str, expected: str) -> bool:
     if f_num is not None and e_num is not None and f_num == e_num:
         return True
 
+    f_compact = _compact_value_text_for_distance(found_stripped)
+    e_compact = _compact_value_text_for_distance(expected)
+    if f_compact and e_compact and f_compact == e_compact:
+        return True
+
+    allowed = int(max_diffs) if max_diffs and max_diffs > 0 else 0
+    if allowed > 0 and f_compact and e_compact:
+        return _levenshtein_distance_at_most(f_compact, e_compact, allowed) <= allowed
+
     return False
 
 
 # Trailing ``(row N)`` annotation used by the form-field test generator to
 # point a label at a specific data row of a multi-column table. The column is
 # named by the prefix; ``N`` is 1-indexed over data rows (header rows are
-# skipped). We deliberately keep this strict and simple — anything else stays
-# under the bold-colon / 2-col / glyph paths.
+# skipped). This also covers simple repeated inline rows shaped as
+# ``FROM value TO value`` because some form parsers flatten ruled tables that
+# way instead of emitting a markdown table.
 _ROW_LABEL_RE = re.compile(r"\s*\(row\s+(\d+)\)\s*$", re.IGNORECASE)
+_INLINE_FROM_TO_RE = re.compile(r"^FROM\s*(?P<from>.*?)\s+TO\s*(?P<to>.*?)\s*$", re.IGNORECASE)
 
 
 def _split_row_label(label: str) -> tuple[str, int] | None:
@@ -1318,7 +1761,71 @@ def _column_header_for_index(table: TableData, col_idx: int) -> str:
     return ""
 
 
-def _find_table_cell_for_row_label(content: str, label: str) -> tuple[bool, str | None]:
+def _clean_inline_from_to_line(line: str) -> str:
+    clean = _strip_html_tags(line)
+    clean = re.sub(r"[*_`]+", "", clean)
+    clean = clean.replace("\\", "")
+    clean = re.sub(r"^\s*(?:[-+]\s+|\d+\.\s+)", "", clean)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    return clean
+
+
+def _clean_inline_from_to_value(value: str) -> str:
+    value = re.sub(r"(?:_|\s){3,}", " ", value)
+    return value.strip(" :;-_")
+
+
+def _find_inline_from_to_row_label(
+    content: str,
+    col_label: str,
+    row_n: int,
+    label_max_diffs: int | float = 0,
+) -> tuple[bool, str | None]:
+    """Look up ``FROM``/``TO`` values in flattened interval rows.
+
+    Example parser output:
+
+    ``FROM none reported TO RRC``
+
+    The rule keeps the same row-label syntax as markdown tables:
+    ``FROM (row 1)`` -> ``none reported`` and ``TO (row 1)`` -> ``RRC``.
+    """
+
+    wants_from = _label_matches("FROM", col_label, label_max_diffs)
+    wants_to = _label_matches("TO", col_label, label_max_diffs)
+    if not wants_from and not wants_to:
+        return False, None
+
+    rows: list[tuple[str, str]] = []
+    for raw_line in content.splitlines():
+        if "|" in raw_line:
+            continue
+        line = _clean_inline_from_to_line(raw_line)
+        if not line:
+            continue
+        match = _INLINE_FROM_TO_RE.match(line)
+        if not match:
+            continue
+        rows.append(
+            (
+                _clean_inline_from_to_value(match.group("from")),
+                _clean_inline_from_to_value(match.group("to")),
+            )
+        )
+
+    if not rows:
+        return False, None
+    if row_n < 1 or row_n > len(rows):
+        return True, ""
+    row_from, row_to = rows[row_n - 1]
+    return True, row_from if wants_from else row_to
+
+
+def _find_table_cell_for_row_label(
+    content: str,
+    label: str,
+    label_max_diffs: int | float = 0,
+) -> tuple[bool, str | None]:
     """Look up ``"<col_label> (row N)"`` in any multi-column table.
 
     Returns ``(label_seen, value_or_None)``. ``label_seen`` is True if a
@@ -1349,7 +1856,7 @@ def _find_table_cell_for_row_label(content: str, label: str) -> tuple[bool, str 
             header_text = _column_header_for_index(table, col_idx)
             if not header_text:
                 continue
-            if not _label_matches(header_text, col_label):
+            if not _label_matches(header_text, col_label, label_max_diffs):
                 continue
             label_seen = True
             if 0 <= data_row_idx < rows:
@@ -1359,8 +1866,177 @@ def _find_table_cell_for_row_label(content: str, label: str) -> tuple[bool, str 
             # Column matched but cell out of range or empty — keep looking
             # in case a sibling table has the same header populated.
 
+    inline_seen, inline_value = _find_inline_from_to_row_label(content, col_label, row_n, label_max_diffs)
+    if inline_seen:
+        return True, inline_value
+
     if label_seen:
         return True, ""
+    return False, None
+
+
+def _table_anchor_labels_for_cell(table: TableData, row_idx: int, col_idx: int) -> list[str]:
+    """Return visible row/column labels that identify a table value cell."""
+
+    labels: list[str] = []
+    header_rows = getattr(table, "header_rows", set()) or set()
+    row_headers = getattr(table, "row_headers", {}) or {}
+
+    labels.append(_column_header_for_index(table, col_idx))
+
+    for _, text in row_headers.get(row_idx, []):
+        labels.append(str(text))
+
+    # Keep markdown and simple HTML tables robust when header metadata is
+    # sparse: add the header cells above the value and the cells to its left.
+    for rr in sorted(header_rows):
+        if rr < row_idx and col_idx < table.data.shape[1]:
+            labels.append(str(table.data[rr, col_idx]))
+    for cc in range(col_idx):
+        labels.append(str(table.data[row_idx, cc]))
+
+    return _dedupe_nonempty_text(labels)
+
+
+def _compact_anchor_label(s: str) -> str:
+    return _compact_label_text_for_distance(s)
+
+
+def _compact_contains_with_diffs(haystack: str, needle: str, allowed: int) -> bool:
+    """Return True when any compact substring matches within edit distance."""
+
+    if allowed <= 0 or not haystack or not needle:
+        return False
+    if len(needle) > len(haystack):
+        return _levenshtein_distance_at_most(haystack, needle, allowed) <= allowed
+
+    min_len = max(1, len(needle) - allowed)
+    max_len = min(len(haystack), len(needle) + allowed)
+    for start in range(0, len(haystack) - min_len + 1):
+        for size in range(min_len, max_len + 1):
+            end = start + size
+            if end > len(haystack):
+                break
+            if _levenshtein_distance_at_most(haystack[start:end], needle, allowed) <= allowed:
+                return True
+    return False
+
+
+def _table_anchor_label_matches(candidate: str, required: str, max_diffs: int | float = 0) -> bool:
+    """Stricter label match for multi-label table anchors.
+
+    The legacy fuzzy label scorer is intentionally broad for single-key form
+    labels, but it is too broad for sibling columns like PLUG #1 / PLUG #2.
+    Multi-key table lookup needs exact or containment-style evidence instead.
+    """
+
+    cand = normalize_text(candidate)
+    req = normalize_text(required)
+    if not cand or not req:
+        return False
+    if _strip_label_punct(cand) == _strip_label_punct(req):
+        return True
+    if req in cand or cand in req:
+        return True
+
+    cand_compact = _compact_anchor_label(candidate)
+    req_compact = _compact_anchor_label(required)
+    if not cand_compact or not req_compact:
+        return False
+    if cand_compact == req_compact:
+        return True
+    min_containment_len = 4
+    if (
+        len(req_compact) >= min_containment_len
+        and req_compact in cand_compact
+        or len(cand_compact) >= min_containment_len
+        and cand_compact in req_compact
+    ):
+        return True
+
+    allowed = int(max_diffs) if max_diffs and max_diffs > 0 else 0
+    return allowed > 0 and (
+        _levenshtein_distance_at_most(cand_compact, req_compact, allowed) <= allowed
+        or _compact_contains_with_diffs(cand_compact, req_compact, allowed)
+    )
+
+
+def _labels_match_all(
+    candidate_labels: list[str],
+    required_labels: list[str],
+    label_max_diffs: list[int],
+) -> bool:
+    """Order-insensitive match: every required label must match one anchor."""
+
+    for idx, required in enumerate(required_labels):
+        allowed = label_max_diffs[idx] if idx < len(label_max_diffs) else 0
+        if not any(_table_anchor_label_matches(candidate, required, allowed) for candidate in candidate_labels):
+            return False
+    return True
+
+
+def _is_table_value_cell(table: TableData, row_idx: int, col_idx: int) -> bool:
+    header_rows = getattr(table, "header_rows", set()) or set()
+    header_cols = getattr(table, "header_cols", set()) or set()
+    header_cells = getattr(table, "header_cells", set()) or set()
+
+    if row_idx in header_rows:
+        return False
+    if header_cells:
+        if (row_idx, col_idx) in header_cells:
+            return False
+    elif col_idx in header_cols:
+        return False
+
+    # In row/column form tables, the first data column is normally the row
+    # label stub ("Cementing Date", "Depth...", etc.), not a value cell.
+    if col_idx == 0 and table.data.shape[1] > 1:
+        return False
+    return True
+
+
+def _find_table_cell_for_label_list(
+    content: str,
+    labels: list[str],
+    expected_values: list[str] | None = None,
+    max_diffs: int | float = 0,
+    label_max_diffs: list[int] | None = None,
+) -> tuple[bool, str | None]:
+    """Look up a value cell by multiple row/column-style form labels.
+
+    This is deliberately narrower than full table evaluation: it only asks
+    whether the same table cell is anchored by all requested visible labels.
+    The rule JSON does not need row/column roles; labels are matched as an
+    unordered set against the nearby table anchors.
+    """
+
+    label_seen = False
+    fallback_value: str | None = None
+    label_diffs = label_max_diffs or [0] * len(labels)
+    for table in parse_html_tables(content) + parse_markdown_tables(content):
+        if table.data.size == 0:
+            continue
+        rows, cols = table.data.shape
+
+        for row_idx in range(rows):
+            for col_idx in range(cols):
+                if not _is_table_value_cell(table, row_idx, col_idx):
+                    continue
+                anchors = _table_anchor_labels_for_cell(table, row_idx, col_idx)
+                if not _labels_match_all(anchors, labels, label_diffs):
+                    continue
+
+                label_seen = True
+                value = str(table.data[row_idx, col_idx]).strip()
+                if expected_values:
+                    for exp in expected_values:
+                        if _values_match_text(value, exp, max_diffs):
+                            return True, value
+                if fallback_value is None or (not fallback_value and value):
+                    fallback_value = value
+
+    if label_seen:
+        return True, fallback_value or ""
     return False, None
 
 
@@ -1443,10 +2119,19 @@ class FormFieldRule(ParseTestRule):
             raise ValueError(f"Invalid type for FormFieldRule: {self.type}")
 
         self.label = rule_data.label
+        label_parts = _label_parts_with_indexes(rule_data.label)
+        self.labels = [part for part, _ in label_parts]
+        label_indexes = [idx for _, idx in label_parts]
+        self.label_max_diffs = _label_max_diffs_parts(
+            rule_data.label_max_diffs,
+            len(self.labels),
+            label_indexes,
+        )
+        self.value_max_diffs = rule_data.value_max_diffs
         self.value = rule_data.value
         self.value_type = rule_data.value_type
 
-        if not self.label:
+        if not self.labels:
             raise ValueError("label field cannot be empty")
 
     def _content_for_match(self, md_content: str) -> str:
@@ -1469,11 +2154,20 @@ class FormFieldRule(ParseTestRule):
     def _run_text(self, content: str) -> tuple[bool, str, float]:
         # `self.value` can be a list of acceptable alternatives — pass if any matches.
         expected_alternatives = _value_alternatives(self.value)
+        label = self.labels[0]
         # Multi-col table cell lookup ("Column Name (row N)") takes precedence
         # over the bold-colon / 2-col / glyph paths because the suffix
         # explicitly names a tabular position.
-        if _split_row_label(self.label) is not None:
-            label_found, value = _find_table_cell_for_row_label(content, self.label)
+        if len(self.labels) > 1:
+            label_found, value = _find_table_cell_for_label_list(
+                content,
+                self.labels,
+                expected_alternatives,
+                self.value_max_diffs,
+                self.label_max_diffs,
+            )
+        elif _split_row_label(label) is not None:
+            label_found, value = _find_table_cell_for_row_label(content, label, self.label_max_diffs[0])
         else:
             # Thread expected_alternatives so the matcher can disambiguate
             # among candidates at the same top label-match score. The rule's
@@ -1484,13 +2178,19 @@ class FormFieldRule(ParseTestRule):
             # oracle is applied **only** to candidates tied at the head
             # label-match score, so it never leaks across adjacent labels
             # like Country vs County which live at different score levels.
-            label_found, value = _find_text_value_for_label(content, self.label, expected_alternatives)
+            label_found, value = _find_text_value_for_label(
+                content,
+                label,
+                expected_alternatives,
+                self.value_max_diffs,
+                self.label_max_diffs[0],
+            )
         if not label_found:
-            return False, f"label not found: {self.label!r}", 0.0
+            return False, f"label not found: {_format_label_for_message(self.label)}", 0.0
         # value may be "" (label found, cell/value empty); _values_match_text
         # handles empty == empty correctly so empty-expected rules can pass.
         for expected in expected_alternatives:
-            if _values_match_text(value or "", expected):
+            if _values_match_text(value or "", expected, self.value_max_diffs):
                 return True, "match", 1.0
         if len(expected_alternatives) == 1:
             return False, f"expected {expected_alternatives[0]!r}, got {(value or '')!r}", 0.0
@@ -1502,15 +2202,33 @@ class FormFieldRule(ParseTestRule):
             return False, f"checkbox value must be coercible to bool, got {self.value!r}", 0.0
 
         # Prefer a real checkbox-shaped match.
-        state = _find_checkbox_state_for_label(content, self.label)
+        state = (
+            _find_checkbox_state_for_label(content, self.labels[0], self.label_max_diffs[0])
+            if len(self.labels) == 1
+            else _find_checkbox_state_for_label_list(content, self.labels, self.label_max_diffs)
+        )
         if state is None:
             # Fall back to a text-shaped value (e.g. **Married:** Yes / No).
-            if _split_row_label(self.label) is not None:
-                label_found, text_value = _find_table_cell_for_row_label(content, self.label)
+            if len(self.labels) > 1:
+                label_found, text_value = _find_table_cell_for_label_list(
+                    content,
+                    self.labels,
+                    label_max_diffs=self.label_max_diffs,
+                )
+            elif _split_row_label(self.labels[0]) is not None:
+                label_found, text_value = _find_table_cell_for_row_label(
+                    content,
+                    self.labels[0],
+                    self.label_max_diffs[0],
+                )
             else:
-                label_found, text_value = _find_text_value_for_label(content, self.label)
+                label_found, text_value = _find_text_value_for_label(
+                    content,
+                    self.labels[0],
+                    label_max_diffs=self.label_max_diffs[0],
+                )
             if not label_found or not text_value:
-                return False, f"label not found: {self.label!r}", 0.0
+                return False, f"label not found: {_format_label_for_message(self.label)}", 0.0
             state = _coerce_bool(text_value)
             if state is None:
                 return False, f"could not interpret {text_value!r} as checkbox state", 0.0
@@ -1536,9 +2254,20 @@ class FormFieldRule(ParseTestRule):
         # Track label presence separately from value presence — an absent label
         # must NOT pass an "expected unsigned" rule. A form tuple benchmark
         # requires the parser to surface the field at all.
-        label_found, text_value = _find_text_value_for_label(content, self.label)
+        if len(self.labels) > 1:
+            label_found, text_value = _find_table_cell_for_label_list(
+                content,
+                self.labels,
+                label_max_diffs=self.label_max_diffs,
+            )
+        else:
+            label_found, text_value = _find_text_value_for_label(
+                content,
+                self.labels[0],
+                label_max_diffs=self.label_max_diffs[0],
+            )
         if not label_found:
-            return False, f"label not found: {self.label!r}", 0.0
+            return False, f"label not found: {_format_label_for_message(self.label)}", 0.0
         signed = bool(text_value and text_value.strip())
         if signed == expected_signed:
             return True, "match", 1.0

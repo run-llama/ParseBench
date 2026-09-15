@@ -18,9 +18,7 @@ from parse_bench.schemas.product import ProductType
 
 
 def test_only_one_pymupdf4llm_pipeline_is_registered() -> None:
-    assert [name for name in list_pipelines() if name.startswith("pymupdf4llm")] == [
-        "pymupdf4llm_markdown"
-    ]
+    assert [name for name in list_pipelines() if name.startswith("pymupdf4llm")] == ["pymupdf4llm_markdown"]
 
 
 def test_pipeline_uses_rapidocr_and_native_html() -> None:
@@ -130,9 +128,7 @@ def test_normalize_preserves_native_html_and_layout_grounding() -> None:
                 "text": native_html,
                 "width": 100,
                 "height": 100,
-                "page_boxes": [
-                    {"class": "table", "bbox": [0, 0, 100, 100], "pos": [0, len(native_html)]}
-                ],
+                "page_boxes": [{"class": "table", "bbox": [0, 0, 100, 100], "pos": [0, len(native_html)]}],
             }
         ],
         "num_pages": 1,

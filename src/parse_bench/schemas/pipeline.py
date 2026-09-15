@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from parse_bench.schemas.product import ProductType
+from parse_bench.schemas.product import ProductTypeName
 
 
 class PipelineSpec(BaseModel):
@@ -10,5 +10,13 @@ class PipelineSpec(BaseModel):
 
     pipeline_name: str = Field(description="Name of this pipeline")
     provider_name: str = Field(description="Name of the provider (e.g., 'llama', 'openai')")
-    product_type: ProductType = Field(description="Type of product task (parse or extract)")
+    product_type: ProductTypeName = Field(description="Type of product task (parse or extract)")
     config: dict[str, Any] = Field(default_factory=dict, description="Configuration dictionary to pass to the provider")
+    per_file_timeout: float | None = Field(
+        default=None,
+        description=(
+            "Optional per-pipeline override (seconds) for the runner's per-file inference timeout. "
+            "The run-level --per_file_timeout takes precedence when set. None → use the run-level "
+            "value, then the global default. Kept off `config` so providers never receive it."
+        ),
+    )

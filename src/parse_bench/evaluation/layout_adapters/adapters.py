@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from parse_bench.evaluation.layout_adapters.base import LayoutAdapter
@@ -17,6 +18,7 @@ from parse_bench.evaluation.metrics.attribution.text_utils import (
     normalize_attribution_text,
     tokenize,
 )
+from parse_bench.geometry.rotated_bbox import polygon_to_literal_xywh_r
 from parse_bench.inference.layout_extraction import (
     extract_all_layouts_from_llamaparse_output,
 )
@@ -32,7 +34,7 @@ from parse_bench.schemas.layout_detection_output import (
     LayoutTableContent,
     LayoutTextContent,
 )
-from parse_bench.schemas.parse_output import ParseOutput
+from parse_bench.schemas.parse_output import ParseLayoutPageIR, ParseOutput
 from parse_bench.schemas.pipeline_io import InferenceResult
 from parse_bench.test_cases.schema import TestCase
 
@@ -43,6 +45,7 @@ class _GranularSegment:
     y: float
     w: float
     h: float
+    r: float | None = None
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,7 @@ class _GranularPage:
     page_number: int
     lines: list[_GranularTextUnit]
     words: list[_GranularTextUnit]
+    cells: list[_GranularTextUnit] = field(default_factory=list)
 
 
 @register_layout_adapter("__default__", priority=-100)
@@ -93,11 +97,12 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
 
     def __init__(self) -> None:
         self._pages_payload: list[dict[str, Any]] | None = None
+        self._attribution_pages_payload: list[dict[str, Any]] | None = None
 
     @classmethod
     def matches(cls, inference_result: InferenceResult) -> bool:
         if isinstance(inference_result.output, ParseOutput):
-            if len(inference_result.output.layout_pages) > 0:
+            if len(inference_result.output.layout_pages) > 0 or len(inference_result.output.grounded_pages) > 0:
                 return True
 
         if (
@@ -125,6 +130,10 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
         page_filter: int | None = None,
     ) -> LayoutOutput:
         pages = _resolve_llamaparse_pages(inference_result)
+        self._attribution_pages_payload = _resolve_llamaparse_pages(
+            inference_result,
+            include_bbox_segment_fallback=False,
+        )
         raw_output = inference_result.raw_output if isinstance(inference_result.raw_output, dict) else {}
 
         if pages:
@@ -176,7 +185,8 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
                 test_case=None,
             )
 
-        raw_page = _find_page_payload(self._pages_payload, page_number)
+        attribution_pages = self._attribution_pages_payload or self._pages_payload
+        raw_page = _find_page_payload(attribution_pages, page_number)
         if raw_page is None:
             return super().to_attribution_blocks(
                 layout_output,
@@ -195,9 +205,22 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
         page_md = raw_page.get("md", "") or raw_page.get("text", "") or ""
         page_width = float(raw_page.get("width") or layout_output.image_width or 1)
         page_height = float(raw_page.get("height") or layout_output.image_height or 1)
-        return parse_pred_blocks(items, page_md, page_width, page_height)
+        return parse_pred_blocks(
+            items,
+            page_md,
+            page_width,
+            page_height,
+            require_layout_aware_segments=True,
+        )
 
     def to_granular_pages(self, inference_result: InferenceResult) -> list[_GranularPage]:
+        if isinstance(inference_result.output, ParseOutput):
+            normalized_pages = _build_normalized_granular_pages(inference_result.output.layout_pages)
+            if normalized_pages:
+                return normalized_pages
+            if inference_result.output.grounded_pages:
+                return _build_llamaparse_granular_pages_from_payload(inference_result.output.grounded_pages)
+
         raw_output = inference_result.raw_output if isinstance(inference_result.raw_output, dict) else {}
         grounded_pages = raw_output.get("v2_grounded_items", raw_output.get("grounded_items"))
         return _build_llamaparse_granular_pages_from_payload(grounded_pages)
@@ -214,6 +237,9 @@ class WarpIngestLayoutAdapter(LayoutAdapter):
         page_filter: int | None = None,
     ) -> LayoutOutput:
         try:
+            from parse_bench.inference.providers.parse.warp_ingest import ensure_nltk_corpora
+
+            ensure_nltk_corpora()
             from warp_ingest.ingestor.markdown_exporter import render_layout_predictions
         except ImportError as exc:
             raise ValueError("warp-ingest>=2.0.1 is required for Warp-Ingest layout evaluation") from exc
@@ -263,25 +289,66 @@ class WarpIngestLayoutAdapter(LayoutAdapter):
         )
 
 
+def _build_normalized_granular_pages(layout_pages: list[Any]) -> list[_GranularPage]:
+    """Read provider-neutral granular layers retained on normalized Parse pages."""
+    pages: list[_GranularPage] = []
+    for page in layout_pages:
+        units_by_granularity: dict[str, list[_GranularTextUnit]] = {
+            "line": [],
+            "word": [],
+            "cell": [],
+        }
+        for layer in page.granular_layers:
+            if layer.granularity not in units_by_granularity:
+                continue
+            for unit in layer.units:
+                units_by_granularity[layer.granularity].append(
+                    _GranularTextUnit(
+                        text=unit.text,
+                        bbox=_GranularSegment(
+                            x=unit.bbox.x,
+                            y=unit.bbox.y,
+                            w=unit.bbox.w,
+                            h=unit.bbox.h,
+                            r=unit.bbox.r,
+                        ),
+                        order_index=unit.order_index,
+                    )
+                )
+        if any(units_by_granularity.values()):
+            pages.append(
+                _GranularPage(
+                    page_number=page.page_number,
+                    lines=units_by_granularity["line"],
+                    words=units_by_granularity["word"],
+                    cells=units_by_granularity["cell"],
+                )
+            )
+    return pages
+
+
 def _build_llamaparse_granular_pages_from_payload(grounded_pages: Any) -> list[_GranularPage]:
     if not isinstance(grounded_pages, list):
         return []
 
     pages: list[_GranularPage] = []
     for page_payload in grounded_pages:
-        if not isinstance(page_payload, dict) or page_payload.get("success") is False:
+        if not isinstance(page_payload, dict):
+            continue
+        if page_payload.get("success") is False:
             continue
 
         page_number = page_payload.get("page_number")
         page_width = page_payload.get("page_width")
         page_height = page_payload.get("page_height")
-        raw_items = page_payload.get("items")
         if not isinstance(page_number, int):
             continue
         if not isinstance(page_width, (int, float)) or page_width <= 0:
             continue
         if not isinstance(page_height, (int, float)) or page_height <= 0:
             continue
+
+        raw_items = page_payload.get("items")
         if not isinstance(raw_items, list):
             continue
 
@@ -319,8 +386,16 @@ def _build_llamaparse_granular_pages_from_payload(grounded_pages: Any) -> list[_
 
         deduped_lines = _dedupe_granular_units(line_units)
         deduped_words = _dedupe_granular_units(word_units)
-        if deduped_lines or deduped_words:
-            pages.append(_GranularPage(page_number=page_number, lines=deduped_lines, words=deduped_words))
+        if not deduped_lines and not deduped_words:
+            continue
+
+        pages.append(
+            _GranularPage(
+                page_number=page_number,
+                lines=deduped_lines,
+                words=deduped_words,
+            )
+        )
 
     return pages
 
@@ -341,13 +416,13 @@ def _collect_llamaparse_line_contexts(raw_node: Any) -> list[dict[str, Any]]:
     if isinstance(grounding, dict):
         source_text = _resolve_llamaparse_grounding_source_text(raw_node, grounding)
         raw_lines = grounding.get("lines")
-        if source_text and isinstance(raw_lines, list):
+        if isinstance(raw_lines, list):
             contexts.extend(_build_llamaparse_line_context_entries(source_text, raw_lines))
 
+        raw_rows = grounding.get("rows")
         source_rows = raw_node.get("rows")
-        grounded_rows = grounding.get("rows")
-        if isinstance(source_rows, list) and isinstance(grounded_rows, list):
-            contexts.extend(_collect_llamaparse_table_cell_contexts(source_rows, grounded_rows))
+        if isinstance(raw_rows, list) and isinstance(source_rows, list):
+            contexts.extend(_build_llamaparse_table_line_context_entries(source_rows, raw_rows))
 
     child_items = raw_node.get("items")
     if isinstance(child_items, list):
@@ -362,26 +437,33 @@ def _build_llamaparse_line_context_entries(source_text: str, raw_lines: list[Any
     for raw_line in raw_lines:
         if not isinstance(raw_line, dict):
             continue
+
         line_span = _coerce_span(raw_line.get("span"))
         line_bbox = raw_line.get("bbox")
         if line_span is None or not isinstance(line_bbox, dict):
             continue
+
         line_text = _normalize_llamaparse_grounded_text(_slice_span_text(source_text, line_span))
         if not line_text:
             continue
+
         entries.append(
             {
                 "text": line_text,
                 "bbox": line_bbox,
-                "source_text": source_text,
                 "line_span": line_span,
-                "raw_words": raw_line.get("words"),
+                "raw_words": raw_line.get("words") if isinstance(raw_line.get("words"), list) else [],
+                "source_text": source_text,
             }
         )
+
     return entries
 
 
-def _collect_llamaparse_table_cell_contexts(source_rows: list[Any], raw_rows: list[Any]) -> list[dict[str, Any]]:
+def _build_llamaparse_table_line_context_entries(
+    source_rows: list[Any],
+    raw_rows: list[Any],
+) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     for source_row, grounding_row in zip(source_rows, raw_rows, strict=False):
         if not isinstance(source_row, list) or not isinstance(grounding_row, list):
@@ -389,10 +471,15 @@ def _collect_llamaparse_table_cell_contexts(source_rows: list[Any], raw_rows: li
         for source_cell, grounding_cell in zip(source_row, grounding_row, strict=False):
             if not isinstance(grounding_cell, dict):
                 continue
+
             cell_text = _coerce_llamaparse_cell_text(source_cell)
+            if not cell_text:
+                continue
+
             cell_lines = grounding_cell.get("lines")
-            if cell_text and isinstance(cell_lines, list):
+            if isinstance(cell_lines, list):
                 entries.extend(_build_llamaparse_line_context_entries(cell_text, cell_lines))
+
     return entries
 
 
@@ -407,10 +494,12 @@ def _resolve_llamaparse_grounding_source_text(raw_node: dict[str, Any], groundin
 
     if isinstance(source_text, str) and source_text:
         return source_text
+
     for candidate_key in ("value", "md", "caption", "html"):
         candidate = raw_node.get(candidate_key)
         if isinstance(candidate, str) and candidate:
             return candidate
+
     return ""
 
 
@@ -448,13 +537,22 @@ def _build_llamaparse_word_units(
         if not word_text:
             continue
 
+        merged_bbox = _merge_llamaparse_bboxes(matching_word_boxes)
         normalized_bbox = _normalize_grounded_bbox(
-            _merge_llamaparse_bboxes(matching_word_boxes),
+            merged_bbox,
             page_width=page_width,
             page_height=page_height,
         )
-        if normalized_bbox is not None:
-            units.append(_GranularTextUnit(text=word_text, bbox=normalized_bbox, order_index=order_index))
+        if normalized_bbox is None:
+            continue
+
+        units.append(
+            _GranularTextUnit(
+                text=word_text,
+                bbox=normalized_bbox,
+                order_index=order_index,
+            )
+        )
 
     return units
 
@@ -515,7 +613,13 @@ def _merge_llamaparse_bboxes(raw_bboxes: list[dict[str, Any]]) -> dict[str, floa
     y1 = min(float(bbox.get("y", 0.0)) for bbox in raw_bboxes)
     x2 = max(float(bbox.get("x", 0.0)) + float(bbox.get("w", 0.0)) for bbox in raw_bboxes)
     y2 = max(float(bbox.get("y", 0.0)) + float(bbox.get("h", 0.0)) for bbox in raw_bboxes)
-    return {"x": x1, "y": y1, "w": max(0.0, x2 - x1), "h": max(0.0, y2 - y1)}
+    merged = {"x": x1, "y": y1, "w": max(0.0, x2 - x1), "h": max(0.0, y2 - y1)}
+    r_values = [bbox.get("r") for bbox in raw_bboxes]
+    if r_values and all(isinstance(value, int | float) for value in r_values):
+        first = float(cast(int | float, r_values[0]))
+        if all(abs(float(cast(int | float, value)) - first) <= 1e-6 for value in r_values):
+            merged["r"] = first
+    return merged
 
 
 def _dedupe_granular_units(units: list[_GranularTextUnit]) -> list[_GranularTextUnit]:
@@ -555,13 +659,137 @@ def _normalize_grounded_bbox(
     y_num = float(cast(int | float, y))
     w_num = float(cast(int | float, w))
     h_num = float(cast(int | float, h))
+    raw_r = bbox_payload.get("r")
 
     return _GranularSegment(
         x=x_num / page_width,
         y=y_num / page_height,
         w=w_num / page_width,
         h=h_num / page_height,
+        r=float(raw_r) if isinstance(raw_r, int | float) else None,
     )
+
+
+def _build_textract_granular_pages(textract_response: dict[str, Any]) -> list[_GranularPage]:
+    blocks = textract_response.get("Blocks")
+    if not isinstance(blocks, list):
+        return []
+
+    pages: dict[int, _GranularPage] = {}
+    for block_index, block in enumerate(blocks):
+        if not isinstance(block, dict):
+            continue
+
+        block_type = block.get("BlockType")
+        if block_type not in {"LINE", "WORD"}:
+            continue
+
+        page_number = int(block.get("Page", 1))
+        geometry = block.get("Geometry", {})
+        bbox = geometry.get("BoundingBox", {}) if isinstance(geometry, dict) else {}
+        left = float(bbox.get("Left", 0.0))
+        top = float(bbox.get("Top", 0.0))
+        width = float(bbox.get("Width", 0.0))
+        height = float(bbox.get("Height", 0.0))
+        text = str(block.get("Text", "") or "")
+        if not text:
+            continue
+
+        unit = _GranularTextUnit(
+            text=text,
+            bbox=_GranularSegment(x=left, y=top, w=width, h=height),
+            order_index=block_index,
+        )
+
+        page = pages.setdefault(page_number, _GranularPage(page_number=page_number, lines=[], words=[]))
+        if block_type == "LINE":
+            page.lines.append(unit)
+        else:
+            page.words.append(unit)
+
+    return [pages[page_number] for page_number in sorted(pages)]
+
+
+def _build_azure_di_granular_pages(raw_output: dict[str, Any]) -> list[_GranularPage]:
+    raw_pages = raw_output.get("pages")
+    if not isinstance(raw_pages, list):
+        return []
+
+    granular_pages: list[_GranularPage] = []
+    for page_data in raw_pages:
+        if not isinstance(page_data, dict):
+            continue
+
+        page_number = int(page_data.get("page_number", 1))
+        page_width = float(page_data.get("width", 1.0))
+        page_height = float(page_data.get("height", 1.0))
+
+        line_units = _build_azure_di_granular_units(
+            page_data.get("lines"),
+            page_width=page_width,
+            page_height=page_height,
+            text_key="content",
+        )
+        word_units = _build_azure_di_granular_units(
+            page_data.get("words"),
+            page_width=page_width,
+            page_height=page_height,
+            text_key="content",
+        )
+
+        if not line_units and not word_units:
+            continue
+
+        granular_pages.append(
+            _GranularPage(
+                page_number=page_number,
+                lines=line_units,
+                words=word_units,
+            )
+        )
+
+    return granular_pages
+
+
+def _build_azure_di_granular_units(
+    raw_units: Any,
+    *,
+    page_width: float,
+    page_height: float,
+    text_key: str,
+) -> list[_GranularTextUnit]:
+    if not isinstance(raw_units, list):
+        return []
+
+    units: list[_GranularTextUnit] = []
+    for index, raw_unit in enumerate(raw_units):
+        if not isinstance(raw_unit, dict):
+            continue
+
+        polygon = raw_unit.get("polygon")
+        if not isinstance(polygon, list) or len(polygon) < 8:
+            continue
+
+        text = str(raw_unit.get(text_key, "") or "")
+        if not text:
+            continue
+
+        box = polygon_to_literal_xywh_r(
+            polygon,
+            page_width=page_width,
+            page_height=page_height,
+        )
+        if box is None:
+            continue
+        units.append(
+            _GranularTextUnit(
+                text=text,
+                bbox=_GranularSegment(x=box.x, y=box.y, w=box.w, h=box.h, r=box.r),
+                order_index=index,
+            )
+        )
+
+    return units
 
 
 @register_layout_adapter("chunkr", priority=90)
@@ -630,7 +858,7 @@ class ChunkrLayoutAdapter(LayoutAdapter):
                 height = float(bbox_data.get("height", 0.0))
                 bbox_xyxy = [left, top, left + width, top + height]
 
-                if self._label_adapter.to_canonical(segment_label, 1.0, bbox_xyxy) is None:
+                if self._label_adapter.to_canonical(segment_label) is None:
                     raise UnknownRawLayoutLabelError(f"Unknown Chunkr raw layout label '{segment_label}'")
 
                 if output_width == 0:
@@ -886,14 +1114,14 @@ class DoclingParseLayoutAdapter(LayoutAdapter):
 
         blocks: list[PredBlock] = []
         for item_index, item in enumerate(page.items):
-            segments = item.layout_segments or ([item.bbox] if item.bbox is not None else [])
+            segments = item.layout_segments
             if not segments:
                 continue
 
             for seg in segments:
                 label = seg.label or item.type or "unknown"
                 block_type = item.type or "text"
-                if item.type == "table":
+                if (item.type or "").strip().lower() == "table":
                     raw_text = extract_text_from_html(item.value)
                 else:
                     raw_text = item.value or ""
@@ -1095,7 +1323,7 @@ def _parse_with_layout_to_layout_output(
 class GoogleLayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from Google Gemini ParseOutput.layout_pages.
 
-    Enables cross-evaluation: the ``google_gemini_*_parse_with_layout`` PARSE pipelines
+    Enables cross-evaluation: the ``gemini_*_parse_with_layout`` PARSE pipelines
     can be evaluated against layout detection datasets using the bboxes from
     the div-wrapped output.
     """
@@ -1163,6 +1391,42 @@ class Gemma4LayoutAdapter(LayoutAdapter):
         )
 
 
+@register_layout_adapter("deepseek", priority=90)
+class DeepSeekLayoutAdapter(LayoutAdapter):
+    """Adapter that extracts LayoutOutput from DeepSeek ParseOutput.layout_pages.
+
+    Enables cross-evaluation: the ``deepseek_*_parse_with_layout`` PARSE
+    pipelines can be evaluated against layout detection datasets using the
+    bboxes from the div-wrapped output. DeepSeek emits the same
+    ``<div data-bbox data-label>`` shape as the other OpenAI-compatible VLM
+    parse providers, so it reuses that layout model tag.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput):
+            return False
+        if not inference_result.output.layout_pages:
+            return False
+        raw_output = inference_result.raw_output
+        if not isinstance(raw_output, dict):
+            return False
+        model = raw_output.get("model", "")
+        return isinstance(model, str) and model.startswith("deepseek-")
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        return _parse_with_layout_to_layout_output(
+            inference_result,
+            model=LayoutDetectionModel.OPENAI_COMPATIBLE_VLM_LAYOUT,
+            page_filter=page_filter,
+        )
+
+
 @register_layout_adapter("openai", priority=90)
 class OpenAILayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from OpenAI ParseOutput.layout_pages.
@@ -1204,13 +1468,13 @@ class OpenAILayoutAdapter(LayoutAdapter):
         )
 
 
-@register_layout_adapter("anthropic", priority=90)
+@register_layout_adapter("anthropic_haiku", "anthropic", priority=90)
 class AnthropicLayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from Anthropic ParseOutput.layout_pages.
 
-    Enables cross-evaluation: the ``anthropic_haiku_parse_with_layout`` PARSE
-    pipeline can be evaluated against layout detection datasets using the
-    bboxes from the div-wrapped output.
+    Enables cross-evaluation: Anthropic ``parse_with_layout`` PARSE pipelines
+    can be evaluated against layout detection datasets using the bboxes from
+    the div-wrapped output.
     """
 
     @classmethod
@@ -1344,9 +1608,7 @@ class OIParserLayoutAdapter(LayoutAdapter):
 
     @classmethod
     def matches(cls, inference_result: InferenceResult) -> bool:
-        return isinstance(inference_result.output, ParseOutput) and bool(
-            inference_result.output.layout_pages
-        )
+        return isinstance(inference_result.output, ParseOutput) and bool(inference_result.output.layout_pages)
 
     def to_layout_output(
         self,
@@ -1525,25 +1787,10 @@ class CohereParseLayoutAdapter(LayoutAdapter):
         )
 
 
-@register_layout_adapter("pulse", priority=90)
-class PulseLayoutAdapter(LayoutAdapter):
-    """Adapter that extracts LayoutOutput from Pulse ParseOutput.layout_pages.
-
-    Enables cross-evaluation: the ``pulse`` PARSE pipeline can be evaluated
-    against layout detection datasets using the bounding_boxes from the
-    Pulse API response.
-    """
-
-    @classmethod
-    def matches(cls, inference_result: InferenceResult) -> bool:
-        if not isinstance(inference_result.output, ParseOutput):
-            return False
-        if not inference_result.output.layout_pages:
-            return False
-        raw_output = inference_result.raw_output
-        if isinstance(raw_output, dict):
-            return "bounding_boxes" in raw_output and "extraction_id" in raw_output
-        return False
+@register_layout_adapter("databricks_ai_parse", priority=90)
+class DatabricksAiParseLayoutAdapter(LayoutAdapter):
+    """Adapter that extracts LayoutOutput from Databricks ai_parse_document
+    ParseOutput.layout_pages (normalized [0,1] xywh + Canonical17 labels)."""
 
     def to_layout_output(
         self,
@@ -1558,18 +1805,17 @@ class PulseLayoutAdapter(LayoutAdapter):
             return inference_result.output.model_copy(update={"predictions": filtered})
 
         if not isinstance(inference_result.output, ParseOutput):
-            raise ValueError("PulseLayoutAdapter requires ParseOutput or LayoutOutput")
+            raise ValueError("DatabricksAiParseLayoutAdapter requires ParseOutput or LayoutOutput")
 
         layout_pages = inference_result.output.layout_pages
         if not layout_pages:
-            raise ValueError("PulseLayoutAdapter requires non-empty layout_pages")
+            raise ValueError("DatabricksAiParseLayoutAdapter requires non-empty layout_pages")
 
         first_page = layout_pages[0]
         output_width = int(first_page.width or 1)
         output_height = int(first_page.height or 1)
 
         predictions: list[LayoutPrediction] = []
-
         for lp in layout_pages:
             page_number = lp.page_number
             if page_filter is not None and page_number != page_filter:
@@ -1582,7 +1828,6 @@ class PulseLayoutAdapter(LayoutAdapter):
                 for seg in item.layout_segments:
                     label = seg.label or item.type or "Text"
 
-                    # Convert normalized [0,1] xywh → pixel xyxy
                     x1 = seg.x * page_w
                     y1 = seg.y * page_h
                     x2 = (seg.x + seg.w) * page_w
@@ -1593,7 +1838,7 @@ class PulseLayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            score=float(seg.confidence) if seg.confidence is not None else 1.0,
                             label=label,
                             page=page_number,
                             content=content,
@@ -1607,7 +1852,7 @@ class PulseLayoutAdapter(LayoutAdapter):
             task_type="layout_detection",
             example_id=inference_result.request.example_id,
             pipeline_name=inference_result.pipeline_name,
-            model=LayoutDetectionModel.PULSE_LAYOUT,
+            model=LayoutDetectionModel.DATABRICKS_LAYOUT,
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
@@ -1618,7 +1863,7 @@ class PulseLayoutAdapter(LayoutAdapter):
 class TextractLayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from Textract ParseOutput.layout_pages.
 
-    Enables cross-evaluation: the ``aws_textract`` PARSE pipeline can be evaluated
+    Enables cross-evaluation: the ``textract`` PARSE pipeline can be evaluated
     against layout detection datasets using the LAYOUT_* block bboxes from the
     Textract API response.
     """
@@ -1702,6 +1947,15 @@ class TextractLayoutAdapter(LayoutAdapter):
             image_height=max(output_height, 1),
             predictions=predictions,
         )
+
+    def to_granular_pages(self, inference_result: InferenceResult) -> list[_GranularPage]:
+        raw_output = inference_result.raw_output
+        if not isinstance(raw_output, dict):
+            return []
+        textract_response = raw_output.get("textract_response")
+        if not isinstance(textract_response, dict):
+            return []
+        return _build_textract_granular_pages(textract_response)
 
 
 @register_layout_adapter("landingai", priority=89)
@@ -1950,6 +2204,9 @@ class AzureDILayoutAdapter(LayoutAdapter):
                     y2 = (seg.y + seg.h) * page_h
 
                     content = _build_vendor_content(label, item.value)
+                    attributes = dict(item.attributes)
+                    if label in {"Checkbox-Selected", "Checkbox-Unselected"}:
+                        attributes["scope"] = "mark"
 
                     predictions.append(
                         LayoutPrediction(
@@ -1958,6 +2215,7 @@ class AzureDILayoutAdapter(LayoutAdapter):
                             label=label,
                             page=page_number,
                             content=content,
+                            attributes=attributes,
                             provider_metadata={
                                 "order_index": len(predictions),
                             },
@@ -1973,6 +2231,12 @@ class AzureDILayoutAdapter(LayoutAdapter):
             image_height=max(output_height, 1),
             predictions=predictions,
         )
+
+    def to_granular_pages(self, inference_result: InferenceResult) -> list[_GranularPage]:
+        raw_output = inference_result.raw_output
+        if not isinstance(raw_output, dict):
+            return []
+        return _build_azure_di_granular_pages(raw_output)
 
 
 @register_layout_adapter("google_docai", priority=89)
@@ -2367,101 +2631,6 @@ class Chandra2LayoutAdapter(LayoutAdapter):
         )
 
 
-@register_layout_adapter("infinity_parser2", priority=90)
-class InfinityParser2LayoutAdapter(LayoutAdapter):
-    """Adapter that extracts LayoutOutput from InfinityParser2 ParseOutput.layout_pages.
-
-    Enables cross-evaluation: the ``infinity_parser2`` PARSE pipeline can be
-    evaluated against layout detection datasets using the native bboxes from
-    the model output.
-
-    InfinityParser2 stores bboxes in pixel coordinates (page_width x page_height),
-    unlike Chandra2 which stores them in normalized [0,1] space. The adapter
-    converts pixel bboxes to absolute coordinates before building LayoutOutput.
-    """
-
-    @classmethod
-    def matches(cls, inference_result: InferenceResult) -> bool:
-        if not isinstance(inference_result.output, ParseOutput):
-            return False
-        if not inference_result.output.layout_pages:
-            return False
-        raw_output = inference_result.raw_output
-        if isinstance(raw_output, dict):
-            config = raw_output.get("_config", {})
-            if not isinstance(config, dict) or config.get("backend") != "vllm-server":
-                return False
-            model_name = config.get("model_name") or ""
-            return isinstance(model_name, str) and model_name.startswith("infly/Infinity-Parser2")
-        return False
-
-    def to_layout_output(
-        self,
-        inference_result: InferenceResult,
-        *,
-        page_filter: int | None = None,
-    ) -> LayoutOutput:
-        if isinstance(inference_result.output, LayoutOutput):
-            if page_filter is None:
-                return inference_result.output
-            filtered = [p for p in inference_result.output.predictions if p.page == page_filter]
-            return inference_result.output.model_copy(update={"predictions": filtered})
-
-        if not isinstance(inference_result.output, ParseOutput):
-            raise ValueError("InfinityParser2LayoutAdapter requires ParseOutput or LayoutOutput")
-
-        layout_pages = inference_result.output.layout_pages
-        if not layout_pages:
-            raise ValueError("InfinityParser2LayoutAdapter requires non-empty layout_pages")
-
-        first_page = layout_pages[0]
-        output_width = int(first_page.width or 1)
-        output_height = int(first_page.height or 1)
-
-        predictions: list[LayoutPrediction] = []
-
-        for lp in layout_pages:
-            page_number = lp.page_number
-            if page_filter is not None and page_number != page_filter:
-                continue
-
-            for item in lp.items:
-                for seg in item.layout_segments:
-                    label = seg.label or item.type or "Text"
-
-                    # InfinityParser2 stores bboxes in pixel coordinates (x, y, w, h).
-                    # seg.x, seg.y are already pixel values — no normalization needed.
-                    x1 = float(seg.x)
-                    y1 = float(seg.y)
-                    x2 = float(seg.x + seg.w)
-                    y2 = float(seg.y + seg.h)
-
-                    content = _build_vendor_content(label, item.value)
-
-                    predictions.append(
-                        LayoutPrediction(
-                            bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
-                            label=label,
-                            page=page_number,
-                            content=content,
-                            provider_metadata={
-                                "order_index": len(predictions),
-                            },
-                        )
-                    )
-
-        return LayoutOutput(
-            task_type="layout_detection",
-            example_id=inference_result.request.example_id,
-            pipeline_name=inference_result.pipeline_name,
-            model=LayoutDetectionModel.INFINITY_PARSER2_LAYOUT,
-            image_width=max(output_width, 1),
-            image_height=max(output_height, 1),
-            predictions=predictions,
-        )
-
-
 @register_layout_adapter("qfocr", priority=90)
 class QfOcrLayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from Qianfan-OCR ParseOutput.layout_pages.
@@ -2562,7 +2731,41 @@ def _infer_page_number_from_example_id(example_id: str) -> int | None:
     return page_token if page_token > 0 else 1
 
 
-def _resolve_llamaparse_pages(inference_result: InferenceResult) -> list[dict[str, Any]]:
+def _strip_bbox_fallback_segments(
+    legacy_pages: list[dict[str, Any]],
+    layout_pages: Sequence[ParseLayoutPageIR],
+) -> list[dict[str, Any]]:
+    """Drop ``layoutAwareBbox`` entries synthesized from a bare item ``bbox``.
+
+    ``layout_pages_to_legacy_pages_payload`` emits items 1:1 and in order
+    per page (pages sorted by ``page_number``), so a positional walk over the
+    typed ``layout_pages`` tells us which legacy items had no real
+    ``layout_segments`` and only received a bbox-derived segment.
+    """
+    typed_pages = sorted(layout_pages, key=lambda page: page.page_number)
+    stripped: list[dict[str, Any]] = []
+    for legacy_page, typed_page in zip(legacy_pages, typed_pages, strict=False):
+        page_copy = dict(legacy_page)
+        legacy_items = legacy_page.get("items")
+        if not isinstance(legacy_items, list):
+            stripped.append(page_copy)
+            continue
+        new_items: list[dict[str, Any]] = []
+        for legacy_item, typed_item in zip(legacy_items, typed_page.items, strict=False):
+            item_copy = dict(legacy_item)
+            if not typed_item.layout_segments:
+                item_copy.pop("layoutAwareBbox", None)
+            new_items.append(item_copy)
+        page_copy["items"] = new_items
+        stripped.append(page_copy)
+    return stripped
+
+
+def _resolve_llamaparse_pages(
+    inference_result: InferenceResult,
+    *,
+    include_bbox_segment_fallback: bool = True,
+) -> list[dict[str, Any]]:
     from parse_bench.inference.providers.parse.llamaparse_v2_normalization import (
         build_pages_from_cli2_raw_payload,
         build_pages_from_sdk_response_payload,
@@ -2601,7 +2804,14 @@ def _resolve_llamaparse_pages(inference_result: InferenceResult) -> list[dict[st
 
     if isinstance(inference_result.output, ParseOutput):
         if len(inference_result.output.layout_pages) > 0:
-            return layout_pages_to_legacy_pages_payload(inference_result.output.layout_pages)
+            layout_pages = inference_result.output.layout_pages
+            legacy_pages = layout_pages_to_legacy_pages_payload(layout_pages)
+            if include_bbox_segment_fallback:
+                return legacy_pages
+            # The normalizer always synthesizes a single layoutAwareBbox from
+            # the item bBox when no layout segments exist. Strip those
+            # synthesized segments when the caller opted out of the fallback.
+            return _strip_bbox_fallback_segments(legacy_pages, layout_pages)
 
     return []
 
@@ -2713,9 +2923,9 @@ class DatalabLayoutAdapter(LayoutAdapter):
         )
 
 
-@register_layout_adapter("qwen3_5", priority=90)
-class Qwen35LayoutAdapter(LayoutAdapter):
-    """Adapter that extracts LayoutOutput from Qwen3.5 ParseOutput.layout_pages.
+@register_layout_adapter("qwen3_5", "qwen3_8", priority=90)
+class QwenLayoutAdapter(LayoutAdapter):
+    """Adapter that extracts LayoutOutput from Qwen ParseOutput.layout_pages.
 
     Enables cross-evaluation: the ``qwen3_5_4b_vllm`` PARSE pipeline can be
     evaluated against layout detection datasets using the bboxes from the
@@ -2736,7 +2946,7 @@ class Qwen35LayoutAdapter(LayoutAdapter):
             config = raw_output.get("_config", {})
             if isinstance(config, dict):
                 model = config.get("model", "")
-                return isinstance(model, str) and (model.startswith("qwen3.5") or model.startswith("qwen3.6"))
+                return isinstance(model, str) and model.startswith("qwen3.")
         return False
 
     def to_layout_output(
@@ -2752,11 +2962,11 @@ class Qwen35LayoutAdapter(LayoutAdapter):
             return inference_result.output.model_copy(update={"predictions": filtered})
 
         if not isinstance(inference_result.output, ParseOutput):
-            raise ValueError("Qwen35LayoutAdapter requires ParseOutput or LayoutOutput")
+            raise ValueError("QwenLayoutAdapter requires ParseOutput or LayoutOutput")
 
         layout_pages = inference_result.output.layout_pages
         if not layout_pages:
-            raise ValueError("Qwen35LayoutAdapter requires non-empty layout_pages")
+            raise ValueError("QwenLayoutAdapter requires non-empty layout_pages")
 
         first_page = layout_pages[0]
         output_width = int(first_page.width or 1)
@@ -2797,11 +3007,19 @@ class Qwen35LayoutAdapter(LayoutAdapter):
                         )
                     )
 
+        raw_config = inference_result.raw_output.get("_config", {})
+        model_name = raw_config.get("model", "") if isinstance(raw_config, dict) else ""
+        layout_model = (
+            LayoutDetectionModel.QWEN3_8_LAYOUT
+            if isinstance(model_name, str) and model_name.startswith("qwen3.8")
+            else LayoutDetectionModel.QWEN3_5_LAYOUT
+        )
+
         return LayoutOutput(
             task_type="layout_detection",
             example_id=inference_result.request.example_id,
             pipeline_name=inference_result.pipeline_name,
-            model=LayoutDetectionModel.QWEN3_5_LAYOUT,
+            model=layout_model,
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
@@ -2897,79 +3115,13 @@ class MinerU25LayoutAdapter(LayoutAdapter):
         )
 
 
-@register_layout_adapter("databricks_ai_parse", priority=90)
-class DatabricksAiParseLayoutAdapter(LayoutAdapter):
-    """Adapter that extracts LayoutOutput from Databricks ai_parse_document
-    ParseOutput.layout_pages (normalized [0,1] xywh + Canonical17 labels)."""
-
-    def to_layout_output(
-        self,
-        inference_result: InferenceResult,
-        *,
-        page_filter: int | None = None,
-    ) -> LayoutOutput:
-        if isinstance(inference_result.output, LayoutOutput):
-            if page_filter is None:
-                return inference_result.output
-            filtered = [p for p in inference_result.output.predictions if p.page == page_filter]
-            return inference_result.output.model_copy(update={"predictions": filtered})
-
-        if not isinstance(inference_result.output, ParseOutput):
-            raise ValueError("DatabricksAiParseLayoutAdapter requires ParseOutput or LayoutOutput")
-
-        layout_pages = inference_result.output.layout_pages
-        if not layout_pages:
-            raise ValueError("DatabricksAiParseLayoutAdapter requires non-empty layout_pages")
-
-        first_page = layout_pages[0]
-        output_width = int(first_page.width or 1)
-        output_height = int(first_page.height or 1)
-
-        predictions: list[LayoutPrediction] = []
-        for lp in layout_pages:
-            page_number = lp.page_number
-            if page_filter is not None and page_number != page_filter:
-                continue
-
-            page_w = float(lp.width or output_width)
-            page_h = float(lp.height or output_height)
-
-            for item in lp.items:
-                for seg in item.layout_segments:
-                    label = seg.label or item.type or "Text"
-
-                    x1 = seg.x * page_w
-                    y1 = seg.y * page_h
-                    x2 = (seg.x + seg.w) * page_w
-                    y2 = (seg.y + seg.h) * page_h
-
-                    content = _build_vendor_content(label, item.value)
-
-                    predictions.append(
-                        LayoutPrediction(
-                            bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence) if seg.confidence is not None else 1.0,
-                            label=label,
-                            page=page_number,
-                            content=content,
-                            provider_metadata={
-                                "order_index": len(predictions),
-                            },
-                        )
-                    )
-
-        return LayoutOutput(
-            task_type="layout_detection",
-            example_id=inference_result.request.example_id,
-            pipeline_name=inference_result.pipeline_name,
-            model=LayoutDetectionModel.DATABRICKS_LAYOUT,
-            image_width=max(output_width, 1),
-            image_height=max(output_height, 1),
-            predictions=predictions,
-        )
+_NANO_LAYOUT_LABEL_TO_CANONICAL = {
+    "Chart": "Picture",
+    "Flowchart": "Picture",
+}
 
 
-@register_layout_adapter("kdl_frontier_nano", priority=90)
+@register_layout_adapter("kdl_frontier_nano", "florin_parser_nano", "rakedoc_nano", priority=90)
 class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
     """Extract LayoutOutput from the kdl_frontier_nano provider's
     ParseOutput.layout_pages.
@@ -3001,7 +3153,7 @@ class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
         if not isinstance(inference_result.output, ParseOutput):
             raise ValueError("KdlFrontierNanoLayoutAdapter requires ParseOutput or LayoutOutput")
 
-        S = self._SCALE
+        scale = self._SCALE
         predictions: list[LayoutPrediction] = []
         for lp in inference_result.output.layout_pages:
             if page_filter is not None and lp.page_number != page_filter:
@@ -3011,14 +3163,12 @@ class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
                 for seg in segs:
                     if seg is None:
                         continue
-                    label = seg.label or item.type or "Text"
-                    label = {"Chart": "Picture", "Flowchart": "Picture"}.get(str(label), str(label))
-                    x1, y1 = seg.x * S, seg.y * S
-                    x2, y2 = (seg.x + seg.w) * S, (seg.y + seg.h) * S
+                    raw_label = seg.label or item.type or "Text"
+                    label = _NANO_LAYOUT_LABEL_TO_CANONICAL.get(str(raw_label), str(raw_label))
+                    x1, y1 = seg.x * scale, seg.y * scale
+                    x2, y2 = (seg.x + seg.w) * scale, (seg.y + seg.h) * scale
                     text = item.md or item.value or ""
-                    content = _build_docling_parse_content(
-                        "table" if str(label).lower() == "table" else "text", text
-                    )
+                    content = _build_docling_parse_content("table" if str(label).lower() == "table" else "text", text)
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
@@ -3035,8 +3185,8 @@ class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
             example_id=inference_result.request.example_id,
             pipeline_name=inference_result.pipeline_name,
             model=LayoutDetectionModel.KDL_FRONTIER_NANO_LAYOUT,
-            image_width=S,
-            image_height=S,
+            image_width=scale,
+            image_height=scale,
             predictions=predictions,
         )
 
@@ -3102,6 +3252,8 @@ class PyMuPDF4LLMLayoutAdapter(LayoutAdapter):
                                 (segment.x + segment.w) * page_width,
                                 (segment.y + segment.h) * page_height,
                             ],
+                            # Deliberately not `float(seg.confidence or 1.0)`: that
+                            # maps a genuine 0.0 confidence to full confidence.
                             score=segment.confidence if segment.confidence is not None else 1.0,
                             label=label,
                             page=page.page_number,
@@ -3120,6 +3272,273 @@ class PyMuPDF4LLMLayoutAdapter(LayoutAdapter):
             example_id=inference_result.request.example_id,
             pipeline_name=inference_result.pipeline_name,
             model=LayoutDetectionModel.PYMUPDF4LLM_LAYOUT,
+            image_width=max(output_width, 1),
+            image_height=max(output_height, 1),
+            predictions=predictions,
+            markdown=inference_result.output.markdown,
+        )
+
+
+@register_layout_adapter("pulse", priority=90)
+class PulseLayoutAdapter(LayoutAdapter):
+    """Adapter that extracts LayoutOutput from Pulse ParseOutput.layout_pages.
+
+    Enables cross-evaluation: the ``pulse`` PARSE pipeline can be evaluated
+    against layout detection datasets using the bounding_boxes from the
+    Pulse API response.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput):
+            return False
+        if not inference_result.output.layout_pages:
+            return False
+        raw_output = inference_result.raw_output
+        if isinstance(raw_output, dict):
+            return "bounding_boxes" in raw_output and "extraction_id" in raw_output
+        return False
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            filtered = [p for p in inference_result.output.predictions if p.page == page_filter]
+            return inference_result.output.model_copy(update={"predictions": filtered})
+
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("PulseLayoutAdapter requires ParseOutput or LayoutOutput")
+
+        layout_pages = inference_result.output.layout_pages
+        if not layout_pages:
+            raise ValueError("PulseLayoutAdapter requires non-empty layout_pages")
+
+        first_page = layout_pages[0]
+        output_width = int(first_page.width or 1)
+        output_height = int(first_page.height or 1)
+
+        predictions: list[LayoutPrediction] = []
+
+        for lp in layout_pages:
+            page_number = lp.page_number
+            if page_filter is not None and page_number != page_filter:
+                continue
+
+            page_w = float(lp.width or output_width)
+            page_h = float(lp.height or output_height)
+
+            for item in lp.items:
+                for seg in item.layout_segments:
+                    label = seg.label or item.type or "Text"
+
+                    # Convert normalized [0,1] xywh → pixel xyxy
+                    x1 = seg.x * page_w
+                    y1 = seg.y * page_h
+                    x2 = (seg.x + seg.w) * page_w
+                    y2 = (seg.y + seg.h) * page_h
+
+                    content = _build_vendor_content(label, item.value)
+
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[x1, y1, x2, y2],
+                            score=float(seg.confidence or 1.0),
+                            label=label,
+                            page=page_number,
+                            content=content,
+                            provider_metadata={
+                                "order_index": len(predictions),
+                            },
+                        )
+                    )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.PULSE_LAYOUT,
+            image_width=max(output_width, 1),
+            image_height=max(output_height, 1),
+            predictions=predictions,
+        )
+
+
+@register_layout_adapter("infinity_parser2", priority=90)
+class InfinityParser2LayoutAdapter(LayoutAdapter):
+    """Adapter that extracts LayoutOutput from InfinityParser2 ParseOutput.layout_pages.
+
+    Enables cross-evaluation: the ``infinity_parser2`` PARSE pipeline can be
+    evaluated against layout detection datasets using the native bboxes from
+    the model output.
+
+    InfinityParser2 stores bboxes in pixel coordinates (page_width x page_height),
+    unlike Chandra2 which stores them in normalized [0,1] space. The adapter
+    converts pixel bboxes to absolute coordinates before building LayoutOutput.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput):
+            return False
+        if not inference_result.output.layout_pages:
+            return False
+        raw_output = inference_result.raw_output
+        if isinstance(raw_output, dict):
+            config = raw_output.get("_config", {})
+            if not isinstance(config, dict) or config.get("backend") != "vllm-server":
+                return False
+            model_name = config.get("model_name") or ""
+            return isinstance(model_name, str) and model_name.startswith("infly/Infinity-Parser2")
+        return False
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            filtered = [p for p in inference_result.output.predictions if p.page == page_filter]
+            return inference_result.output.model_copy(update={"predictions": filtered})
+
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("InfinityParser2LayoutAdapter requires ParseOutput or LayoutOutput")
+
+        layout_pages = inference_result.output.layout_pages
+        if not layout_pages:
+            raise ValueError("InfinityParser2LayoutAdapter requires non-empty layout_pages")
+
+        first_page = layout_pages[0]
+        output_width = int(first_page.width or 1)
+        output_height = int(first_page.height or 1)
+
+        predictions: list[LayoutPrediction] = []
+
+        for lp in layout_pages:
+            page_number = lp.page_number
+            if page_filter is not None and page_number != page_filter:
+                continue
+
+            for item in lp.items:
+                for seg in item.layout_segments:
+                    label = seg.label or item.type or "Text"
+
+                    # InfinityParser2 stores bboxes in pixel coordinates (x, y, w, h).
+                    # seg.x, seg.y are already pixel values — no normalization needed.
+                    x1 = float(seg.x)
+                    y1 = float(seg.y)
+                    x2 = float(seg.x + seg.w)
+                    y2 = float(seg.y + seg.h)
+
+                    content = _build_vendor_content(label, item.value)
+
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[x1, y1, x2, y2],
+                            score=float(seg.confidence or 1.0),
+                            label=label,
+                            page=page_number,
+                            content=content,
+                            provider_metadata={
+                                "order_index": len(predictions),
+                            },
+                        )
+                    )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.INFINITY_PARSER2_LAYOUT,
+            image_width=max(output_width, 1),
+            image_height=max(output_height, 1),
+            predictions=predictions,
+        )
+
+
+@register_layout_adapter("liteparse", priority=90)
+class LiteParseLayoutAdapter(LayoutAdapter):
+    """Extract layout predictions from LiteParse ``--extract-blocks`` output.
+
+    The provider stores one ``LayoutItemIR`` per block on ``layout_pages`` with
+    canonical labels and [0, 1] bboxes; this adapter scales them back to page
+    points so they line up with the ground-truth frame.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput) or not inference_result.output.layout_pages:
+            return False
+        pages = inference_result.raw_output.get("pages")
+        if not isinstance(pages, list) or not pages or not isinstance(pages[0], dict):
+            return False
+        return "blocks" in pages[0] and inference_result.raw_output.get("output_format") is not None
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            filtered = [
+                prediction for prediction in inference_result.output.predictions if prediction.page == page_filter
+            ]
+            return inference_result.output.model_copy(update={"predictions": filtered})
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("LiteParseLayoutAdapter requires ParseOutput or LayoutOutput")
+
+        layout_pages = inference_result.output.layout_pages
+        selected_pages = [page for page in layout_pages if page_filter is None or page.page_number == page_filter]
+        reference_page = selected_pages[0] if selected_pages else (layout_pages[0] if layout_pages else None)
+        output_width = int(reference_page.width or 1) if reference_page is not None else 1
+        output_height = int(reference_page.height or 1) if reference_page is not None else 1
+
+        predictions: list[LayoutPrediction] = []
+        for page in layout_pages:
+            if page_filter is not None and page.page_number != page_filter:
+                continue
+            page_width = float(page.width or output_width)
+            page_height = float(page.height or output_height)
+            for item in page.items:
+                segments = item.layout_segments or ([item.bbox] if item.bbox is not None else [])
+                for segment in segments:
+                    if segment is None:
+                        continue
+                    label = segment.label or item.type or "Text"
+                    is_table = label == "Table"
+                    content_text = item.html if is_table and item.html else item.md or item.value
+                    content = _build_docling_parse_content("table" if is_table else "text", content_text)
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[
+                                segment.x * page_width,
+                                segment.y * page_height,
+                                (segment.x + segment.w) * page_width,
+                                (segment.y + segment.h) * page_height,
+                            ],
+                            score=segment.confidence if segment.confidence is not None else 1.0,
+                            label=label,
+                            page=page.page_number,
+                            content=content,
+                            provider_metadata={"order_index": len(predictions), "score_source": "unavailable_default"},
+                        )
+                    )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.LITEPARSE_LAYOUT,
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,

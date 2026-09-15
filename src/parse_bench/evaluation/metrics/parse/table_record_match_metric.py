@@ -33,7 +33,12 @@ from parse_bench.evaluation.metrics.parse.table_title_stripping import (
 from parse_bench.evaluation.metrics.parse.utils import (
     _normalize_sub_sup_for_table as _shared_normalize_sub_sup,
 )
-from parse_bench.evaluation.metrics.parse.utils import normalize_text
+from parse_bench.evaluation.metrics.parse.utils import (
+    _normalize_table_boolean_marker,
+    cells_match_leader_insensitive,
+    normalize_text,
+    strip_dot_leaders,
+)
 from parse_bench.schemas.evaluation import MetricValue
 
 logger = logging.getLogger(__name__)
@@ -86,12 +91,19 @@ def _normalize_trm_cell_text(text: str) -> str:
        - "1,000%"  → "1000%"
        - "1,000,000" → "1000000"
        - But NOT "Smith, John" (commas between non-digit chars are preserved)
+    4. Normalize whole-cell boolean markers ("✓", "✗", "●", "[yes]",
+       "[no]") to yes/no.
     """
+    marker = _normalize_table_boolean_marker(text)
+    if marker != text:
+        return marker
+
     # --- leader dots (e.g. "Item ......... 5" or "Item . . . . 5") ---
     # These are visual fillers whose exact count is meaningless; strip them
-    # so ground-truth and prediction don't diverge on dot count.
-    text = re.sub(r"(?:\.\s){2,}\.?", "", text)  # ". . . ." style
-    text = re.sub(r"\.{2,}", "", text)  # "........" style
+    # so ground-truth and prediction don't diverge on dot count. The run
+    # definition lives in ``utils.strip_dot_leaders`` and is shared with
+    # ``normalize_cell_text`` so GriTS and TRM cannot drift apart on it.
+    text = strip_dot_leaders(text)
     text = re.sub(r"  +", " ", text).strip()  # collapse leftover whitespace
 
     # --- whitespace around punctuation ---
@@ -112,6 +124,14 @@ def _normalize_trm_cell_text(text: str) -> str:
     return text
 
 
+def _normalize_trm_table_text(text: str) -> str:
+    """Normalize one TRM table cell/header while preserving marker order."""
+    text = _normalize_sub_sup_for_table(text)
+    text = _normalize_table_boolean_marker(text)
+    text = normalize_text(text)
+    return _normalize_trm_cell_text(text)
+
+
 def normalize_table(table: TableData) -> TableData:
     """Normalize all cell text in a table for comparison.
 
@@ -127,24 +147,14 @@ def normalize_table(table: TableData) -> TableData:
     normalized = np.empty_like(table.data)
     for r in range(n_rows):
         for c in range(n_cols):
-            val = str(table.data[r, c])
-            val = _normalize_sub_sup_for_table(val)
-            val = normalize_text(val)
-            val = _normalize_trm_cell_text(val)
-            normalized[r, c] = val
+            normalized[r, c] = _normalize_trm_table_text(str(table.data[r, c]))
     # Normalize col_headers and row_headers metadata to match data cell normalization
     normalized_col_headers: dict[int, list[tuple[int, str]]] = {}
     for col_idx, entries in table.col_headers.items():
-        normalized_col_headers[col_idx] = [
-            (row_idx, _normalize_trm_cell_text(normalize_text(_normalize_sub_sup_for_table(text))))
-            for row_idx, text in entries
-        ]
+        normalized_col_headers[col_idx] = [(row_idx, _normalize_trm_table_text(text)) for row_idx, text in entries]
     normalized_row_headers: dict[int, list[tuple[int, str]]] = {}
     for row_idx, entries in table.row_headers.items():
-        normalized_row_headers[row_idx] = [
-            (col_idx, _normalize_trm_cell_text(normalize_text(_normalize_sub_sup_for_table(text))))
-            for col_idx, text in entries
-        ]
+        normalized_row_headers[row_idx] = [(col_idx, _normalize_trm_table_text(text)) for col_idx, text in entries]
 
     # Drop columns whose data cells AND header entries are all literally
     # empty strings after normalization. Such columns add noise to header
@@ -192,6 +202,12 @@ def normalize_table(table: TableData) -> TableData:
         col_headers=normalized_col_headers,
         row_headers=normalized_row_headers,
         header_cells=header_cells,
+        thead_rows=table.thead_rows,
+        tbody_rows=table.tbody_rows,
+        tfoot_rows=table.tfoot_rows,
+        column_scope_rows=table.column_scope_rows,
+        row_scope_rows=table.row_scope_rows,
+        caption=table.caption,
         context_before=table.context_before,
         context_after=table.context_after,
     )
@@ -202,12 +218,19 @@ def cell_score(expected: str, actual: str) -> float:
 
     Assumes both values have already been normalized by normalize_table()
     (normalize_text + _normalize_trm_cell_text applied upfront).
+
+    Equality is checked leader-insensitively: two cells that differ only in a
+    trailing run of dots/periods ("Acme Inc." vs "Acme Inc", "3." vs "3") are
+    the same cell. Only the *tail* is discounted, so "3.1.4" never collapses
+    onto "3.14" and "192.168.1.1" never onto "192.168.1" — see
+    ``utils.cells_match_leader_insensitive`` for why this lives here rather
+    than in the normalizer.
     """
     if _is_empty_or_nan(expected) and _is_empty_or_nan(actual):
         return 1.0
     if _is_empty_or_nan(expected) or _is_empty_or_nan(actual):
         return 0.0
-    return 1.0 if expected == actual else 0.0
+    return 1.0 if cells_match_leader_insensitive(expected, actual, normalize=_normalize_trm_cell_text) else 0.0
 
 
 # ===========================================================================
@@ -462,6 +485,17 @@ def _align_columns_header_core(
             pk_empty = _is_empty_or_nan(pk) or pk in pred_synthetic
             if gk_empty != pk_empty:
                 sim[i, j] = 0.0  # empty vs non-empty = no match
+            elif not gk_empty and cells_match_leader_insensitive(gt_norm[i], pred_norm[j]):
+                # Two keys that differ only by a trailing dot/period run name
+                # the same column. The fuzzy ratio alone does not always say
+                # so: it is length-relative, and a short key pair such as
+                # "no." / "no" scores 0.80, under the 0.9 threshold, which
+                # would unmatch the column and zero every cell in it. Cells
+                # are already compared this way in ``cell_score``; keying has
+                # to agree or a row pairs on cells it then cannot score.
+                # ``gk_empty`` is false here and equals ``pk_empty``, so both
+                # keys are non-empty — an empty pair keeps its fuzzy score.
+                sim[i, j] = 1.0
             else:
                 sim[i, j] = fuzz.ratio(gt_norm[i], pred_norm[j]) / 100.0
 
@@ -960,7 +994,7 @@ def _resolve_header_row_values(
     header_lookup: dict[tuple[int, int], str] = {}
     for col_idx, entries in table.col_headers.items():
         for row_idx, text in entries:
-            header_lookup[(col_idx, row_idx)] = _normalize_trm_cell_text(normalize_text(text.strip()))
+            header_lookup[(col_idx, row_idx)] = _normalize_trm_table_text(text.strip())
 
     result: list[list[str]] = []
     for row_idx in sorted(header.col_header_rows):

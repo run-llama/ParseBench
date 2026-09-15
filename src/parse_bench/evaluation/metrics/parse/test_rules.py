@@ -68,13 +68,22 @@ from parse_bench.evaluation.metrics.parse.rules_form import (  # noqa: F401
 # Formatting rules
 from parse_bench.evaluation.metrics.parse.rules_formatting import (  # noqa: F401
     _FORMATTING_TEST_TYPES,
+    AbsentUnlessStrikeoutRule,
     CodeBlockRule,
     FormattingRule,
     LatexRule,
     MarkColorRule,
+    NotLatexRule,
     PageSectionRule,
+    PresentAsStrikeoutRule,
+    TextColorRule,
     TitleHierarchyPercentRule,
     TitleLevelRule,
+)
+
+# List rules
+from parse_bench.evaluation.metrics.parse.rules_list import (  # noqa: F401
+    ListLevelRule,
 )
 
 # Table rules
@@ -108,3 +117,4 @@ from parse_bench.evaluation.metrics.parse.rules_text import (  # noqa: F401
     TextOrderRule,
     TextPresenceRule,
 )
+from parse_bench.evaluation.metrics.parse.rules_watermark import WatermarkRemovalRule  # noqa: F401

@@ -30,6 +30,7 @@ class TestType(StrEnum):
     TABLES_VALUES = "tables_values"
     TABLES_NUM_ROWS = "tables_num_rows"
     TABLES_NUM_COLS = "tables_num_cols"
+    TABLE_MARKER_CELLS = "table_marker_cells"
     MATH = "math"
     # Table hierarchy test types
     TABLE_COLSPAN = "table_colspan"
@@ -61,15 +62,22 @@ class TestType(StrEnum):
     IS_MARK = "is_mark"
     IS_NOT_MARK = "is_not_mark"
     MARK_COLOR = "mark_color"
+    TEXT_COLOR = "text_color"
+    ABSENT_UNLESS_STRIKEOUT = "absent_unless_strikeout"
+    PRESENT_AS_STRIKEOUT = "present_as_strikeout"
     IS_SUP = "is_sup"
     IS_NOT_SUP = "is_not_sup"
     IS_SUB = "is_sub"
     IS_NOT_SUB = "is_not_sub"
     IS_LATEX = "is_latex"
+    IS_NOT_LATEX = "is_not_latex"
     IS_CODE_BLOCK = "is_code_block"
     # Title / heading level test
     IS_TITLE = "is_title"
     TITLE_HIERARCHY_PERCENT = "title_hierarchy_percent"
+    HEADING_STRUCTURE = "heading_structure"
+    # List item nesting level test (CommonMark list semantics)
+    LIST_LEVEL = "list_level"
     # Page header / footer tests
     IS_HEADER = "is_header"
     IS_FOOTER = "is_footer"
@@ -85,3 +93,11 @@ class TestType(StrEnum):
     ROTATE_CHECK = "rotate_check"
     # Form field (key/value, checkbox, signature) extraction
     FORM_FIELD = "form_field"
+    # Watermark suppression plus preservation of nearby document text.
+    WATERMARK_REMOVAL = "watermark_removal"
+    # Diagrams rendered as mermaid: graph semantics (nodes/edges), anchor relations, page-level count.
+    DIAGRAM_GRAPH = "diagram_graph"
+    DIAGRAM_EDGE = "diagram_edge"
+    DIAGRAM_COUNT = "diagram_count"
+    # Page furniture: running header, running footer, printed page number, and leakage into the body.
+    PAGE_DECORATION = "page_decoration"

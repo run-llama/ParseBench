@@ -95,12 +95,12 @@ def test_extract_evaluator_emits_native_extract_metrics_only(tmp_path: Path) -> 
             product_type=ProductType.EXTRACT,
             schema_override=case.data_schema,
         ),
-        pipeline_name="llamaextract_v2_cost_effective_parse_agentic_granular_bboxes_staging",
+        pipeline_name="extend_extract",
         product_type=ProductType.EXTRACT,
         raw_output={"job_id": "ext-123", "parse_config_id": "cfg-123"},
         output=ExtractOutput(
             example_id="docs/payroll_7",
-            pipeline_name="llamaextract_v2_cost_effective_parse_agentic_granular_bboxes_staging",
+            pipeline_name="extend_extract",
             extracted_data={"invoice": {"number": "INV-001", "date": "May 1, 2026"}},
             field_citations=[
                 FieldCitation(field_path="invoice.number", page=1, bbox=[0.1, 0.2, 0.3, 0.1]),
@@ -199,12 +199,12 @@ def test_extract_evaluator_scores_filtered_verified_rules(tmp_path: Path) -> Non
             product_type=ProductType.EXTRACT,
             schema_override=case.data_schema,
         ),
-        pipeline_name="llamaextract_v2_cost_effective_parse_agentic_granular_bboxes_staging",
+        pipeline_name="extend_extract",
         product_type=ProductType.EXTRACT,
         raw_output={},
         output=ExtractOutput(
             example_id="docs/payroll_7",
-            pipeline_name="llamaextract_v2_cost_effective_parse_agentic_granular_bboxes_staging",
+            pipeline_name="extend_extract",
             extracted_data={"invoice": {"number": "INV-001", "date": "2026-05-01"}},
             field_citations=[
                 FieldCitation(field_path="invoice.number", page=1, bbox=[0.1, 0.2, 0.3, 0.1]),
@@ -280,28 +280,11 @@ def test_extract_avg_micro_aggregation() -> None:
 
 def test_requested_extract_pipelines_registered() -> None:
     extend_pipeline = get_pipeline("extend_extract")
-    llamaextract_pipeline = get_pipeline("llamaextract_v2_cost_effective_parse_agentic_granular_bboxes_staging")
-    parse_pipeline = get_pipeline("llamaparse_agentic_granular_bboxes_staging")
 
     assert isinstance(extend_pipeline, PipelineSpec)
     assert extend_pipeline.product_type == ProductType.EXTRACT
     assert extend_pipeline.provider_name == "extend"
     assert extend_pipeline.config["advancedOptions"]["citationsEnabled"] is True
-
-    assert llamaextract_pipeline.product_type == ProductType.EXTRACT
-    assert llamaextract_pipeline.provider_name == "llamaextract_v2"
-    assert llamaextract_pipeline.config["tier"] == "cost_effective"
-    assert llamaextract_pipeline.config["parse_tier"] == "agentic"
-    assert llamaextract_pipeline.config["use_staging"] is True
-    assert llamaextract_pipeline.config["cite_sources"] is True
-    assert llamaextract_pipeline.config["parse_config"]["disable_cache"] is True
-    assert llamaextract_pipeline.config["parse_config"]["output_options"]["granular_bboxes"] == ["word"]
-
-    assert parse_pipeline.product_type == ProductType.PARSE
-    assert parse_pipeline.provider_name == "llamaparse"
-    assert parse_pipeline.config["use_staging"] is True
-    assert parse_pipeline.config["tier"] == "agentic"
-    assert parse_pipeline.config["output_options"]["granular_bboxes"] == ["word"]
 
 
 def test_parse_evaluator_scores_extract_field_grounding_rules(tmp_path: Path) -> None:
@@ -327,7 +310,7 @@ def test_parse_evaluator_scores_extract_field_grounding_rules(tmp_path: Path) ->
             source_file_path=str(case.file_path),
             product_type=ProductType.PARSE,
         ),
-        pipeline_name="llamaparse_agentic_granular_bboxes_staging",
+        pipeline_name="llamaparse_agentic",
         product_type=ProductType.PARSE,
         raw_output={
             "v2_grounded_items": [
@@ -360,7 +343,7 @@ def test_parse_evaluator_scores_extract_field_grounding_rules(tmp_path: Path) ->
         },
         output=ParseOutput(
             example_id="docs/payroll_7",
-            pipeline_name="llamaparse_agentic_granular_bboxes_staging",
+            pipeline_name="llamaparse_agentic",
             markdown="Invoice INV-001",
         ),
         started_at=now,
@@ -417,7 +400,7 @@ def test_parse_evaluator_scores_filtered_verified_rules(tmp_path: Path) -> None:
             source_file_path=str(case.file_path),
             product_type=ProductType.PARSE,
         ),
-        pipeline_name="llamaparse_agentic_granular_bboxes_staging",
+        pipeline_name="llamaparse_agentic",
         product_type=ProductType.PARSE,
         raw_output={
             "v2_grounded_items": [
@@ -450,7 +433,7 @@ def test_parse_evaluator_scores_filtered_verified_rules(tmp_path: Path) -> None:
         },
         output=ParseOutput(
             example_id="docs/payroll_7",
-            pipeline_name="llamaparse_agentic_granular_bboxes_staging",
+            pipeline_name="llamaparse_agentic",
             markdown="Invoice INV-001",
         ),
         started_at=now,
@@ -504,12 +487,12 @@ def test_parallel_worker_respects_verified_only_flag(tmp_path: Path) -> None:
             product_type=ProductType.EXTRACT,
             schema_override=case.data_schema,
         ),
-        pipeline_name="llamaextract_v2_cost_effective_parse_agentic_granular_bboxes_staging",
+        pipeline_name="extend_extract",
         product_type=ProductType.EXTRACT,
         raw_output={},
         output=ExtractOutput(
             example_id="docs/payroll_7",
-            pipeline_name="llamaextract_v2_cost_effective_parse_agentic_granular_bboxes_staging",
+            pipeline_name="extend_extract",
             extracted_data={"invoice": {"number": "INV-001", "date": "2026-05-01"}},
             field_citations=[
                 FieldCitation(field_path="invoice.number", page=1, bbox=[0.1, 0.2, 0.3, 0.1]),

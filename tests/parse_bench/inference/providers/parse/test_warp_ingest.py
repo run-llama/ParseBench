@@ -256,3 +256,30 @@ def test_layout_adapter_delegates_to_upstream_generic_renderer(monkeypatch: pyte
     assert layout.predictions[1].content is not None
     assert layout.predictions[1].content.type == "table"
     assert layout.predictions[0].provider_metadata["order_index"] == 7
+
+
+def test_ensure_nltk_corpora_downloads_only_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    downloaded: list[str] = []
+
+    def fake_find(path: str) -> None:
+        # Only stopwords is missing; the punkt tokenizers are already present.
+        if path == "corpora/stopwords":
+            raise LookupError("missing")
+
+    def fake_download(resource: str, quiet: bool = False) -> bool:
+        downloaded.append(resource)
+        return True
+
+    fake_nltk = ModuleType("nltk")
+    fake_nltk.data = ModuleType("nltk.data")
+    fake_nltk.data.find = fake_find  # type: ignore[attr-defined]
+    fake_nltk.download = fake_download  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "nltk", fake_nltk)
+    monkeypatch.setattr(warp_ingest_module, "_nltk_ready", False)
+
+    warp_ingest_module.ensure_nltk_corpora()
+    assert downloaded == ["stopwords"]
+
+    # Idempotent: once the process is marked ready, no further work happens.
+    warp_ingest_module.ensure_nltk_corpora()
+    assert downloaded == ["stopwords"]

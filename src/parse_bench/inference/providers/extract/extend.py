@@ -15,6 +15,7 @@ from typing import Any, cast
 from parse_bench.inference.providers.base import (
     Provider,
     ProviderConfigError,
+    ProviderError,
     ProviderPermanentError,
     ProviderRateLimitError,
     ProviderTransientError,
@@ -44,8 +45,26 @@ except ImportError:
 Extend: Any = _Extend
 ApiError: Any = _ApiError
 
+# Extend bills file parsing separately from document processing for older
+# response payloads where processor_run.usage.credits covers extraction only.
+# Newer payloads can include usage.totalCredits, which is the authoritative
+# roll-up for work triggered by the run. Override the parse estimate per
+# pipeline with `parse_credits_per_page` when totalCredits is absent.
+# Source: https://docs.extend.ai/general/how-credits-work
+DEFAULT_PARSE_CREDITS_PER_PAGE = 2.0
+
+# USD per Extend credit at Pay-As-You-Go list pricing. Extend doesn't publish a
+# direct per-credit rate, so this is derived from their published parse pricing:
+# $0.025/page at 2 credits/page = $0.0125/credit. Hardcoded (like llamaextract's
+# _USD_PER_CREDIT) so cost_usd / cost_per_page_usd always populate and the
+# dashboard cost columns render. Update here if Extend's list pricing changes.
+# Source: https://www.extend.ai/pricing
+USD_PER_CREDIT = 0.0125
+
 # JSON Schema properties not supported by Extend AI
 UNSUPPORTED_SCHEMA_PROPERTIES = {
+    "$defs",
+    "$schema",
     "pattern",
     "not",
     "allOf",
@@ -71,7 +90,17 @@ UNSUPPORTED_SCHEMA_PROPERTIES = {
     "const",
     "contentMediaType",
     "contentEncoding",
+    "default",
+    "definitions",
+    "title",
 }
+
+# Property names Extend AI reserves for internal use and rejects at processor
+# creation ("Field key '<name>' is reserved for internal use"). These are legal
+# JSON Schema keys accepted by every other provider, so we rename them to a
+# collision-free alias only in the schema submitted to Extend and restore the
+# original name in the result -- the shared dataset schema/GT are never touched.
+RESERVED_PROPERTY_NAMES = frozenset({"id"})
 
 
 def _is_extract_product_type(value: Any) -> bool:
@@ -87,29 +116,101 @@ def _extract_output_cls() -> type[Any]:
     return ExtractOutput
 
 
-def _adapt_schema_for_extend(schema: dict[str, Any]) -> tuple[dict[str, Any], dict[str, list[str]]]:
+def _adapt_schema_for_extend(
+    schema: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, list[str]], dict[str, dict[str, str]]]:
     """
     Adapt a JSON schema for Extend AI compatibility.
 
     Extend AI has limited JSON Schema support:
     1. Array items must have type "object" (no primitive arrays like string[])
-    2. Many advanced keywords (pattern, not, allOf, etc.) are not supported
+    2. Object schemas must declare at least one property (no empty-object items)
+    3. A handful of property names ("id", ...) are reserved
+    4. Many advanced keywords (pattern, not, allOf, etc.) are not supported
 
     This adapter:
     - Wraps primitive array items in objects with a "value" property
+    - Treats an array whose items are an empty object ({} == "return an empty
+      array") as a primitive string array, so Extend accepts it
+    - Renames reserved property names to a collision-free alias
     - Strips unsupported schema properties
 
     Returns:
-        tuple: (adapted_schema, primitive_array_paths) where primitive_array_paths
-               maps JSON paths to the primitive types that were wrapped
+        tuple: (adapted_schema, primitive_array_paths, renamed_props) where
+               primitive_array_paths maps array JSON paths to the primitive
+               types that were wrapped, and renamed_props maps each parent
+               object's JSON path to an {alias: original_name} table.
     """
     primitive_array_paths: dict[str, list[str]] = {}
+    renamed_props: dict[str, dict[str, str]] = {}
+
+    def alias_for(name: str, siblings: dict[str, Any]) -> str:
+        """Pick a non-reserved alias that does not collide with a sibling key."""
+        candidate = f"{name}_field"
+        while candidate in siblings or candidate in RESERVED_PROPERTY_NAMES:
+            candidate = f"{candidate}_"
+        return candidate
+
+    def resolve_json_pointer(ref: str) -> dict[str, Any] | None:
+        if not ref.startswith("#/"):
+            return None
+
+        current: Any = schema
+        for raw_part in ref[2:].split("/"):
+            part = raw_part.replace("~1", "/").replace("~0", "~")
+            if not isinstance(current, dict):
+                return None
+            current = current.get(part)
+
+        return current if isinstance(current, dict) else None
+
+    def is_null_schema(node: Any) -> bool:
+        return isinstance(node, dict) and node.get("type") == "null"
+
+    def normalize_nullable_schema(node: dict[str, Any]) -> dict[str, Any]:
+        """Collapse nullable unions to the non-null schema shape Extend accepts."""
+        node_type = node.get("type")
+        if isinstance(node_type, list):
+            non_null_types = [value for value in node_type if value != "null"]
+            if len(non_null_types) == 1:
+                return {**node, "type": non_null_types[0]}
+
+        for union_key in ("anyOf", "oneOf"):
+            options = node.get(union_key)
+            if not isinstance(options, list):
+                continue
+            non_null_options = [option for option in options if not is_null_schema(option)]
+            if len(non_null_options) != 1 or len(non_null_options) == len(options):
+                continue
+
+            result = dict(non_null_options[0])
+            for key, value in node.items():
+                if key != union_key and key not in result:
+                    result[key] = value
+            return result
+
+        return node
+
+    def resolve_ref_node(node: dict[str, Any]) -> dict[str, Any]:
+        ref = node.get("$ref")
+        if isinstance(ref, str):
+            resolved = resolve_json_pointer(ref)
+            if resolved is not None:
+                merged = dict(resolved)
+                for key, value in node.items():
+                    if key != "$ref":
+                        merged[key] = value
+                return merged
+        return node
 
     def adapt_node(node: dict[str, Any], path: str = "") -> dict[str, Any]:
         if not isinstance(node, dict):
             return node
 
-        result = {}
+        node = resolve_ref_node(node)
+        node = normalize_nullable_schema(node)
+        node = resolve_ref_node(node)
+        result: dict[str, Any] = {}
         node_type = node.get("type")
 
         for key, value in node.items():
@@ -118,51 +219,77 @@ def _adapt_schema_for_extend(schema: dict[str, Any]) -> tuple[dict[str, Any], di
                 continue
 
             if key == "properties" and isinstance(value, dict):
-                # Recurse into properties
-                result["properties"] = {
-                    prop_name: adapt_node(prop_schema, f"{path}.{prop_name}" if path else prop_name)
-                    for prop_name, prop_schema in value.items()
-                }
+                # Recurse into properties, renaming any reserved key. The child
+                # path keeps the ORIGINAL name so primitive_array_paths and the
+                # result adapter stay aligned; only the emitted key is aliased.
+                adapted_props: dict[str, Any] = {}
+                for prop_name, prop_schema in value.items():
+                    child_path = f"{path}.{prop_name}" if path else prop_name
+                    out_name = prop_name
+                    if prop_name in RESERVED_PROPERTY_NAMES:
+                        out_name = alias_for(prop_name, value)
+                        renamed_props.setdefault(path, {})[out_name] = prop_name
+                    adapted_props[out_name] = adapt_node(prop_schema, child_path)
+                result["properties"] = adapted_props
             elif key == "items" and node_type == "array":
                 # Handle array items
                 if isinstance(value, dict):
-                    items_type = value.get("type")
-                    # Check if items is a primitive type
-                    if items_type in ("string", "number", "integer", "boolean"):
-                        # Wrap primitive in object with "value" property
-                        primitive_array_paths[path] = [items_type]
+                    resolved_items = resolve_ref_node(value)
+                    items_type = resolved_items.get("type")
+                    is_empty_object = items_type == "object" and not resolved_items.get("properties")
+                    # A primitive array, or an empty-object array (a field whose
+                    # values are never populated -- GT is always []). Extend
+                    # rejects both, so wrap them in an object with a "value" key.
+                    if items_type in ("string", "number", "integer", "boolean") or is_empty_object:
+                        wrapped_type: str = "string" if is_empty_object else str(items_type)
+                        primitive_array_paths[path] = [wrapped_type]
                         result["items"] = {
-                            "type": "object",  # type: ignore
-                            "properties": {"value": adapt_node(value, f"{path}[items].value")},
+                            "type": "object",
+                            "properties": {"value": {"type": wrapped_type}},
                         }
                     else:
                         # Recurse into object items
                         result["items"] = adapt_node(value, f"{path}[items]")
                 else:
                     result["items"] = value
+            elif isinstance(value, dict):
+                result[key] = adapt_node(value, path)
+            elif isinstance(value, list):
+                result[key] = [adapt_node(item, path) if isinstance(item, dict) else item for item in value]
             else:
                 result[key] = value
 
         return result
 
     adapted = adapt_node(schema)
-    return adapted, primitive_array_paths
+    return adapted, primitive_array_paths, renamed_props
 
 
-def _adapt_result_from_extend(data: Any, primitive_array_paths: dict[str, list[str]], path: str = "") -> Any:
+def _adapt_result_from_extend(
+    data: Any,
+    primitive_array_paths: dict[str, list[str]],
+    renamed_props: dict[str, dict[str, str]] | None = None,
+    path: str = "",
+) -> Any:
     """
     Adapt extraction results back to match the original schema.
 
-    Unwraps primitive values that were wrapped in objects for Extend AI compatibility.
+    Unwraps primitive values that were wrapped in objects for Extend AI
+    compatibility, and restores any reserved property name that was aliased in
+    the submitted schema.
     """
+    renamed_props = renamed_props or {}
+
     if data is None:
         return None
 
     if isinstance(data, dict):
         result = {}
+        rename_here = renamed_props.get(path, {})
         for key, value in data.items():
-            current_path = f"{path}.{key}" if path else key
-            result[key] = _adapt_result_from_extend(value, primitive_array_paths, current_path)
+            original_key = rename_here.get(key, key)
+            current_path = f"{path}.{original_key}" if path else f"{original_key}"
+            result[original_key] = _adapt_result_from_extend(value, primitive_array_paths, renamed_props, current_path)
         return result
 
     if isinstance(data, list):
@@ -172,9 +299,67 @@ def _adapt_result_from_extend(data: Any, primitive_array_paths: dict[str, list[s
             return [item.get("value") if isinstance(item, dict) else item for item in data]
         else:
             # Recurse into array items
-            return [_adapt_result_from_extend(item, primitive_array_paths, f"{path}[items]") for item in data]
+            return [
+                _adapt_result_from_extend(item, primitive_array_paths, renamed_props, f"{path}[items]") for item in data
+            ]
 
     return data
+
+
+def _coerce_nonnegative_float(value: Any) -> float | None:
+    if isinstance(value, (int, float)) and value >= 0:
+        return float(value)
+    return None
+
+
+def _attach_cost_stats(raw_output: dict[str, Any], pipeline_config: dict[str, Any]) -> None:
+    """Surface Extend billing data as top-level raw_output keys.
+
+    build_operational_stats picks up `credits_used`, `parse_credits`,
+    `total_credits`, `cost_usd` and `cost_per_page_usd` from raw_output, and
+    `num_pages` additionally enables per-page latency. Called from both
+    run_inference (so .raw.json is self-describing) and normalize (so
+    `bench inference renormalize` backfills stats on older runs).
+    """
+    processor_run = raw_output.get("processor_run") or {}
+
+    num_pages = 0
+    for file_info in processor_run.get("files") or []:
+        page_count = ((file_info or {}).get("metadata") or {}).get("page_count")
+        if isinstance(page_count, (int, float)):
+            num_pages += int(page_count)
+    if num_pages:
+        raw_output["num_pages"] = num_pages
+
+    # Doc-processing (extraction) credits, measured by the API. Absent for
+    # runs created before 2025-10-07 or on legacy billing.
+    usage = processor_run.get("usage") or {}
+    credits_used = _coerce_nonnegative_float(usage.get("credits"))
+    total_credits_from_usage = _coerce_nonnegative_float(usage.get("totalCredits"))
+    if total_credits_from_usage is None:
+        total_credits_from_usage = _coerce_nonnegative_float(usage.get("total_credits"))
+    if credits_used is None and total_credits_from_usage is None:
+        return
+    if credits_used is not None:
+        raw_output["credits_used"] = credits_used
+
+    if total_credits_from_usage is not None:
+        total_credits = total_credits_from_usage
+        if credits_used is not None:
+            raw_output["parse_credits"] = max(0.0, total_credits - credits_used)
+    else:
+        parse_credits_per_page = float(pipeline_config.get("parse_credits_per_page", DEFAULT_PARSE_CREDITS_PER_PAGE))
+        parse_credits = parse_credits_per_page * num_pages
+        raw_output["parse_credits"] = parse_credits
+        total_credits = float(credits_used or 0.0) + parse_credits
+    raw_output["total_credits"] = total_credits
+
+    # USD conversion at PAYG list pricing so the dashboard cost columns populate.
+    cost_usd = total_credits * USD_PER_CREDIT
+    raw_output["cost_usd"] = cost_usd
+    if num_pages:
+        raw_output["credits_per_page"] = total_credits / num_pages
+        raw_output["cost_per_page_usd"] = cost_usd / num_pages
 
 
 @register_provider("extend")
@@ -534,7 +719,7 @@ class ExtendProvider(Provider):
         :raises ProviderError: For any extraction errors
         """
         # Step 0: Adapt schema for Extend AI compatibility
-        adapted_schema, primitive_array_paths = _adapt_schema_for_extend(schema)
+        adapted_schema, primitive_array_paths, renamed_props = _adapt_schema_for_extend(schema)
 
         # Step 1: Upload file
         file_id = self._upload_file(file_path)
@@ -553,6 +738,7 @@ class ExtendProvider(Provider):
             "file_id": file_id,
             "processor_id": processor_id,
             "primitive_array_paths": primitive_array_paths,
+            "renamed_props": renamed_props,
         }
 
         return result
@@ -596,6 +782,8 @@ class ExtendProvider(Provider):
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 
+            _attach_cost_stats(raw_output, pipeline.config)
+
             return RawInferenceResult(
                 request=request,
                 pipeline=pipeline,
@@ -607,6 +795,11 @@ class ExtendProvider(Provider):
                 latency_in_ms=latency_ms,
             )
 
+        except ProviderError:
+            # Preserve transient/rate-limit classification so the harness
+            # retries — wrapping these as permanent disabled all retry and
+            # turned vendor 429s into hard per-doc failures.
+            raise
         except Exception as e:
             raise ProviderPermanentError(f"Unexpected error during inference: {e}") from e
 
@@ -623,14 +816,20 @@ class ExtendProvider(Provider):
                 f"ExtendProvider only supports EXTRACT product type, got {raw_result.product_type}"
             )
 
+        # Backfill cost stats for raw results recorded before cost tracking
+        # existed (renormalize path); no-op when run_inference already set them.
+        _attach_cost_stats(raw_result.raw_output, raw_result.pipeline.config)
+
         # Extract the structured data from processor_run.output.value
         extracted_data = raw_result.raw_output.get("processor_run", {}).get("output", {}).get("value", {})
 
         # Adapt the result back to match the original schema
         # (unwrap primitive arrays that were wrapped for Extend AI)
-        primitive_array_paths = raw_result.raw_output.get("_extend_metadata", {}).get("primitive_array_paths", {})
-        if primitive_array_paths:
-            extracted_data = _adapt_result_from_extend(extracted_data, primitive_array_paths)
+        extend_metadata = raw_result.raw_output.get("_extend_metadata", {})
+        primitive_array_paths = extend_metadata.get("primitive_array_paths", {})
+        renamed_props = extend_metadata.get("renamed_props", {})
+        if primitive_array_paths or renamed_props:
+            extracted_data = _adapt_result_from_extend(extracted_data, primitive_array_paths, renamed_props)
 
         output = _extract_output_cls()(
             task_type="extract",

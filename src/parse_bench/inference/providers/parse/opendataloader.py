@@ -34,9 +34,7 @@ class OpenDataLoaderProvider(Provider):
         try:
             import opendataloader_pdf
         except ImportError as e:
-            raise ProviderConfigError(
-                "opendataloader-pdf not installed. Run: pip install opendataloader-pdf"
-            ) from e
+            raise ProviderConfigError("opendataloader-pdf not installed. Run: pip install opendataloader-pdf") from e
 
         ext = "md" if self._format == "markdown" else "txt"
 
@@ -62,9 +60,7 @@ class OpenDataLoaderProvider(Provider):
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         if request.product_type != ProductType.PARSE:
-            raise ProviderPermanentError(
-                f"OpenDataLoaderProvider only supports PARSE, got {request.product_type}"
-            )
+            raise ProviderPermanentError(f"OpenDataLoaderProvider only supports PARSE, got {request.product_type}")
 
         pdf_path = Path(request.source_file_path)
         if not pdf_path.exists():

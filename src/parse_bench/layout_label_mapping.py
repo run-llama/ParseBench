@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from parse_bench.schemas.layout_ontology import (
     CANONICAL_TO_BASIC,
     DEFAULT_LAYOUT_EVALUATION_ONTOLOGY,
@@ -91,6 +93,10 @@ LLAMAPARSE_V2_RAW_TO_CANONICAL: dict[str, tuple[CanonicalLabel, dict[str, str]]]
     "table": (CanonicalLabel.TABLE, {}),
     "formula": (CanonicalLabel.FORMULA, {}),
     "algorithm": (CanonicalLabel.CODE, {}),
+    # LlamaParse V2 SDK ``CodeItem`` emits ``type="code"`` even when
+    # ``layoutAwareBbox`` labels look V2-only, so without this alias the V2-path
+    # canonicalizer silently dropped code blocks.
+    "code": (CanonicalLabel.CODE, {}),
 }
 
 
@@ -292,3 +298,127 @@ def map_label_to_target_ontology(
         return basic_label.value
 
     return label
+
+
+# ---------------------------------------------------------------------------
+# Picture-type vocabulary
+# ---------------------------------------------------------------------------
+
+# Figure-classifier labels LlamaParse emits as `![label: description](path)`
+# alt-text prefixes (docling DocumentFigureClassifier vocabulary). Kept for
+# documentation/tests only: picture-type handling is an OPEN list, so labels
+# outside this set are normalized and scored rather than rejected.
+LLAMAPARSE_PICTURE_TYPE_LABELS = frozenset(
+    {
+        "logo",
+        "photograph",
+        "icon",
+        "engineering_drawing",
+        "line_chart",
+        "bar_chart",
+        "other",
+        "table",
+        "flow_chart",
+        "screenshot_from_computer",
+        "signature",
+        "screenshot_from_manual",
+        "geographical_map",
+        "pie_chart",
+        "page_thumbnail",
+        "stamp",
+        "music",
+        "calendar",
+        "qr_code",
+        "bar_code",
+        "full_page_image",
+        "scatter_plot",
+        "chemistry_structure",
+        "topographical_map",
+        "crossword_puzzle",
+        "box_plot",
+    }
+)
+
+# Predicted-vocabulary -> ground-truth-vocabulary aliases. The layout GT
+# annotations use a coarser vocabulary (e.g. "image", "screenshot", "map")
+# than the classifier's specific labels; both sides are normalized through
+# this map before comparison so cosmetic vocabulary drift never scores as a
+# misclassification.
+PICTURE_TYPE_ALIASES: dict[str, str] = {
+    "photo": "image",
+    "photograph": "image",
+    "full_page_image": "image",
+    "screenshot_from_computer": "screenshot",
+    "screenshot_from_manual": "screenshot",
+    "geographical_map": "map",
+    "topographical_map": "map",
+    "scatter_plot": "scatter_chart",
+    "seal": "stamp",
+}
+
+# Attribute values that are annotation noise, not picture classes.
+_PICTURE_TYPE_DENYLIST = frozenset({"true", "false", "caption", "none", "null", "unknown", "n_a", "na"})
+
+_PICTURE_TYPE_SEPARATOR_RE = re.compile(r"[\s\-/]+")
+_PICTURE_TYPE_INVALID_CHARS_RE = re.compile(r"[^a-z0-9_]")
+# A class token, not a leaked description: bounded length and word count.
+_PICTURE_TYPE_MAX_LENGTH = 40
+_PICTURE_TYPE_MAX_WORDS = 4
+
+_GENERIC_CHART_TYPE = "chart"
+_DATA_CHART_SUFFIXES = ("_chart", "_plot", "_graph")
+# Diagram-like classes whose *_chart names are not data charts: the GT
+# vocabulary keeps these distinct from the generic "chart" annotation.
+_NON_DATA_CHART_TYPES = frozenset({"flow_chart", "org_chart"})
+
+
+def normalize_picture_type(value: object) -> str | None:
+    """Normalize a picture-type label to a comparable snake_case token.
+
+    Open-list by design (labels outside ``LLAMAPARSE_PICTURE_TYPE_LABELS``
+    survive): lowercases, converts separators to underscores, applies
+    ``PICTURE_TYPE_ALIASES``, and returns None for annotation noise or
+    values that read as a leaked description rather than a class token.
+    """
+    if not isinstance(value, str):
+        return None
+    token = _PICTURE_TYPE_SEPARATOR_RE.sub("_", value.strip().lower())
+    token = _PICTURE_TYPE_INVALID_CHARS_RE.sub("", token).strip("_")
+    if not token or token in _PICTURE_TYPE_DENYLIST:
+        return None
+    if len(token) > _PICTURE_TYPE_MAX_LENGTH or token.count("_") >= _PICTURE_TYPE_MAX_WORDS:
+        return None
+    return PICTURE_TYPE_ALIASES.get(token, token)
+
+
+def _is_specific_data_chart(picture_type: str) -> bool:
+    return picture_type.endswith(_DATA_CHART_SUFFIXES) and picture_type not in _NON_DATA_CHART_TYPES
+
+
+def is_chart_family_picture_type(picture_type: str) -> bool:
+    """Whether a *normalized* picture type belongs to the data-chart family.
+
+    The family is the generic ``chart`` plus every specific data-chart class
+    (``bar_chart``, ``pie_chart``, ``line_chart``, ``scatter_chart``, ...) —
+    the same equivalence class :func:`picture_types_match` already tolerates.
+    Diagram-like ``*_chart`` classes (``flow_chart``, ``org_chart``) are not
+    data charts and stay outside the family.
+    """
+    return picture_type == _GENERIC_CHART_TYPE or _is_specific_data_chart(picture_type)
+
+
+def picture_types_match(gt_picture_type: str, pred_picture_type: str) -> bool:
+    """Whether two *normalized* picture types count as the same class.
+
+    Exact match, plus generic<->specific data-chart tolerance: GT annotators
+    often write the generic "chart" where the classifier answers "bar_chart",
+    and the reverse happens when the raw bbox label is the generic "chart".
+    Diagram-like ``*_chart`` classes (flow_chart) stay distinct.
+    """
+    if gt_picture_type == pred_picture_type:
+        return True
+    if gt_picture_type == _GENERIC_CHART_TYPE and _is_specific_data_chart(pred_picture_type):
+        return True
+    if pred_picture_type == _GENERIC_CHART_TYPE and _is_specific_data_chart(gt_picture_type):
+        return True
+    return False

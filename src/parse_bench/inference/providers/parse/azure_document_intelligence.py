@@ -44,6 +44,12 @@ AZURE_DI_LABEL_MAP: dict[str, str] = {
 # Default label for paragraphs without a recognized role
 _DEFAULT_PARAGRAPH_LABEL = "Text"
 
+# Azure DI selection mark state -> Canonical17 checkbox label
+AZURE_DI_SELECTION_LABEL_MAP: dict[str, str] = {
+    "selected": "Checkbox-Selected",
+    "unselected": "Checkbox-Unselected",
+}
+
 # Virtual page dimensions for normalized coordinate conversion.
 # Azure DI polygons are normalized to [0,1] via page width/height, so these cancel out.
 _VIRTUAL_PAGE_DIM = 1000.0
@@ -193,7 +199,27 @@ class AzureDocumentIntelligenceProvider(Provider):
 
                 # Extract words if available
                 if page.words:
+                    page_dict["words"] = [
+                        {
+                            "content": word.content,
+                            "polygon": list(word.polygon) if word.polygon else None,
+                            "confidence": word.confidence if word.confidence is not None else None,
+                        }
+                        for word in page.words
+                    ]
                     page_dict["word_count"] = len(page.words)
+
+                # Extract selection marks (checkboxes) if available
+                selection_marks = getattr(page, "selection_marks", None)
+                if selection_marks:
+                    page_dict["selection_marks"] = [
+                        {
+                            "state": mark.state,
+                            "polygon": list(mark.polygon) if mark.polygon else None,
+                            "confidence": mark.confidence if mark.confidence is not None else None,
+                        }
+                        for mark in selection_marks
+                    ]
 
                 pages_data.append(page_dict)
 
@@ -211,13 +237,30 @@ class AzureDocumentIntelligenceProvider(Provider):
 
                 if table.cells:
                     for cell in table.cells:
-                        cell_dict = {
+                        cell_dict: dict[str, Any] = {
                             "row_index": cell.row_index,
                             "column_index": cell.column_index,
                             "content": cell.content,
                             "row_span": cell.row_span,
                             "column_span": cell.column_span,
+                            # Azure tags structural roles via cell.kind:
+                            # "columnHeader" / "rowHeader" / "stubHead" / "description"
+                            # / "content" (default). Used to choose <th> vs <td>
+                            # when reconstructing table HTML downstream.
+                            "kind": getattr(cell, "kind", None),
                         }
+                        # Per-cell polygons let downstream tooling overlay
+                        # individual cell bboxes. Some Azure tables only carry a
+                        # table-level region, so this is best-effort optional.
+                        cell_bounding_regions = getattr(cell, "bounding_regions", None)
+                        if cell_bounding_regions:
+                            cell_dict["bounding_regions"] = [
+                                {
+                                    "page_number": br.page_number,
+                                    "polygon": list(br.polygon) if br.polygon else None,
+                                }
+                                for br in cell_bounding_regions
+                            ]
                         table_dict["cells"].append(cell_dict)
 
                 tables_data.append(table_dict)
@@ -414,6 +457,89 @@ def _polygon_to_normalized_bbox(
     return (nx, ny, nw, nh)
 
 
+def _build_table_html_from_cells(
+    cells: list[dict[str, Any]],
+    row_count: int,
+    column_count: int,
+) -> str:
+    """Reconstruct a ``<table>`` HTML string from Azure DI cell dicts.
+
+    Honors ``row_span`` / ``column_span`` (cells covered by a previous
+    cell's span are skipped, not double-emitted) and Azure's ``cell.kind``
+    (``"columnHeader"`` / ``"rowHeader"`` → ``<th>``; everything else →
+    ``<td>``). Cells without integer ``row_index`` / ``column_index`` are
+    skipped silently — they're structural only.
+
+    Returns ``""`` when input is degenerate (no cells, missing row/col
+    counts) so callers can fall back to flat-text content.
+    """
+    from html import escape as _html_escape
+
+    if not cells or row_count <= 0 or column_count <= 0:
+        return ""
+
+    grid: dict[tuple[int, int], dict[str, Any]] = {}
+    for cell in cells:
+        r = cell.get("row_index")
+        c = cell.get("column_index")
+        if isinstance(r, int) and isinstance(c, int):
+            grid[(r, c)] = cell
+
+    covered: set[tuple[int, int]] = set()
+    rows_html: list[str] = []
+    for r in range(row_count):
+        cells_html: list[str] = []
+        for c in range(column_count):
+            if (r, c) in covered:
+                continue
+            cell_at_pos = grid.get((r, c))
+            if cell_at_pos is None:
+                cells_html.append("<td></td>")
+                continue
+            row_span = int(cell_at_pos.get("row_span") or 1)
+            col_span = int(cell_at_pos.get("column_span") or 1)
+            for dr in range(row_span):
+                for dc in range(col_span):
+                    if dr == 0 and dc == 0:
+                        continue
+                    covered.add((r + dr, c + dc))
+            attrs = ""
+            if row_span > 1:
+                attrs += f' rowspan="{row_span}"'
+            if col_span > 1:
+                attrs += f' colspan="{col_span}"'
+            kind = (cell_at_pos.get("kind") or "").strip()
+            tag = "th" if kind in ("columnHeader", "rowHeader") else "td"
+            content = _html_escape(cell_at_pos.get("content") or "")
+            cells_html.append(f"<{tag}{attrs}>{content}</{tag}>")
+        # Always emit a <tr> for every row in row_count, even when every
+        # position is covered by a rowspan from a previous row. HTML
+        # counts <tr> elements to resolve rowspan targets — dropping
+        # the empty <tr> would push the next row's cells into the wrong
+        # row index. The empty <tr></tr> renders as an invisible row in
+        # browsers and parses cleanly under lxml + BeautifulSoup, which
+        # is what the TEDS evaluator uses.
+        rows_html.append("<tr>" + "".join(cells_html) + "</tr>")
+
+    return "<table>" + "".join(rows_html) + "</table>"
+
+
+def _bbox_center_inside_any(
+    bbox: tuple[float, float, float, float],
+    others: list[tuple[float, float, float, float]],
+) -> bool:
+    """``True`` when the center of ``bbox`` lies inside any rectangle in
+    ``others``. Both rectangles are normalized xywh in the same coord
+    system. Used to filter Azure DI cell-as-paragraph duplicates.
+    """
+    cx = bbox[0] + bbox[2] / 2.0
+    cy = bbox[1] + bbox[3] / 2.0
+    for ox, oy, ow, oh in others:
+        if ox <= cx <= ox + ow and oy <= cy <= oy + oh:
+            return True
+    return False
+
+
 def _build_layout_pages(raw_output: dict[str, Any]) -> list[ParseLayoutPageIR]:
     """Build layout_pages from Azure DI paragraphs/tables/figures for layout cross-evaluation.
 
@@ -430,8 +556,28 @@ def _build_layout_pages(raw_output: dict[str, Any]) -> list[ParseLayoutPageIR]:
         height = float(page_data.get("height", 1.0))
         page_dims[page_num] = (width, height)
 
-    # Collect all layout elements grouped by page: (canonical_label, nx, ny, nw, nh, content)
-    pages_items: dict[int, list[tuple[str, float, float, float, float, str, float]]] = defaultdict(list)
+    # Collect all layout elements grouped by page:
+    # (canonical_label, nx, ny, nw, nh, value_text, confidence, html_or_empty).
+    # html_or_empty is populated only for table items; other element kinds
+    # push an empty string so the tuple stays uniform.
+    pages_items: dict[int, list[tuple[str, float, float, float, float, str, float, str]]] = defaultdict(list)
+
+    # Pre-compute table rectangles per page so we can skip paragraphs
+    # whose bbox sits inside one. Azure DI returns each table cell *both*
+    # as a ``tables[*].cells`` entry (which we use for HTML
+    # reconstruction) and as a standalone ``paragraphs[]`` entry —
+    # typically with no role and the same bbox as the cell. Without this
+    # filter the layout output ends up with one Text bbox per cell on
+    # top of the parent Table region.
+    table_rects_by_page: dict[int, list[tuple[float, float, float, float]]] = defaultdict(list)
+    for table in raw_output.get("tables", []):
+        for br in table.get("bounding_regions", []):
+            page_num = br.get("page_number", 1)
+            polygon = br.get("polygon")
+            if not polygon or len(polygon) < 8:
+                continue
+            pw, ph = page_dims.get(page_num, (1.0, 1.0))
+            table_rects_by_page[page_num].append(_polygon_to_normalized_bbox(polygon, pw, ph))
 
     # Process paragraphs
     for para in raw_output.get("paragraphs", []):
@@ -446,13 +592,27 @@ def _build_layout_pages(raw_output: dict[str, Any]) -> list[ParseLayoutPageIR]:
                 continue
             pw, ph = page_dims.get(page_num, (1.0, 1.0))
             nx, ny, nw, nh = _polygon_to_normalized_bbox(polygon, pw, ph)
-            pages_items[page_num].append((canonical_label, nx, ny, nw, nh, content, 1.0))
+            if _bbox_center_inside_any((nx, ny, nw, nh), table_rects_by_page.get(page_num, [])):
+                # Cell-as-paragraph duplicate. Cell content already lives
+                # in the table region's HTML / value via
+                # _build_table_html_from_cells; emitting it again would
+                # double-count.
+                continue
+            pages_items[page_num].append((canonical_label, nx, ny, nw, nh, content, 1.0, ""))
 
     # Process tables
     for table in raw_output.get("tables", []):
-        # Build table content from cells for attribution
+        # Flat text fallback for the LayoutItemIR.value field — kept for
+        # compatibility with callers that don't read .html. Structured
+        # HTML reconstruction (handed to LayoutItemIR.html) preserves
+        # <th>/<td> roles and spans for table metrics.
         cells = table.get("cells", [])
         content = " ".join(c.get("content", "") for c in cells if c.get("content"))
+        html_content = _build_table_html_from_cells(
+            cells,
+            int(table.get("row_count") or 0),
+            int(table.get("column_count") or 0),
+        )
 
         for br in table.get("bounding_regions", []):
             page_num = br.get("page_number", 1)
@@ -461,7 +621,7 @@ def _build_layout_pages(raw_output: dict[str, Any]) -> list[ParseLayoutPageIR]:
                 continue
             pw, ph = page_dims.get(page_num, (1.0, 1.0))
             nx, ny, nw, nh = _polygon_to_normalized_bbox(polygon, pw, ph)
-            pages_items[page_num].append(("Table", nx, ny, nw, nh, content, 1.0))
+            pages_items[page_num].append(("Table", nx, ny, nw, nh, content, 1.0, html_content))
 
     # Process figures
     for fig in raw_output.get("figures", []):
@@ -473,7 +633,24 @@ def _build_layout_pages(raw_output: dict[str, Any]) -> list[ParseLayoutPageIR]:
                 continue
             pw, ph = page_dims.get(page_num, (1.0, 1.0))
             nx, ny, nw, nh = _polygon_to_normalized_bbox(polygon, pw, ph)
-            pages_items[page_num].append(("Picture", nx, ny, nw, nh, caption, 1.0))
+            pages_items[page_num].append(("Picture", nx, ny, nw, nh, caption, 1.0, ""))
+
+    # Process selection marks (checkboxes) — live on page objects, not at document root
+    for page_data in raw_output.get("pages", []):
+        page_num = page_data.get("page_number", 1)
+        pw, ph = page_dims.get(page_num, (1.0, 1.0))
+        for mark in page_data.get("selection_marks", []) or []:
+            state = mark.get("state") or ""
+            checkbox_label = AZURE_DI_SELECTION_LABEL_MAP.get(state)
+            if checkbox_label is None:
+                continue
+            polygon = mark.get("polygon")
+            if not polygon or len(polygon) < 8:
+                continue
+            nx, ny, nw, nh = _polygon_to_normalized_bbox(polygon, pw, ph)
+            confidence = mark.get("confidence")
+            confidence_val = float(confidence) if confidence is not None else 1.0
+            pages_items[page_num].append((checkbox_label, nx, ny, nw, nh, "", confidence_val, ""))
 
     # Build ParseLayoutPageIR list
     layout_pages: list[ParseLayoutPageIR] = []
@@ -481,7 +658,7 @@ def _build_layout_pages(raw_output: dict[str, Any]) -> list[ParseLayoutPageIR]:
         items_data = pages_items[page_num]
         items: list[LayoutItemIR] = []
 
-        for canonical_label, nx, ny, nw, nh, content, confidence in items_data:
+        for canonical_label, nx, ny, nw, nh, content, confidence, html_content in items_data:
             seg = LayoutSegmentIR(
                 x=nx,
                 y=ny,
@@ -496,6 +673,8 @@ def _build_layout_pages(raw_output: dict[str, Any]) -> list[ParseLayoutPageIR]:
                 item_type = "table"
             elif norm_label == "picture":
                 item_type = "image"
+            elif canonical_label in AZURE_DI_SELECTION_LABEL_MAP.values():
+                item_type = "checkbox"
             else:
                 item_type = "text"
 
@@ -503,6 +682,7 @@ def _build_layout_pages(raw_output: dict[str, Any]) -> list[ParseLayoutPageIR]:
                 LayoutItemIR(
                     type=item_type,
                     value=content,
+                    html=html_content,
                     bbox=seg,
                     layout_segments=[seg],
                 )

@@ -54,9 +54,7 @@ class DataCLI:
         """
         import json
 
-        data_path = (
-            Path(data_dir) if data_dir else Path.cwd() / default_data_dir(test=test)
-        )
+        data_path = Path(data_dir) if data_dir else Path.cwd() / default_data_dir(test=test)
         ready = is_dataset_ready(data_path)
 
         if not ready:
@@ -94,9 +92,7 @@ class DataCLI:
         if docs_dir.exists():
             for cat_dir in sorted(docs_dir.iterdir()):
                 if cat_dir.is_dir():
-                    doc_counts[cat_dir.name] = sum(
-                        1 for _ in cat_dir.rglob("*") if _.is_file()
-                    )
+                    doc_counts[cat_dir.name] = sum(1 for _ in cat_dir.rglob("*") if _.is_file())
 
         # Print table
         hdr = f"{'Category':<20} {'Test Cases':>12} {'PDFs':>8}"

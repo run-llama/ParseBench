@@ -1,6 +1,7 @@
 """Answer comparison metric for QA evaluation."""
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from parse_bench.schemas.evaluation import MetricValue
@@ -25,6 +26,26 @@ class AnswerComparisonMetric:
         :param metadata: Optional metadata (tolerance, options, etc.)
         :return: MetricValue with pass/fail and metadata
         """
+        # ``exact_choice`` is deliberately an opt-in grading contract.  Do
+        # not route legacy single-choice items through it: older datasets rely
+        # on the permissive letter extraction below (and, in particular, may
+        # use answer strings rather than a serialized model response).
+        if isinstance(metadata, dict) and "grading_mode" in metadata:
+            grading_mode = metadata.get("grading_mode")
+            if grading_mode == "exact_choice":
+                return self._compare_exact_choice(predicted, expected, metadata)
+            return MetricValue(
+                metric_name="qa_answer_match",
+                value=0.0,
+                metadata={
+                    "passed": False,
+                    "predicted": predicted,
+                    "expected": expected,
+                    "question_type": question_type,
+                    "error": f"Unsupported grading mode: {grading_mode!r}",
+                },
+            )
+
         if question_type == "single_choice":
             return self._compare_single_choice(predicted, expected, metadata)
         elif question_type == "multiple_choice":
@@ -44,6 +65,99 @@ class AnswerComparisonMetric:
                     "error": f"Unknown question type: {question_type}",
                 },
             )
+
+    def _compare_exact_choice(
+        self,
+        predicted: str,
+        expected: str,
+        metadata: dict[str, Any],
+    ) -> MetricValue:
+        """Grade one strict ``Answer: <letter>`` response.
+
+        The parser intentionally has no fallback to bare-letter or prose
+        extraction. It is used only when the annotation explicitly sets
+        ``metadata.grading_mode`` to ``exact_choice``; all unconfigured QA
+        items retain the historical comparison behavior. A configured answer
+        may be any single letter A-Z. When an option grid is supplied, its
+        labelled choices narrow the accepted set.
+        """
+
+        valid_choices = self._exact_choice_set(expected, metadata)
+        predicted_choice = self._parse_exact_choice_response(predicted)
+        expected_choice = expected.strip().upper()
+        valid_expected = bool(re.fullmatch(r"[A-Z]", expected_choice)) and expected_choice in valid_choices
+        choice_valid = predicted_choice is not None and predicted_choice in valid_choices
+        passed = valid_expected and choice_valid and predicted_choice == expected_choice
+
+        return MetricValue(
+            metric_name="qa_answer_match",
+            value=1.0 if passed else 0.0,
+            metadata={
+                "passed": passed,
+                "predicted": predicted,
+                "expected": expected,
+                "question_type": "single_choice",
+                "grading_mode": "exact_choice",
+                "predicted_choice": predicted_choice,
+                "format_valid": choice_valid,
+                "expected_valid": valid_expected,
+                "valid_choices": sorted(valid_choices),
+                "options": metadata.get("options"),
+            },
+        )
+
+    @staticmethod
+    def _exact_choice_set(expected: str, metadata: dict[str, Any]) -> set[str]:
+        """Return the configured exact-choice labels.
+
+        A single-letter expected answer is sufficient configuration and keeps
+        this mode useful for datasets without an option grid. If ``options``
+        contains explicit labels, those labels are authoritative instead.
+        Invalid/unlabelled option text falls back to A-Z so it cannot make a
+        valid annotation impossible to grade merely because display text was
+        omitted from a sidecar.
+        """
+
+        options = metadata.get("options")
+        labels: set[str] = set()
+        if isinstance(options, str):
+            labels.update(
+                label.upper() for label in re.findall(r"(?<![A-Za-z0-9])([A-Z])\s*[).:]", options, re.IGNORECASE)
+            )
+        elif isinstance(options, Mapping):
+            labels.update(str(key).strip().upper() for key in options if re.fullmatch(r"[A-Za-z]", str(key).strip()))
+        elif isinstance(options, (list, tuple, set)):
+            for option in options:
+                if isinstance(option, Mapping):
+                    label = option.get("label", option.get("id", ""))
+                else:
+                    label = option
+                if isinstance(label, str):
+                    match = re.match(r"^\s*([A-Za-z])\s*[).:]", label)
+                    if match:
+                        labels.add(match.group(1).upper())
+
+        if labels:
+            return labels
+
+        expected_choice = expected.strip().upper()
+        if re.fullmatch(r"[A-Z]", expected_choice):
+            return set("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        return set()
+
+    @staticmethod
+    def _parse_exact_choice_response(response: str) -> str | None:
+        """Parse exactly one ``Answer: <letter>`` response."""
+
+        if not isinstance(response, str):
+            return None
+        candidate = response.strip()
+        # ``\s`` would accept a newline at either end.  Reject all line breaks
+        # explicitly so prose or a second answer can never be accepted.
+        if "\n" in candidate or "\r" in candidate:
+            return None
+        match = re.fullmatch(r"Answer:[ \t]+([A-Z])[ \t]*", candidate, flags=re.IGNORECASE)
+        return match.group(1).upper() if match else None
 
     def _compare_single_choice(self, predicted: str, expected: str, metadata: dict[str, Any] | None) -> MetricValue:
         """Compare single choice answers."""

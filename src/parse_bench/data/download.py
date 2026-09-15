@@ -121,10 +121,7 @@ def download_dataset(
     )
 
     if not is_dataset_ready(data_dir):
-        raise RuntimeError(
-            f"Dataset download completed but validation failed. "
-            f"Check {data_dir} for missing files."
-        )
+        raise RuntimeError(f"Dataset download completed but validation failed. Check {data_dir} for missing files.")
 
     print(f"Dataset ready at: {data_dir}")
     return data_dir

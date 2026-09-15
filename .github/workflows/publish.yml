@@ -1,0 +1,52 @@
+name: Publish to PyPI
+
+# Publishes when a version tag (v0.3.0, v1.0.0, ...) is pushed. The tag must
+# match `__version__` in src/parse_bench/__init__.py.
+#
+# Uses PyPI trusted publishing (OIDC): no API token is stored in GitHub.
+# One-time setup on pypi.org: project "parse-bench" -> Publishing -> add a
+# GitHub publisher with owner run-llama, repo ParseBench, workflow
+# publish.yml, environment pypi.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Check tag matches package version
+        run: |
+          pkg_version=$(uv run --no-project python -c "import re,pathlib; print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('src/parse_bench/__init__.py').read_text()).group(1))")
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$pkg_version" != "$tag_version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match __version__ $pkg_version" >&2
+            exit 1
+          fi
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

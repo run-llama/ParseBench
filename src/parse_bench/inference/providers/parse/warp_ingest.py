@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -32,8 +33,45 @@ _SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".jfif"}
 ParsePayloadFn = Callable[..., dict[str, Any]]
 RenderPagesFn = Callable[[dict[str, Any]], list[tuple[int, str]]]
 
+# warp_ingest.ingestor imports fail at load time unless these NLTK corpora are
+# present (punkt/punkt_tab back the sentence tokenizer, stopwords back the line
+# parser). The package ships no post-install hook, so ensure them ourselves —
+# once per process, only downloading what is missing — so warp_ingest works in
+# fresh CI runners without a separate setup step.
+_NLTK_CORPORA: dict[str, str] = {
+    "punkt": "tokenizers/punkt",
+    "punkt_tab": "tokenizers/punkt_tab",
+    "stopwords": "corpora/stopwords",
+}
+_nltk_lock = threading.Lock()
+_nltk_ready = False
+
+
+def ensure_nltk_corpora() -> None:
+    """Download the NLTK corpora warp_ingest needs, once, if not already present."""
+    global _nltk_ready
+    if _nltk_ready:
+        return
+    with _nltk_lock:
+        if _nltk_ready:
+            return
+        try:
+            import nltk
+        except ImportError:
+            # warp_ingest itself depends on nltk; let its own import raise the
+            # clearer "not installed" error downstream.
+            _nltk_ready = True
+            return
+        for resource, path in _NLTK_CORPORA.items():
+            try:
+                nltk.data.find(path)
+            except LookupError:
+                nltk.download(resource, quiet=True)
+        _nltk_ready = True
+
 
 def _load_markdown_exporter() -> tuple[ParsePayloadFn, RenderPagesFn]:
+    ensure_nltk_corpora()
     try:
         from warp_ingest.ingestor.markdown_exporter import (
             parse_to_markdown_payload,

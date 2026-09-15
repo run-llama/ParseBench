@@ -12,7 +12,10 @@ class FieldCitation(BaseModel):
 
     field_path: str = Field(description="Dotted path of the extracted field this citation supports")
     page: int = Field(ge=1, description="1-indexed page number")
-    bbox: list[float] = Field(description="Normalized COCO [x, y, width, height] bbox")
+    bbox: list[float] | None = Field(
+        default=None,
+        description="Normalized COCO [x, y, width, height] bbox. None for page-only citations.",
+    )
     polygon: list[list[float]] | None = Field(default=None, description="Normalized polygon points, when available")
     reference_text: str | None = Field(default=None, description="Provider reference text for the citation")
     confidence: float | None = Field(default=None, description="Provider confidence score, when available")

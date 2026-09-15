@@ -4,10 +4,13 @@ import asyncio
 import concurrent.futures
 import json
 import os
+import secrets
 import shutil
 import subprocess
+import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +32,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
+from parse_bench import __version__
 from parse_bench.inference.providers.base import (
     Provider,
     ProviderError,
@@ -50,10 +54,41 @@ INITIAL_BACKOFF_S = 2.0  # seconds
 BACKOFF_MULTIPLIER = 2.0  # exponential backoff factor
 
 # Per-file timeout and retry configuration
-DEFAULT_PER_FILE_TIMEOUT_S = 600.0  # 10 minutes per file
+DEFAULT_PER_FILE_TIMEOUT_S = 1800.0  # 30 minutes per file
 DEFAULT_TIMEOUT_RETRIES = 2  # retry up to 2 times on timeout
 
 LOCAL_ARTIFACT_PROVIDER_NAMES: set[str] = set()
+LLAMACLOUD_PROVIDER_PREFIXES = (
+    "llamaparse",
+    "llamaextract",
+    "llamasplit",
+)
+EXTERNAL_FILENAME_STEMS = (
+    "attachment",
+    "document",
+    "file",
+    "form",
+    "packet",
+    "pages",
+    "record",
+    "report",
+    "scan",
+    "upload",
+)
+
+
+def _randomized_external_filename(suffix: str) -> str:
+    token = secrets.token_hex(8)
+    stem = secrets.choice(EXTERNAL_FILENAME_STEMS)
+    pattern = secrets.choice(
+        (
+            f"{stem}-{token}",
+            f"{stem}_{token}",
+            f"{token}-{stem}",
+            token,
+        )
+    )
+    return f"{pattern}{suffix}"
 
 
 @dataclass
@@ -136,7 +171,7 @@ class InferenceRunner:
         force: bool = False,
         use_rich: bool = True,
         tags: list[str] | None = None,
-        per_file_timeout: float = DEFAULT_PER_FILE_TIMEOUT_S,
+        per_file_timeout: float | None = None,
         timeout_retries: int = DEFAULT_TIMEOUT_RETRIES,
     ):
         """
@@ -151,7 +186,8 @@ class InferenceRunner:
         :param force: Force regeneration even if results already exist
         :param use_rich: Whether to use Rich for terminal UI (default: True)
         :param tags: Optional list of tags for this run (e.g., ['nightly', 'production'])
-        :param per_file_timeout: Max seconds per file before timeout (default: 600)
+        :param per_file_timeout: Explicit run-level max seconds per file. None (default)
+            falls back to the pipeline's per_file_timeout, then DEFAULT_PER_FILE_TIMEOUT_S.
         :param timeout_retries: Number of retries on per-file timeout (default: 2)
         """
         self.provider = provider
@@ -163,7 +199,16 @@ class InferenceRunner:
         self.force = force
         self.use_rich = use_rich
         self.tags = tags or []
-        self.per_file_timeout = per_file_timeout
+        # Resolve the effective per-file timeout with precedence:
+        #   1. explicit run-level value (CLI --per_file_timeout, passed here non-None)
+        #   2. per-pipeline override (PipelineSpec.per_file_timeout)
+        #   3. the global default (DEFAULT_PER_FILE_TIMEOUT_S)
+        if per_file_timeout is not None:
+            self.per_file_timeout = per_file_timeout
+        elif pipeline.per_file_timeout is not None:
+            self.per_file_timeout = pipeline.per_file_timeout
+        else:
+            self.per_file_timeout = DEFAULT_PER_FILE_TIMEOUT_S
         self.timeout_retries = timeout_retries
         self.console = Console() if use_rich else None
 
@@ -365,14 +410,17 @@ class InferenceRunner:
             pass
 
     def _find_log_viewer_script(self) -> Path | None:
-        """Locate sibling log-viewer entrypoint (`experimental/log-viewer/index.js`)."""
-        try:
-            workspace_root = Path(__file__).resolve().parents[4]
-            candidate = workspace_root / "log-viewer" / "index.js"
-            if candidate.exists() and candidate.is_file():
-                return candidate
-        except Exception:
+        """Locate an optional log-viewer entrypoint (Node script) for rendering job logs.
+
+        Set ``PARSE_BENCH_LOG_VIEWER`` to the path of a ``index.js`` to enable
+        HTML rendering of LlamaParse job logs. Unset (the default) disables it.
+        """
+        configured = os.environ.get("PARSE_BENCH_LOG_VIEWER")
+        if not configured:
             return None
+        candidate = Path(configured).expanduser()
+        if candidate.is_file():
+            return candidate
         return None
 
     def _extract_job_logs_url(self, raw_output: dict[str, Any]) -> str | None:
@@ -560,6 +608,66 @@ class InferenceRunner:
 
         return staged_path
 
+    def _should_randomize_external_filename(self) -> bool:
+        """Return whether non-LlamaCloud providers should receive randomized source filenames."""
+        if self.pipeline.provider_name.startswith(LLAMACLOUD_PROVIDER_PREFIXES):
+            return False
+        return bool(self.pipeline.config.get("randomize_external_filename", True))
+
+    def _stage_randomized_external_source_file(self, source_file_path: Path) -> Path:
+        """Create a temporary same-content file with a random, provider-visible basename."""
+        suffix = source_file_path.suffix or ".pdf"
+        temp_dir = Path(tempfile.mkdtemp())
+        staged_path = temp_dir / _randomized_external_filename(suffix)
+        source_resolved = source_file_path.resolve()
+
+        try:
+            staged_path.symlink_to(source_resolved)
+        except OSError:
+            shutil.copy2(source_resolved, staged_path)
+
+        return staged_path
+
+    @contextmanager
+    def _provider_request_context(self, request: InferenceRequest) -> Iterator[InferenceRequest]:
+        """Yield the provider-facing request while preserving the saved benchmark request."""
+        staged_dir: Path | None = None
+        provider_request = request
+
+        if self._should_randomize_external_filename():
+            randomized_path = self._stage_randomized_external_source_file(Path(request.source_file_path))
+            staged_dir = randomized_path.parent
+            provider_request = request.model_copy(update={"source_file_path": str(randomized_path)})
+
+        try:
+            yield provider_request
+        finally:
+            if staged_dir is not None:
+                shutil.rmtree(staged_dir, ignore_errors=True)
+
+    def _run_provider_inference(self, request: InferenceRequest) -> RawInferenceResult:
+        """Run inference, rewriting the stored request back to the benchmark source path."""
+        with self._provider_request_context(request) as provider_request:
+            raw_result = self.provider.run_inference(self.pipeline, provider_request)
+        if raw_result.request != request:
+            raw_result = raw_result.model_copy(update={"request": request})
+        return raw_result
+
+    def _run_provider_inference_with_retries(self, request: InferenceRequest) -> RawInferenceResult:
+        """Run one provider request, retrying transient / rate-limit errors with backoff."""
+        last_error: Exception | None = None
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                return self._run_provider_inference(request)
+            except (ProviderTransientError, ProviderRateLimitError) as error:
+                last_error = error
+                if attempt < MAX_RETRIES:
+                    backoff = INITIAL_BACKOFF_S * (BACKOFF_MULTIPLIER**attempt)
+                    time.sleep(backoff)
+                else:
+                    raise
+        raise last_error  # type: ignore[misc]
+
     def _process_document(
         self, pdf_path: Path, example_id: str, product_type: ProductType
     ) -> tuple[RawInferenceResult | None, InferenceResult | None, str | None]:
@@ -586,20 +694,7 @@ class InferenceRunner:
             )
 
             # Run inference with retry for transient / rate-limit errors
-            last_error: Exception | None = None
-            for attempt in range(MAX_RETRIES + 1):
-                try:
-                    raw_result = self.provider.run_inference(self.pipeline, request)
-                    break
-                except (ProviderTransientError, ProviderRateLimitError) as e:
-                    last_error = e
-                    if attempt < MAX_RETRIES:
-                        backoff = INITIAL_BACKOFF_S * (BACKOFF_MULTIPLIER**attempt)
-                        time.sleep(backoff)
-                    else:
-                        raise
-            else:
-                raise last_error  # type: ignore[misc]
+            raw_result = self._run_provider_inference_with_retries(request)
 
             # Fetch parse jobLogs + extract token usage BEFORE normalize, so that
             # token fields land in the InferenceResult that evaluation reads.
@@ -680,20 +775,7 @@ class InferenceRunner:
             )
 
             # Run inference with retry for transient / rate-limit errors
-            last_error: Exception | None = None
-            for attempt in range(MAX_RETRIES + 1):
-                try:
-                    raw_result = self.provider.run_inference(self.pipeline, request)
-                    break
-                except (ProviderTransientError, ProviderRateLimitError) as e:
-                    last_error = e
-                    if attempt < MAX_RETRIES:
-                        backoff = INITIAL_BACKOFF_S * (BACKOFF_MULTIPLIER**attempt)
-                        time.sleep(backoff)
-                    else:
-                        raise
-            else:
-                raise last_error  # type: ignore[misc]
+            raw_result = self._run_provider_inference_with_retries(request)
 
             # Fetch parse jobLogs + extract token usage BEFORE normalize, so that
             # token fields land in the InferenceResult that evaluation reads.
@@ -869,15 +951,19 @@ class InferenceRunner:
             },
             "run_config": {
                 "max_concurrent": self.max_concurrent,
+                "per_file_timeout": self.per_file_timeout,
+                "timeout_retries": self.timeout_retries,
                 "save_raw": self.save_raw,
                 "save_normalized": self.save_normalized,
                 "force": self.force,
+                "randomize_external_filenames": self._should_randomize_external_filename(),
             },
             "summary": summary.to_dict(),
         }
         # Store tags if provided
         if self.tags:
             metadata["tags"] = self.tags
+        metadata["parse_bench_version"] = __version__
         metadata_path = self.output_dir / "_metadata.json"
         metadata_path.write_text(json.dumps(metadata, indent=2))
 
@@ -1058,9 +1144,12 @@ class InferenceRunner:
             },
             "run_config": {
                 "max_concurrent": self.max_concurrent,
+                "per_file_timeout": self.per_file_timeout,
+                "timeout_retries": self.timeout_retries,
                 "save_raw": self.save_raw,
                 "save_normalized": self.save_normalized,
                 "force": self.force,
+                "randomize_external_filenames": self._should_randomize_external_filename(),
             },
             "summary": summary.to_dict(),
         }
@@ -1070,6 +1159,7 @@ class InferenceRunner:
         # Store tags if provided
         if self.tags:
             metadata["tags"] = self.tags
+        metadata["parse_bench_version"] = __version__
         metadata_path = self.output_dir / "_metadata.json"
         metadata_path.write_text(json.dumps(metadata, indent=2))
 
@@ -1616,15 +1706,19 @@ class InferenceRunner:
             },
             "run_config": {
                 "max_concurrent": self.max_concurrent,
+                "per_file_timeout": self.per_file_timeout,
+                "timeout_retries": self.timeout_retries,
                 "save_raw": self.save_raw,
                 "save_normalized": self.save_normalized,
                 "force": self.force,
+                "randomize_external_filenames": self._should_randomize_external_filename(),
             },
             "summary": summary.to_dict(),
         }
         # Store tags if provided
         if self.tags:
             metadata["tags"] = self.tags
+        metadata["parse_bench_version"] = __version__
         metadata_path = self.output_dir / "_metadata.json"
         metadata_path.write_text(json.dumps(metadata, indent=2))
 
@@ -1907,9 +2001,12 @@ class InferenceRunner:
             },
             "run_config": {
                 "max_concurrent": self.max_concurrent,
+                "per_file_timeout": self.per_file_timeout,
+                "timeout_retries": self.timeout_retries,
                 "save_raw": self.save_raw,
                 "save_normalized": self.save_normalized,
                 "force": self.force,
+                "randomize_external_filenames": self._should_randomize_external_filename(),
             },
             "summary": summary.to_dict(),
         }
@@ -1919,6 +2016,7 @@ class InferenceRunner:
         # Store tags if provided
         if self.tags:
             metadata["tags"] = self.tags
+        metadata["parse_bench_version"] = __version__
         metadata_path = self.output_dir / "_metadata.json"
         metadata_path.write_text(json.dumps(metadata, indent=2))
 

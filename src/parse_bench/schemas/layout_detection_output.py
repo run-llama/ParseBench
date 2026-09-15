@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Discriminator, Field, Tag, field_validator
 
 from parse_bench.schemas.layout_ontology import CanonicalLabel
+from parse_bench.schemas.parse_output import PageIR, ParseLayoutPageIR
 
 
 class YoloLabel(IntEnum):
@@ -309,6 +310,7 @@ class LayoutDetectionModel(StrEnum):
     QFOCR_LAYOUT = "qfocr_layout"
     DATALAB_LAYOUT = "datalab_layout"
     QWEN3_5_LAYOUT = "qwen3_5_layout"
+    QWEN3_8_LAYOUT = "qwen3_8_layout"
     GEMINI_LAYOUT = "gemini_layout"
     OPENAI_LAYOUT = "openai_layout"
     ANTHROPIC_LAYOUT = "anthropic_layout"
@@ -316,8 +318,12 @@ class LayoutDetectionModel(StrEnum):
     DATABRICKS_LAYOUT = "databricks_layout"
     INFINITY_PARSER2_LAYOUT = "infinity_parser2_layout"
     OI_PARSER_LAYOUT = "oi_parser_layout"
+    OPENAI_COMPATIBLE_VLM_LAYOUT = "openai_compatible_vlm_layout"
+    CHECKBOX_DETECTOR_YOLOV8 = "checkbox_detector_yolov8"
     COHERE_PARSE_LAYOUT = "cohere_parse_layout"
     PYMUPDF4LLM_LAYOUT = "pymupdf4llm_layout"
+    LITEPARSE_LAYOUT = "liteparse_layout"
+    FIRECRAWL_LAYOUT = "firecrawl_layout"
 
 
 LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
@@ -373,9 +379,13 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
         "name": "oi-parser",
         "hf_url": "https://oi-parser.ai/",
     },
+    LayoutDetectionModel.CHECKBOX_DETECTOR_YOLOV8: {
+        "name": "YOLOv8 Checkbox Detector (mark-scope)",
+        "hf_url": "https://huggingface.co/llamaindex/checkbox-detector-yolov8",
+    },
     LayoutDetectionModel.COHERE_PARSE_LAYOUT: {
         "name": "Cohere Parse",
-        "hf_url": "https://cohere.com/blog/cohere-parse",
+        "hf_url": "https://cohere.com/blog/parse",
     },
     LayoutDetectionModel.PULSE_LAYOUT: {
         "name": "Pulse Layout",
@@ -449,6 +459,14 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
         "name": "PyMuPDF4LLM Layout",
         "hf_url": "https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/",
     },
+    LayoutDetectionModel.LITEPARSE_LAYOUT: {
+        "name": "LiteParse Layout",
+        "hf_url": "https://developers.llamaindex.ai/liteparse/guides/extraction/#layout-blocks",
+    },
+    LayoutDetectionModel.FIRECRAWL_LAYOUT: {
+        "name": "Firecrawl Layout",
+        "hf_url": "https://docs.firecrawl.dev/features/parse",
+    },
 }
 
 
@@ -517,7 +535,22 @@ class CanonicalLayoutPrediction(BaseCanonicalizablePrediction):
 
 
 class LayoutOutput(BaseModel):
-    """Normalized output for layout detection tasks."""
+    """Normalized output for layout detection tasks.
+
+    Declares the same page-centric fields as ``ParseOutput`` (``pages``,
+    ``layout_pages``, ``grounded_pages``, ``markdown``, ``job_id``) so
+    layout detectors can emit the same shape that parse providers
+    already emit, and viewers and evaluators read both through one code path.
+
+    Kept as a standalone ``BaseModel`` (not a ``ParseOutput`` subclass)
+    so ``isinstance(x, ParseOutput)`` dispatch throughout the evaluator
+    continues to route parse outputs only.
+
+    During the staged migration to the unified shape, the legacy
+    ``predictions`` field is populated by current providers; it is
+    being migrated to ``layout_pages`` per-page items. Evaluator +
+    projection prefer ``layout_pages`` when non-empty.
+    """
 
     task_type: Literal["layout_detection"] = Field(
         default="layout_detection",
@@ -529,8 +562,38 @@ class LayoutOutput(BaseModel):
     model: LayoutDetectionModel = Field(description="Layout detection model used")
     image_width: int = Field(ge=1, description="Width of the input image in pixels")
     image_height: int = Field(ge=1, description="Height of the input image in pixels")
-    predictions: list[LayoutPrediction] = Field(default_factory=list)
+
+    # Shape parity with ``ParseOutput``: viewers and the layout evaluator
+    # read these fields uniformly across parse and layoutdet outputs.
+    pages: list[PageIR] = Field(
+        default_factory=list,
+        description="Per-page markdown (ParseOutput parity; layout detectors leave empty).",
+    )
+    layout_pages: list[ParseLayoutPageIR] = Field(
+        default_factory=list,
+        description=(
+            "Per-page layout payload. Target shape for layout detectors "
+            "(migration in progress — see predictions field)."
+        ),
+    )
+    grounded_pages: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Optional granular line/word sidecar (parse-only today).",
+    )
     markdown: str = Field(
         default="",
-        description=("Optional document markdown for providers that can supply it (e.g., LlamaParse layout runs)."),
+        description="Optional document markdown for providers that can supply it.",
+    )
+    job_id: str | None = Field(
+        default=None,
+        description="Optional job ID from the provider.",
+    )
+
+    predictions: list[LayoutPrediction] = Field(
+        default_factory=list,
+        description=(
+            "Legacy flat-predictions list. Populated by current providers; "
+            "being migrated to ``layout_pages`` per-page items. Evaluator "
+            "prefers ``layout_pages`` when non-empty."
+        ),
     )

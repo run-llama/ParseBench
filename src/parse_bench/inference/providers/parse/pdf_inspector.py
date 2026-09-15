@@ -34,9 +34,7 @@ class PdfInspectorProvider(Provider):
     def _extract(self, pdf_path: str) -> dict[str, Any]:
         pdf2md = shutil.which("pdf2md") or os.path.expanduser("~/.cargo/bin/pdf2md")
         if not os.path.exists(pdf2md):
-            raise ProviderConfigError(
-                "pdf2md not found. Install with: cargo install pdf-inspector"
-            )
+            raise ProviderConfigError("pdf2md not found. Install with: cargo install pdf-inspector")
 
         try:
             out = subprocess.run(
@@ -56,9 +54,7 @@ class PdfInspectorProvider(Provider):
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         if request.product_type != ProductType.PARSE:
-            raise ProviderPermanentError(
-                f"PdfInspectorProvider only supports PARSE, got {request.product_type}"
-            )
+            raise ProviderPermanentError(f"PdfInspectorProvider only supports PARSE, got {request.product_type}")
 
         pdf_path = Path(request.source_file_path)
         if not pdf_path.exists():

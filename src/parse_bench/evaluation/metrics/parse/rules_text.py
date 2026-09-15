@@ -214,6 +214,20 @@ class BaselineRule(ParseTestRule):
 class TextOrderRule(ParseTestRule):
     """Test rule to verify that one text appears before another."""
 
+    # Residual HTML markup left behind by ``normalize_text`` (structural tags such
+    # as <table>/<tr>/<td>, which it does not touch). Order anchors are authored
+    # against plain markdown and routinely span a label and its value, so any page
+    # the parser renders as a table puts a `</td><td>` inside the anchor and the
+    # rule could never match. Substituting a SPACE — never the empty string —
+    # keeps cell contents from welding into one unmatchable token, and matches how
+    # the word/sentence bag rules already treat markup.
+    _HTML_TAG_PATTERN = re.compile(r"</?[^>]+>")
+
+    @classmethod
+    def _strip_html(cls, text: str) -> str:
+        """Replace residual HTML tags with a space and collapse the runs."""
+        return re.sub(r" +", " ", cls._HTML_TAG_PATTERN.sub(" ", text)).strip()
+
     def __init__(self, rule_data: ParseOrderRule | dict):
         super().__init__(rule_data)
         rule_data = cast(ParseOrderRule, self._rule_data)
@@ -235,6 +249,12 @@ class TextOrderRule(ParseTestRule):
 
         self.before = re.sub(r" +", " ", SentenceBagRule._MULTI_DOT_PATTERN.sub(" ", normalize_fn(before_for_match)))
         self.after = re.sub(r" +", " ", SentenceBagRule._MULTI_DOT_PATTERN.sub(" ", normalize_fn(after_for_match)))
+        # Strip markup on the rule side too, so anchor and content are compared in
+        # the same alphabet. Skipped for keep_formatting rules, whose whole point is
+        # to assert on the styling tags themselves.
+        if not self.keep_formatting:
+            self.before = self._strip_html(self.before)
+            self.after = self._strip_html(self.after)
         if not self.before.strip():
             raise ValueError("Before field cannot be empty")
         if not self.after.strip():
@@ -259,6 +279,8 @@ class TextOrderRule(ParseTestRule):
         else:
             normalized_content = normalize_text(content_for_match)
         normalized_content = re.sub(r" +", " ", SentenceBagRule._MULTI_DOT_PATTERN.sub(" ", normalized_content))
+        if not self.keep_formatting:
+            normalized_content = self._strip_html(normalized_content)
 
         # OPTIMIZATION: Try exact match first (O(n) vs O(n*m) for fuzzy)
         # This provides ~10-100x speedup for rules that match exactly

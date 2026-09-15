@@ -58,16 +58,74 @@ def detect_td_title_rows(table: TableData, nominal_header_rows: set[int]) -> set
     return set()
 
 
+def _is_row_header_only(table: TableData, r: int, n_cols: int, row_header_cols: set[int]) -> bool:
+    """True when row ``r``'s ``<th>`` content lives only in row-header columns.
+
+    Rows with no ``<th>`` content at all are not affected — they are handled
+    by the ordinary ``nominal_header_rows`` test — and neither are rows that
+    contribute a ``<th>`` outside the row-header columns, which is what a
+    genuine column-header row does.
+
+    A row the source HTML placed inside ``<thead>`` is exempt. There the
+    document has *said* the row belongs to the column-header block, and a
+    label-column header whose sibling cells are empty (``<th>Use Category/
+    Use Type</th>`` over 25 empty ``<td>``) is a real header row of exactly
+    this shape. Only ``<tbody>`` rows are read as section labels.
+    """
+    if not row_header_cols or r in table.thead_rows:
+        return False
+    th_content_cols = {c for c in range(n_cols) if (r, c) in table.header_cells and str(table.data[r, c]).strip()}
+    return bool(th_content_cols) and th_content_cols <= row_header_cols
+
+
+def find_row_header_cols(table: TableData) -> set[int]:
+    """Columns that carry ``<th>`` *row* headers rather than column headers.
+
+    A column qualifies when some row is unambiguously a data row — it has a
+    non-``<th>`` cell with content — and that row's cell in this column comes
+    from a ``<th>``. That is the HTML row-header idiom::
+
+        <tr><th>Cash</th><td>1,777</td><td>555</td></tr>
+
+    Marking up a row label as ``<th>`` is valid HTML and semantically right,
+    so a prediction that does it must not be read as declaring extra *column*
+    header rows. ``find_col_header_rows`` uses this to discount the
+    ``<th>``-ness such a column contributes to section rows whose data cells
+    happen to be empty (``<tr><th>Assets</th><td></td><td></td></tr>``).
+    """
+    n_rows, n_cols = table.data.shape
+    row_header_cols: set[int] = set()
+    for r in range(n_rows):
+        has_non_th_content = any(
+            str(table.data[r, c]).strip() and (r, c) not in table.header_cells for c in range(n_cols)
+        )
+        if not has_non_th_content:
+            continue
+        for c in range(n_cols):
+            if (r, c) in table.header_cells:
+                row_header_cols.add(c)
+    return row_header_cols
+
+
 def find_col_header_rows(table: TableData, nominal_header_rows: set[int], td_title_rows: set[int]) -> set[int]:
     """Identify the leading block of consecutive full-width <th> header rows.
 
     Starts scanning after any <td> title rows. Stops at the first row that
     either isn't marked as a header or has partial <th> coverage with novel
     (non-header) values in non-<th> columns (dual-axis data rows).
+
+    A row whose only ``<th>`` cells sit in a *row-header* column (see
+    ``find_row_header_cols``) also stops the scan, even when its remaining
+    cells are empty. Such a row is a section label inside the body — the
+    ``<th>`` marks it as the row's header, not as another level of column
+    header — and swallowing it into the header block would fold its text into
+    every column key and unmatch the label column against a ground truth that
+    spells the same rows with ``<td>``.
     """
     n_rows, n_cols = table.data.shape
     first_possible_header = max(td_title_rows) + 1 if td_title_rows else 0
     leading_header_end = first_possible_header
+    row_header_cols = find_row_header_cols(table)
 
     for r in range(first_possible_header, n_rows):
         if r not in nominal_header_rows:
@@ -76,6 +134,8 @@ def find_col_header_rows(table: TableData, nominal_header_rows: set[int], td_tit
             str(table.data[r, c]).strip() and (r, c) not in table.header_cells for c in range(n_cols)
         )
         if has_non_th_content:
+            break
+        if _is_row_header_only(table, r, n_cols, row_header_cols):
             break
         leading_header_end = r + 1
 
@@ -377,6 +437,12 @@ def _remove_rows(table: TableData, rows_to_remove: frozenset[int]) -> tuple[Tabl
         col_headers=new_col_headers,
         row_headers=new_row_headers,
         header_cells=new_header_cells,
+        thead_rows={old_to_new[r] for r in table.thead_rows if r in old_to_new},
+        tbody_rows={old_to_new[r] for r in table.tbody_rows if r in old_to_new},
+        tfoot_rows={old_to_new[r] for r in table.tfoot_rows if r in old_to_new},
+        column_scope_rows={old_to_new[r] for r in table.column_scope_rows if r in old_to_new},
+        row_scope_rows={old_to_new[r] for r in table.row_scope_rows if r in old_to_new},
+        caption=table.caption,
         context_before=table.context_before,
         context_after=table.context_after,
     )

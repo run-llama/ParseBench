@@ -1750,12 +1750,25 @@ function buildDetailPanel(ex) {
     var ruleMetrics = Object.keys(ex.ruleResults);
     if (ruleMetrics.length) {
         var totalRules = 0;
-        for (var r = 0; r < ruleMetrics.length; r++) { totalRules += ex.ruleResults[ruleMetrics[r]].length; }
+        var failedRules = 0;
+        for (var r = 0; r < ruleMetrics.length; r++) {
+            var metricRules = ex.ruleResults[ruleMetrics[r]];
+            totalRules += metricRules.length;
+            for (var fri = 0; fri < metricRules.length; fri++) {
+                if (metricRules[fri].status === 'fail' || metricRules[fri].passed === false) failedRules++;
+            }
+        }
         if (totalRules > 0) {
+            // Auto-expand when anything failed: the failures are what the
+            // reader opened the example to see.
+            var ruleOpenClass = failedRules > 0 ? ' open' : '';
+            var ruleSummary = failedRules > 0
+                ? '<span class="rule-fail">' + failedRules + ' failed</span> / ' + totalRules + ' rules'
+                : totalRules + ' rules';
             html += '<div class="detail-collapsible">' +
-                '<button class="detail-collapsible-toggle" onclick="event.stopPropagation();toggleCollapsible(this)">' +
-                '<span class="chevron">&#9654;</span> Rule Results (' + totalRules + ' rules)</button>' +
-                '<div class="detail-collapsible-body">';
+                '<button class="detail-collapsible-toggle' + ruleOpenClass + '" onclick="event.stopPropagation();toggleCollapsible(this)">' +
+                '<span class="chevron">&#9654;</span> Rule Results (' + ruleSummary + ')</button>' +
+                '<div class="detail-collapsible-body' + ruleOpenClass + '">';
             for (var r = 0; r < ruleMetrics.length; r++) {
                 var rmName = ruleMetrics[r];
                 var rules = ex.ruleResults[rmName];
@@ -1887,10 +1900,10 @@ window.savePdfBaseUrl = function() {
     }
 };
 
-window.loadPdf = function(testId, productType) {
-    var baseUrl = document.getElementById('pdf-base-url').value.replace(/\/+$/, '');
-    if (!baseUrl) return;
-    savePdfBaseUrl();
+function buildPdfDocumentUrl(baseUrl, testId) {
+    baseUrl = String(baseUrl || '').replace(/\/+$/, '');
+    testId = String(testId || '');
+    if (!baseUrl || !testId) return '';
     // Strip overlapping path segments between baseUrl and testId to avoid duplication
     // e.g. baseUrl="http://host/data/tables/v1" + testId="tables/v1/file" -> ".../data/tables/v1/file.pdf"
     var relPath = testId;
@@ -1904,12 +1917,20 @@ window.loadPdf = function(testId, productType) {
             break;
         }
     }
-    var url;
-    if (/^https?:\/\//i.test(baseUrl)) {
-        url = baseUrl + '/' + relPath.split('/').map(function(p) { return encodeURIComponent(p); }).join('/') + '.pdf';
-    } else {
-        url = baseUrl + '/' + relPath + '.pdf';
+    // Root-relative bases (e.g. "/files/data") are URLs too: a test id with
+    // spaces or unicode in it must be percent-encoded per segment just like
+    // it is for an absolute http(s) base.
+    if (/^https?:\/\//i.test(baseUrl) || baseUrl.charAt(0) === '/') {
+        return baseUrl + '/' + relPath.split('/').map(function(p) { return encodeURIComponent(p); }).join('/') + '.pdf';
     }
+    return baseUrl + '/' + relPath + '.pdf';
+}
+
+window.loadPdf = function(testId, productType) {
+    var baseUrl = document.getElementById('pdf-base-url').value;
+    var url = buildPdfDocumentUrl(baseUrl, testId);
+    if (!url) return;
+    savePdfBaseUrl();
     var wrap = document.getElementById('pdf-canvas-wrap');
     wrap.innerHTML = '<div class="pdf-placeholder">Loading PDF...</div>';
     document.getElementById('pdf-nav').style.display = 'none';

@@ -10,12 +10,25 @@ import re
 from pathlib import Path
 from typing import Any
 
-# Metric mapping for different product types
-COMPARISON_METRIC_MAP: dict[str, str] = {
-    "extract": "accuracy",
-    "parse": "normalized_text_score",
-    "layout_detection": "mAP@[.50:.95]",
+# Ordered metric-name candidates per product type. The first name present
+# in an evaluation result wins. Parse carries a fallback chain because
+# layout-only parse runs (test cases with only ``LayoutTestRule`` entries)
+# emit table-only metrics such as ``grits_trm_composite`` or layout-only
+# metrics such as ``mAP@[.50:.95]`` instead of ``rule_pass_rate``.
+#
+# MUST stay in sync with ``comparison.py::PipelineComparison.METRIC_CANDIDATES``
+# — enforced by ``tests/.../test_comparison_consistency.py``. The canonical
+# parse metric is ``rule_pass_rate`` (pass/fail rule semantics from
+# ``ParseEvaluator``). ``grits_trm_composite`` is the primary table-only parse
+# metric. ``normalized_text_score`` is a secondary text-similarity signal and
+# is intentionally NOT in the candidate list — when both are emitted for the
+# same run, we pick the definitive rule-based score.
+COMPARISON_METRIC_CANDIDATES: dict[str, tuple[str, ...]] = {
+    "extract": ("accuracy",),
+    "parse": ("rule_pass_rate", "grits_trm_composite", "mAP@[.50:.95]"),
+    "layout_detection": ("mAP@[.50:.95]",),
 }
+_DEFAULT_COMPARISON_METRIC = "accuracy"
 
 
 def load_evaluation_report(pipeline_path: Path) -> dict | None:
@@ -71,8 +84,10 @@ def get_directory_suffix(pipeline_dir: Path) -> str:
     """
     parent_name = pipeline_dir.parent.name
 
-    # Try to extract a run ID pattern (e.g., run-21391181794)
-    run_id_match = re.search(r"run-(\d+)", parent_name)
+    # Try to extract a run ID pattern (e.g., run-21391181794). Matrix-leg
+    # dirs append a dataset suffix (run-<id>-<dataset-slug>) — keep it, or
+    # two legs of the same parent run would get identical labels.
+    run_id_match = re.search(r"run-(\d+(?:-[A-Za-z0-9._-]+)?)", parent_name)
     if run_id_match:
         return f"run-{run_id_match.group(1)}"
 
@@ -94,23 +109,39 @@ def get_directory_suffix(pipeline_dir: Path) -> str:
 
 
 def get_predictions_from_inference(inference: dict | None) -> list[dict] | None:
-    """Extract predictions as list of dicts from inference result."""
+    """Extract layout predictions from an inference result as list of dicts.
+
+    Reads ``output.layout_pages[*].items``: each item's ``bbox`` is xywh pixel,
+    ``label`` (or falling back to ``item.type``) is the class name, and
+    ``score`` is detector confidence. Returns bboxes in ``[x1, y1, x2, y2]``
+    (xyxy) to match ``comparison.py::_get_predictions`` and the dashboard
+    overlay renderer, both of which consume xyxy. Returns ``None`` when no
+    layout items are present.
+    """
     if not inference:
         return None
     output = inference.get("output")
     if not output:
         return None
-    core_predictions = output.get("core_predictions")
-    if not core_predictions:
-        return None
-    return [
-        {
-            "bbox": p.get("bbox"),
-            "class": p.get("core_class"),
-            "score": p.get("score"),
-        }
-        for p in core_predictions
-    ]
+    layout_pages = output.get("layout_pages") or []
+    predictions: list[dict] = []
+    for page in layout_pages:
+        for item in page.get("items", []):
+            bbox = item.get("bbox")
+            if not bbox:
+                continue
+            x = float(bbox.get("x") or 0)
+            y = float(bbox.get("y") or 0)
+            w = float(bbox.get("w") or 0)
+            h = float(bbox.get("h") or 0)
+            predictions.append(
+                {
+                    "bbox": [x, y, x + w, y + h],
+                    "class": bbox.get("label") or item.get("type"),
+                    "score": item.get("score"),
+                }
+            )
+    return predictions or None
 
 
 def compare_pipelines(
@@ -157,7 +188,30 @@ def compare_pipelines(
         first_result = next(iter(results_a.values()))
         product_type = first_result.get("product_type", "extract").lower()
 
-    comparison_metric = COMPARISON_METRIC_MAP.get(product_type, "accuracy")
+    metric_candidates = COMPARISON_METRIC_CANDIDATES.get(product_type, (_DEFAULT_COMPARISON_METRIC,))
+
+    def _pick_metric(metrics_list: list) -> float | None:
+        """Return the first candidate metric value present in ``metrics_list``."""
+        by_name = {m.get("metric_name"): m.get("value") for m in metrics_list}
+        for name in metric_candidates:
+            if name in by_name:
+                return by_name[name]  # type: ignore[no-any-return]
+        return None
+
+    # Resolve the label for the comparison metric to whichever candidate was
+    # actually emitted across examples. Mirrors
+    # ``comparison.py::_resolve_comparison_metric_name``: scan all emitted
+    # metric names, pick the highest-priority candidate present, fall back
+    # to the first candidate for empty/no-match runs so an empty summary
+    # still gets a sane label. Without this, layout-only parse runs mislabel
+    # their ``mAP@[.50:.95]`` values as ``rule_pass_rate``.
+    emitted_names = {
+        m.get("metric_name") for result in (*results_a.values(), *results_b.values()) for m in result.get("metrics", [])
+    }
+    comparison_metric = next(
+        (name for name in metric_candidates if name in emitted_names),
+        metric_candidates[0],
+    )
 
     # Compare matched results
     matched_results: list[dict[str, Any]] = []
@@ -171,12 +225,14 @@ def compare_pipelines(
         result_b = results_b.get(test_id)
 
         if result_a and result_b:
-            # Both have results - compare
+            # Both have results - compare using the first fallback candidate
+            # that is emitted by this example (layout-only parse runs fall
+            # through to ``mAP@[.50:.95]``).
             metrics_a = result_a.get("metrics", [])
             metrics_b = result_b.get("metrics", [])
 
-            metric_a = get_metric_value(metrics_a, comparison_metric)
-            metric_b = get_metric_value(metrics_b, comparison_metric)
+            metric_a = _pick_metric(metrics_a)
+            metric_b = _pick_metric(metrics_b)
 
             # Load inference results for output data
             inference_a = load_inference_result(path_a, test_id)
@@ -223,6 +279,14 @@ def compare_pipelines(
                 output_b = inference_b.get("output", {}) if inference_b else {}
                 comparison["pipeline_a"]["output"] = output_a.get("markdown")
                 comparison["pipeline_b"]["output"] = output_b.get("markdown")
+                # Surface layout predictions (if any) so the dashboard can
+                # render the overlay view for layout-bearing parse runs.
+                predictions_a = get_predictions_from_inference(inference_a)
+                predictions_b = get_predictions_from_inference(inference_b)
+                if predictions_a or predictions_b:
+                    comparison["pipeline_a"]["predictions"] = predictions_a
+                    comparison["pipeline_b"]["predictions"] = predictions_b
+                    comparison["gt_annotations"] = None
 
             # Determine comparison category
             if metric_a is not None and metric_b is not None:

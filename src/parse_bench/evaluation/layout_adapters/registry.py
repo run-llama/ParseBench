@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from parse_bench.evaluation.layout_adapters.base import LayoutAdapter
 from parse_bench.inference.pipelines import get_pipeline
+from parse_bench.schemas.pipeline import PipelineSpec
 from parse_bench.schemas.pipeline_io import InferenceResult
 
 _DEFAULT_LAYOUT_ADAPTER_KEY = "__default__"
@@ -54,11 +55,37 @@ def list_layout_adapters() -> list[str]:
     return sorted(keys)
 
 
+PipelineResolver = Callable[[str], PipelineSpec | None]
+
+_PIPELINE_RESOLVERS: list[PipelineResolver] = []
+
+
+def register_pipeline_resolver(resolver: PipelineResolver) -> None:
+    """Let a harness resolve pipeline names the package registry does not know.
+
+    ``resolve_layout_provider_name`` maps a result's ``pipeline_name`` to the
+    provider key the adapter and label-mapper registries are keyed on. A
+    downstream harness that keeps its own pipeline registry registers a
+    ``name -> PipelineSpec | None`` callable here; resolvers are consulted
+    before the package registry, so the harness's definition of a shared
+    name wins.
+    """
+    if resolver not in _PIPELINE_RESOLVERS:
+        _PIPELINE_RESOLVERS.append(resolver)
+
+
 def resolve_layout_provider_name(inference_result: InferenceResult) -> str | None:
     """Resolve provider key from pipeline metadata when available."""
+    pipeline_name = inference_result.pipeline_name
+    for resolver in _PIPELINE_RESOLVERS:
+        try:
+            spec = resolver(pipeline_name)
+        except Exception:
+            continue
+        if spec is not None:
+            return spec.provider_name
     try:
-        pipeline_spec = get_pipeline(inference_result.pipeline_name)
-        return pipeline_spec.provider_name
+        return get_pipeline(pipeline_name).provider_name
     except Exception:
         return None
 

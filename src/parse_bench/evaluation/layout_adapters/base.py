@@ -45,7 +45,12 @@ class LayoutAdapter(ABC):
         page_number: int,
         test_case: TestCase | None = None,
     ) -> list[PredBlock]:
-        """Build attribution blocks from normalized prediction content."""
+        """Build attribution blocks from normalized prediction content.
+
+        This generic path assumes ``layout_output.predictions`` are already
+        leaf-like attribution claims. Providers with container trees or richer
+        segment payloads must override this method.
+        """
         del test_case
         if layout_output.image_width <= 0 or layout_output.image_height <= 0:
             return []

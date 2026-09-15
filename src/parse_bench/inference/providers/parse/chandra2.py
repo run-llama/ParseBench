@@ -188,6 +188,8 @@ class Chandra2Provider(Provider):
         - server_url (str, required): Modal server URL
         - api_format (str, default="openai"): "openai" or "simple"
         - task (str, default="ocr_layout"): Task prompt — "ocr_layout" or "ocr"
+        - prompt_appendix (str, optional): Extra instruction appended to the
+          official task prompt. Supported by the OpenAI/vLLM format.
         - timeout (int, default=600): Request timeout in seconds
         - dpi (int, default=192): DPI for PDF to image conversion (matches chandra.settings.IMAGE_DPI)
         - api_key_env (str, default="VLLM_API_KEY"): Env var for API key (openai format only)
@@ -211,6 +213,12 @@ class Chandra2Provider(Provider):
         self._task = self.base_config.get("task", "ocr_layout")
         if self._task not in TASK_PROMPTS:
             raise ProviderConfigError(f"Invalid task '{self._task}'. Must be one of: {list(TASK_PROMPTS.keys())}")
+        self._prompt_appendix = str(self.base_config.get("prompt_appendix") or "").strip()
+        if self._prompt_appendix and self._api_format != "openai":
+            raise ProviderConfigError("Chandra2 prompt_appendix requires api_format='openai'.")
+        self._primary_prompt = TASK_PROMPTS[self._task]
+        if self._prompt_appendix:
+            self._primary_prompt = f"{self._primary_prompt}\n\n{self._prompt_appendix}"
 
         self._timeout = self.base_config.get("timeout", 600)
         self._dpi = self.base_config.get("dpi", 192)
@@ -219,16 +227,19 @@ class Chandra2Provider(Provider):
         api_key_env = self.base_config.get("api_key_env", "VLLM_API_KEY")
         self._api_key = os.environ.get(api_key_env, "")
 
-    def _pdf_to_image(self, pdf_path: Path) -> bytes:
+    def _pdf_to_images(self, pdf_path: Path) -> list[bytes]:
         try:
             from pdf2image import convert_from_path
 
             images = convert_from_path(pdf_path, dpi=self._dpi)
             if not images:
                 raise ProviderPermanentError(f"No pages found in PDF: {pdf_path}")
-            buf = io.BytesIO()
-            images[0].save(buf, format="PNG")
-            return buf.getvalue()
+            encoded: list[bytes] = []
+            for image in images:
+                buf = io.BytesIO()
+                image.save(buf, format="PNG")
+                encoded.append(buf.getvalue())
+            return encoded
         except ImportError as e:
             raise ProviderPermanentError("pdf2image is required. Install with: pip install pdf2image") from e
         except Exception as e:
@@ -257,7 +268,7 @@ class Chandra2Provider(Provider):
                         },
                         {
                             "type": "text",
-                            "text": TASK_PROMPTS.get(self._task, TASK_PROMPTS["ocr_layout"]),
+                            "text": self._primary_prompt,
                         },
                     ],
                 }
@@ -340,6 +351,7 @@ class Chandra2Provider(Provider):
                         "server_url": self._server_url,
                         "api_format": self._api_format,
                         "task": self._task,
+                        "prompt_appendix": self._prompt_appendix,
                         "dpi": self._dpi,
                     },
                 }
@@ -353,9 +365,20 @@ class Chandra2Provider(Provider):
                         "server_url": self._server_url,
                         "api_format": self._api_format,
                         "task": self._task,
+                        "prompt_appendix": self._prompt_appendix,
                         "dpi": self._dpi,
                     },
                 }
+
+    async def _run_inference_pages_async(self, pages: list[bytes]) -> dict[str, Any]:
+        """Run every PDF page and preserve the legacy shape for one-page inputs."""
+        results = [await self._run_inference_async(page) for page in pages]
+        first = results[0]
+        if len(results) == 1:
+            return first
+        merged = dict(first)
+        merged["page_results"] = results
+        return merged
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         if request.product_type != ProductType.PARSE:
@@ -371,16 +394,16 @@ class Chandra2Provider(Provider):
 
         suffix = file_path.suffix.lower()
         if suffix == ".pdf":
-            image_bytes = self._pdf_to_image(file_path)
+            page_images = self._pdf_to_images(file_path)
         elif suffix in (".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp"):
-            image_bytes = self._read_image(file_path)
+            page_images = [self._read_image(file_path)]
         else:
             raise ProviderPermanentError(
                 f"Unsupported file type: {suffix}. Supported: .pdf, .png, .jpg, .jpeg, .webp, .tiff, .bmp"
             )
 
         try:
-            raw_output = asyncio.run(self._run_inference_async(image_bytes))
+            raw_output = asyncio.run(self._run_inference_pages_async(page_images))
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 
@@ -419,6 +442,7 @@ class Chandra2Provider(Provider):
                         "server_url": self._server_url,
                         "api_format": self._api_format,
                         "task": self._task,
+                        "prompt_appendix": self._prompt_appendix,
                         "dpi": self._dpi,
                     },
                 },
@@ -443,7 +467,7 @@ class Chandra2Provider(Provider):
         return re.sub(r"<[^>]+>", _quote_attrs, markdown)
 
     @staticmethod
-    def _build_layout_pages(raw_html: str) -> list[ParseLayoutPageIR]:
+    def _build_layout_pages(raw_html: str, page_number: int = 1) -> list[ParseLayoutPageIR]:
         """Extract layout bboxes from raw Chandra OCR 2 HTML output.
 
         Parses <div data-bbox="x0 y0 x1 y1" data-label="Label"> elements.
@@ -518,7 +542,7 @@ class Chandra2Provider(Provider):
 
         return [
             ParseLayoutPageIR(
-                page_number=1,
+                page_number=page_number,
                 width=1000.0,
                 height=1000.0,
                 items=items,
@@ -562,29 +586,31 @@ class Chandra2Provider(Provider):
                 f"Chandra2Provider only supports PARSE product type, got {raw_result.product_type}"
             )
 
-        source = raw_result.raw_output.get("_source", "vllm")
-        raw_markdown = raw_result.raw_output.get("markdown", "")
+        page_results = raw_result.raw_output.get("page_results")
+        if not isinstance(page_results, list) or not page_results:
+            page_results = [raw_result.raw_output]
 
-        # Build layout_pages from raw HTML (before stripping divs).
-        # For vLLM: raw_markdown IS the structured HTML with <div data-bbox>.
-        # For SDK: use raw_output["raw_html"] if available, else raw_markdown.
-        layout_html = raw_markdown
-        if source == "sdk":
-            layout_html = raw_result.raw_output.get("raw_html", raw_markdown)
-        layout_pages = self._build_layout_pages(layout_html) if layout_html else []
+        layout_pages: list[ParseLayoutPageIR] = []
+        page_markdowns: list[str] = []
+        for page_number, page_raw in enumerate(page_results, start=1):
+            source = page_raw.get("_source", "vllm")
+            raw_markdown = page_raw.get("markdown", "")
 
-        # Now produce the clean markdown for parse evaluation
-        markdown = raw_markdown
-        if markdown:
-            if source == "vllm":
-                # vLLM returns raw structured HTML with <div data-bbox> wrappers.
-                # Strip the layout divs to get clean HTML content with tables intact.
-                markdown = self._strip_layout_divs(markdown)
+            # Build layout_pages from raw HTML before stripping layout divs.
+            layout_html = raw_markdown
+            if source == "sdk":
+                layout_html = page_raw.get("raw_html", raw_markdown)
+            if layout_html:
+                layout_pages.extend(self._build_layout_pages(layout_html, page_number=page_number))
 
-            # SDK returns processed markdown with HTML tables preserved (via
-            # chandra's Markdownify which keeps <table> elements as-is).
-            # Both paths: sanitize HTML attributes for XML parsers.
-            markdown = self._sanitize_html_attributes(markdown)
+            markdown = raw_markdown
+            if markdown:
+                if source == "vllm":
+                    markdown = self._strip_layout_divs(markdown)
+                markdown = self._sanitize_html_attributes(markdown)
+                page_markdowns.append(markdown)
+
+        markdown = "\n\n".join(page_markdowns)
 
         output = ParseOutput(
             task_type="parse",

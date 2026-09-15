@@ -181,7 +181,20 @@ def _compute_null_hallucination_metrics(
     "missed-null" outcome). The runner's standard tp/fp/fn pooling
     produces ``total_null_hallucination_rate_*`` for the global view.
     """
-    null_rules = [rule for rule in field_rules if rule.expected_value is None and rule.verified]
+
+    # A rule is null-expected when it carries no expected value and, if the
+    # rule declares per-evidence values (v0.2 evidence entries), no evidence
+    # entry carries a value either. Legacy rules (no evidence) collapse to
+    # the original ``expected_value is None`` check.
+    def _is_null_expected(rule: ExtractFieldTestRule) -> bool:
+        if rule.expected_value is not None:
+            return False
+        evidence = getattr(rule, "evidence", None)
+        if evidence:
+            return all(getattr(entry, "value", None) is None for entry in evidence)
+        return True
+
+    null_rules = [rule for rule in field_rules if _is_null_expected(rule) and rule.verified]
     if not null_rules:
         return []
 

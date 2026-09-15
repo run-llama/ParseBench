@@ -6,13 +6,14 @@ SDK: pip install extend-ai
 
 import os
 import threading
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from extend_ai import Extend
+from extend_ai import Extend, FileFromIdParams, ParseConfigParams
 from extend_ai.core.api_error import ApiError
-from extend_ai.types import FileFromId, ParseConfig, ParseConfigChunkingStrategy
+from extend_ai.types import ParseConfigChunkingStrategy
 from pypdf import PdfReader
 
 from parse_bench.inference.providers.base import (
@@ -26,6 +27,7 @@ from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import (
     LayoutItemIR,
     LayoutSegmentIR,
+    PageIR,
     ParseLayoutPageIR,
     ParseOutput,
 )
@@ -289,8 +291,8 @@ class ExtendParseProvider(Provider):
         try:
             # The Extend SDK parse method
             parse_response = self._client.parse(
-                file=FileFromId(id=file_id),
-                config=ParseConfig(**parse_config) if parse_config else None,
+                file=FileFromIdParams(id=file_id),
+                config=ParseConfigParams(**parse_config) if parse_config else None,  # type: ignore[typeddict-item]
             )
 
             # Convert response to dict
@@ -464,11 +466,18 @@ class ExtendParseProvider(Provider):
         chunks = payload.get("chunks", [])
         layout_pages = _build_layout_pages(chunks, page_dims)
 
+        # Build per-page markdown so that page-scoped rules
+        # (``_scope_to_page`` in rules_form.py) match against the correct page
+        # instead of falling back to full-document content. Works regardless of
+        # ``chunking_strategy`` (page/section/document) because page numbers
+        # come from each block's ``metadata.page.number``.
+        pages = _build_pages(chunks)
+
         output = ParseOutput(
             task_type="parse",
             example_id=raw_result.request.example_id,
             pipeline_name=raw_result.pipeline_name,
-            pages=[],  # Leave pages empty for now
+            pages=pages,
             layout_pages=layout_pages,
             markdown=markdown,
             job_id=str(job_id) if job_id else None,
@@ -506,6 +515,62 @@ def _get_pdf_page_dims(file_path: str) -> dict[int, tuple[float, float]]:
         return {}
 
 
+def _build_pages(chunks: list[dict[str, Any]]) -> list[PageIR]:
+    """Build per-page markdown from Extend chunks/blocks.
+
+    Extend exposes the page number on each block via ``metadata.page.number``
+    (1-indexed). We aggregate block-level ``content`` per page so that
+    page-scoped rules can match against the right page's text instead of
+    falling back to full-document content.
+
+    Block content is concatenated with ``\\n\\n``. This works for every
+    ``chunking_strategy`` (``page``, ``section``, ``document``) because the
+    page assignment is per-block, not per-chunk.
+
+    Blocks with non-positive or unparseable page numbers are dropped from the
+    per-page output (``PageIR.page_index`` requires ``ge=0``). Their content
+    still reaches the document-level ``markdown`` via the chunk-level join in
+    :py:meth:`ExtendParseProvider.normalize`.
+    """
+    pages_blocks: dict[int, list[str]] = defaultdict(list)
+    for chunk in chunks:
+        if not isinstance(chunk, dict):
+            continue
+        for block in chunk.get("blocks", []):
+            if not isinstance(block, dict):
+                continue
+            block_meta = block.get("metadata", {}) or {}
+            block_page_meta = block_meta.get("page", {}) or {}
+            # Use ``is not None`` rather than an ``or`` chain so that an
+            # explicit ``0`` from the API is treated as a real (invalid) page
+            # value and dropped below, not silently rewritten to ``1``.
+            raw_page = block_page_meta.get("number")
+            if raw_page is None:
+                raw_page = block.get("page")
+            if raw_page is None:
+                raw_page = block.get("pageNumber")
+            if raw_page is None:
+                raw_page = 1
+            try:
+                page_num = int(raw_page)
+            except (TypeError, ValueError):
+                page_num = 1
+            if page_num < 1:
+                # Defensive: 0-indexed or negative page values would produce
+                # PageIR.page_index < 0 and fail Pydantic validation.
+                continue
+            content = block.get("content", "") or block.get("text", "") or ""
+            if content:
+                pages_blocks[page_num].append(content)
+
+    pages: list[PageIR] = []
+    for page_num in sorted(pages_blocks.keys()):
+        page_md = "\n\n".join(pages_blocks[page_num])
+        # Extend pages are 1-indexed; PageIR.page_index is 0-indexed.
+        pages.append(PageIR(page_index=page_num - 1, markdown=page_md))
+    return pages
+
+
 def _build_layout_pages(
     chunks: list[dict[str, Any]],
     page_dims: dict[int, tuple[float, float]] | dict[str, Any],
@@ -521,8 +586,6 @@ def _build_layout_pages(
     point dimensions) is only used as a fallback when block-level metadata is
     absent.
     """
-    from collections import defaultdict
-
     # Normalize page_dims keys to int (JSON serialization may stringify them).
     # These are PDF-point dims used only as a last-resort fallback.
     norm_dims: dict[int, tuple[float, float]] = {}

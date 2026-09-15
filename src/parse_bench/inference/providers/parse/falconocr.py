@@ -169,16 +169,20 @@ class FalconOcrProvider(Provider):
         self._max_new_tokens = int(self.base_config.get("max_new_tokens", 4096))
         self._temperature = float(self.base_config.get("temperature", 0.0))
 
-    def _pdf_to_image(self, pdf_path: Path) -> bytes:
+    def _pdf_to_images(self, pdf_path: Path) -> list[bytes]:
+        """Render every PDF page to PNG bytes in source order."""
         try:
             from pdf2image import convert_from_path
 
             images = convert_from_path(pdf_path, dpi=self._dpi)
             if not images:
                 raise ProviderPermanentError(f"No pages found in PDF: {pdf_path}")
-            buf = io.BytesIO()
-            images[0].save(buf, format="PNG")
-            return buf.getvalue()
+            encoded: list[bytes] = []
+            for image in images:
+                buf = io.BytesIO()
+                image.save(buf, format="PNG")
+                encoded.append(buf.getvalue())
+            return encoded
         except ImportError as e:
             raise ProviderPermanentError("pdf2image is required. Install with: pip install pdf2image") from e
         except Exception as e:
@@ -240,6 +244,16 @@ class FalconOcrProvider(Provider):
             },
         }
 
+    async def _run_inference_pages_async(self, pages: list[bytes]) -> dict[str, Any]:
+        """Run each input page in order, retaining the legacy one-page shape."""
+        results = [await self._run_inference_async(page) for page in pages]
+        first = results[0]
+        if len(results) == 1:
+            return first
+        merged = dict(first)
+        merged["page_results"] = results
+        return merged
+
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         if request.product_type != ProductType.PARSE:
             raise ProviderPermanentError(
@@ -254,16 +268,16 @@ class FalconOcrProvider(Provider):
 
         suffix = file_path.suffix.lower()
         if suffix == ".pdf":
-            image_bytes = self._pdf_to_image(file_path)
+            page_images = self._pdf_to_images(file_path)
         elif suffix in (".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp"):
-            image_bytes = self._read_image(file_path)
+            page_images = [self._read_image(file_path)]
         else:
             raise ProviderPermanentError(
                 f"Unsupported file type: {suffix}. Supported: .pdf, .png, .jpg, .jpeg, .webp, .tiff, .bmp"
             )
 
         try:
-            raw_output = asyncio.run(self._run_inference_async(image_bytes))
+            raw_output = asyncio.run(self._run_inference_pages_async(page_images))
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 
@@ -374,28 +388,32 @@ class FalconOcrProvider(Provider):
                 f"FalconOcrProvider only supports PARSE product type, got {raw_result.product_type}"
             )
 
-        markdown = raw_result.raw_output.get("markdown", "")
-        if markdown:
-            markdown = self._convert_md_tables_to_html(markdown)
-            markdown = self._sanitize_html_attributes(markdown)
+        page_results = raw_result.raw_output.get("page_results")
+        if not isinstance(page_results, list) or not page_results:
+            page_results = [raw_result.raw_output]
 
-        regions = raw_result.raw_output.get("regions") or []
-        image_width = int(raw_result.raw_output.get("image_width") or 1)
-        image_height = int(raw_result.raw_output.get("image_height") or 1)
-        image_width = max(image_width, 1)
-        image_height = max(image_height, 1)
-
-        items = _regions_to_layout_items(regions)
+        page_markdowns: list[str] = []
         layout_pages: list[ParseLayoutPageIR] = []
-        if items:
-            layout_pages.append(
-                ParseLayoutPageIR(
-                    page_number=1,
-                    width=float(image_width),
-                    height=float(image_height),
-                    items=items,
+        for page_number, page_raw in enumerate(page_results, start=1):
+            markdown = page_raw.get("markdown", "")
+            if markdown:
+                markdown = self._convert_md_tables_to_html(markdown)
+                markdown = self._sanitize_html_attributes(markdown)
+                page_markdowns.append(markdown)
+
+            image_width = max(int(page_raw.get("image_width") or 1), 1)
+            image_height = max(int(page_raw.get("image_height") or 1), 1)
+            items = _regions_to_layout_items(page_raw.get("regions") or [])
+            if items:
+                layout_pages.append(
+                    ParseLayoutPageIR(
+                        page_number=page_number,
+                        width=float(image_width),
+                        height=float(image_height),
+                        items=items,
+                    )
                 )
-            )
+        markdown = "\n\n".join(page_markdowns)
 
         output = ParseOutput(
             task_type="parse",
