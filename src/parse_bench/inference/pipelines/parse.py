@@ -2670,3 +2670,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             config={},
         )
     )
+
+    # =========================================================================
+    # Cognita (self-hosted, pure-code deterministic engine)
+    # =========================================================================
+    register_fn(
+        PipelineSpec(
+            pipeline_name="cognita",
+            provider_name="cognita",
+            product_type=ProductType.PARSE,
+            # server_url is intentionally not set here so COGNITA_SERVER_URL can
+            # override it; the provider resolves config → COGNITA_SERVER_URL env
+            # → its built-in default. Point it at your own Cognita deployment.
+            config={
+                "timeout": 300,
+            },
+        )
+    )

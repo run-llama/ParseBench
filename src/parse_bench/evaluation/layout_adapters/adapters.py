@@ -3483,3 +3483,90 @@ class LiteParseLayoutAdapter(LayoutAdapter):
             predictions=predictions,
             markdown=inference_result.output.markdown,
         )
+
+
+@register_layout_adapter("cognita", priority=89)
+class CognitaLayoutAdapter(LayoutAdapter):
+    """Adapter that extracts LayoutOutput from Cognita ParseOutput.layout_pages.
+
+    Cognita emits normalized [0,1] xywh bboxes (top-left origin) with Canonical17
+    labels per block, matching the Azure DI parse-to-layout convention.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        return isinstance(inference_result.output, ParseOutput) and bool(inference_result.output.layout_pages)
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            filtered = [p for p in inference_result.output.predictions if p.page == page_filter]
+            return inference_result.output.model_copy(update={"predictions": filtered})
+
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("CognitaLayoutAdapter requires ParseOutput or LayoutOutput")
+
+        layout_pages = inference_result.output.layout_pages
+        if not layout_pages:
+            raise ValueError("CognitaLayoutAdapter requires non-empty layout_pages")
+
+        # Reference dimensions come from the page being scored (page_filter),
+        # not always the first page — mixed-size documents would otherwise
+        # normalize a selected page's pixel bboxes against the wrong frame.
+        selected_pages = [p for p in layout_pages if page_filter is None or p.page_number == page_filter]
+        reference_page = selected_pages[0] if selected_pages else layout_pages[0]
+        output_width = int(reference_page.width or 1)
+        output_height = int(reference_page.height or 1)
+
+        predictions: list[LayoutPrediction] = []
+        for lp in layout_pages:
+            page_number = lp.page_number
+            if page_filter is not None and page_number != page_filter:
+                continue
+
+            page_w = float(lp.width or output_width)
+            page_h = float(lp.height or output_height)
+
+            for item in lp.items:
+                for seg in item.layout_segments:
+                    label = seg.label or item.type or "Text"
+
+                    # Normalized [0,1] xywh → pixel xyxy in the page frame.
+                    x1 = seg.x * page_w
+                    y1 = seg.y * page_h
+                    x2 = (seg.x + seg.w) * page_w
+                    y2 = (seg.y + seg.h) * page_h
+
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[x1, y1, x2, y2],
+                            score=float(seg.confidence or 1.0),
+                            label=label,
+                            page=page_number,
+                            content=_build_vendor_content(label, item.value),
+                            attributes=dict(item.attributes),
+                            provider_metadata={"order_index": len(predictions)},
+                        )
+                    )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.COGNITA_LAYOUT,
+            image_width=max(output_width, 1),
+            image_height=max(output_height, 1),
+            predictions=predictions,
+            markdown=inference_result.output.markdown,
+        )
+
+    def to_granular_pages(self, inference_result: InferenceResult) -> list[_GranularPage]:
+        if isinstance(inference_result.output, ParseOutput):
+            return _build_normalized_granular_pages(inference_result.output.layout_pages)
+        return []

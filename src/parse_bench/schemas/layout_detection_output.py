@@ -324,6 +324,7 @@ class LayoutDetectionModel(StrEnum):
     PYMUPDF4LLM_LAYOUT = "pymupdf4llm_layout"
     LITEPARSE_LAYOUT = "liteparse_layout"
     FIRECRAWL_LAYOUT = "firecrawl_layout"
+    COGNITA_LAYOUT = "cognita_layout"
 
 
 LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
