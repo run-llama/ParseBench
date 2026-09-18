@@ -64,6 +64,7 @@ def project_layout_predictions(
             if page_filter is not None and page.page_number != page_filter:
                 continue
             for item in page.items:
+                segment = item.layout_segments[0] if item.layout_segments else item.bbox
                 bbox_xyxy = _segment_to_xyxy(item)
                 if bbox_xyxy is None:
                     continue
@@ -96,9 +97,10 @@ def project_layout_predictions(
                     {
                         "bbox": normalize_bbox_xyxy(
                             bbox_xyxy,
-                            width=layout_output.image_width,
-                            height=layout_output.image_height,
+                            width=page.width if page.width is not None else layout_output.image_width,
+                            height=page.height if page.height is not None else layout_output.image_height,
                         ),
+                        "r": segment.r if segment is not None else None,
                         "class_name": class_name,
                         "score": score,
                         "page": page.page_number,
@@ -112,7 +114,9 @@ def project_layout_predictions(
     context = build_mapping_context(inference_result, layout_output)
     mapper = resolve_layout_label_mapper(context)
 
+    pages_by_number = {page.page_number: page for page in layout_output.layout_pages}
     for prediction in layout_output.predictions:
+        page = pages_by_number.get(prediction.page)
         if page_filter is not None and prediction.page != page_filter:
             continue
         if not mapper.should_include_prediction(prediction, context):
@@ -141,9 +145,10 @@ def project_layout_predictions(
             {
                 "bbox": normalize_bbox_xyxy(
                     prediction.bbox,
-                    width=layout_output.image_width,
-                    height=layout_output.image_height,
+                    width=page.width if page is not None and page.width is not None else layout_output.image_width,
+                    height=page.height if page is not None and page.height is not None else layout_output.image_height,
                 ),
+                "r": prediction.r,
                 "class_name": class_name,
                 "score": score,
                 "page": prediction.page,

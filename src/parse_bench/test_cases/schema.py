@@ -63,6 +63,7 @@ class LayoutAnnotation(BaseModel):
         description="Optional stable identifier for this layout element",
     )
     bbox: list[float] = Field(description="Bounding box [x, y, width, height] in COCO format")
+    r: float | None = Field(default=None, description="Clockwise rotation about the literal box center")
     canonical_class: str = Field(description="Canonical class name from ontology")
     page: int = Field(default=0, description="Page index (0-based) for multi-page documents")
     attributes: dict[str, str | bool] = Field(
@@ -91,6 +92,7 @@ class LayoutTestRule(BaseModel):
     )
     page: int = Field(ge=1, description="Page number (1-indexed)")
     bbox: list[float] = Field(description="Normalized bbox [x, y, w, h] in [0,1] range (COCO format)")
+    r: float | None = Field(default=None, description="Clockwise rotation about the literal box center")
     canonical_class: str = Field(description="Class from ontology")
     attributes: dict[str, str | bool] = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list, description="Optional per-rule tags")
@@ -110,6 +112,7 @@ class LayoutTestRule(BaseModel):
         return LayoutAnnotation(
             id=self.id,
             bbox=self.bbox,  # Keep normalized
+            r=self.r,
             canonical_class=self.canonical_class,
             page=self.page - 1,  # Convert to 0-indexed for internal use
             attributes=self.attributes,

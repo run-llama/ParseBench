@@ -225,8 +225,8 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
             )
 
         page_md = raw_page.get("md", "") or raw_page.get("text", "") or ""
-        page_width = float(raw_page.get("width") or layout_output.image_width or 1)
-        page_height = float(raw_page.get("height") or layout_output.image_height or 1)
+        page_width = float(raw_page.get("width", layout_output.image_width))
+        page_height = float(raw_page.get("height", layout_output.image_height))
         return parse_pred_blocks(
             items,
             page_md,
@@ -999,7 +999,8 @@ class DotsOcrLayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -1017,6 +1018,7 @@ class DotsOcrLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -1095,7 +1097,8 @@ class DoclingParseLayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=_build_docling_parse_content(item.type, item.value),
@@ -1115,6 +1118,7 @@ class DoclingParseLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
             markdown="\n\n".join(markdown_parts),
         )
 
@@ -1158,6 +1162,9 @@ class DoclingParseLayoutAdapter(LayoutAdapter):
                 blocks.append(
                     PredBlock(
                         bbox_xyxy=[seg.x, seg.y, seg.x + seg.w, seg.y + seg.h],
+                        r=seg.r,
+                        page_width=page.width if page.width is not None else layout_output.image_width,
+                        page_height=page.height if page.height is not None else layout_output.image_height,
                         block_type=block_type,
                         label=label,
                         text=raw_text,
@@ -1196,72 +1203,8 @@ class Qwen3VLLayoutAdapter(LayoutAdapter):
         *,
         page_filter: int | None = None,
     ) -> LayoutOutput:
-        if isinstance(inference_result.output, LayoutOutput):
-            if page_filter is None:
-                return inference_result.output
-            filtered = [p for p in inference_result.output.predictions if p.page == page_filter]
-            return inference_result.output.model_copy(update={"predictions": filtered})
-
-        if not isinstance(inference_result.output, ParseOutput):
-            raise ValueError("Qwen3VLLayoutAdapter requires ParseOutput or LayoutOutput")
-
-        layout_pages = inference_result.output.layout_pages
-        if not layout_pages:
-            raise ValueError("Qwen3VLLayoutAdapter requires non-empty layout_pages")
-
-        first_page = layout_pages[0]
-        output_width = int(first_page.width or 1)
-        output_height = int(first_page.height or 1)
-
-        predictions: list[LayoutPrediction] = []
-
-        for lp in layout_pages:
-            page_number = lp.page_number
-            if page_filter is not None and page_number != page_filter:
-                continue
-
-            page_w = float(lp.width or output_width)
-            page_h = float(lp.height or output_height)
-
-            for item in lp.items:
-                for seg in item.layout_segments:
-                    str_label = seg.label or item.type or "Text"
-
-                    # Convert string label to integer label for Qwen3VL evaluator
-                    # Map canonical-style "Page-header" → "page_header" for lookup
-                    lookup_key = str_label.lower().replace("-", "_")
-                    qwen_enum = QWEN3VL_STR_TO_LABEL.get(lookup_key)
-                    int_label = str(int(qwen_enum)) if qwen_enum is not None else str_label
-
-                    # Convert normalized [0,1] xywh -> pixel xyxy
-                    x1 = seg.x * page_w
-                    y1 = seg.y * page_h
-                    x2 = (seg.x + seg.w) * page_w
-                    y2 = (seg.y + seg.h) * page_h
-
-                    content = _build_dots_ocr_content(str_label, item.value)
-
-                    predictions.append(
-                        LayoutPrediction(
-                            bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
-                            label=int_label,
-                            page=page_number,
-                            content=content,
-                            provider_metadata={
-                                "order_index": len(predictions),
-                            },
-                        )
-                    )
-
-        return LayoutOutput(
-            task_type="layout_detection",
-            example_id=inference_result.request.example_id,
-            pipeline_name=inference_result.pipeline_name,
-            model=LayoutDetectionModel.QWEN3_VL_8B,
-            image_width=max(output_width, 1),
-            image_height=max(output_height, 1),
-            predictions=predictions,
+        return _parse_with_layout_to_layout_output(
+            inference_result, model=LayoutDetectionModel.QWEN3_VL_8B, page_filter=page_filter
         )
 
 
@@ -1320,7 +1263,8 @@ def _parse_with_layout_to_layout_output(
                 predictions.append(
                     LayoutPrediction(
                         bbox=[x1, y1, x2, y2],
-                        score=float(seg.confidence or 1.0),
+                        r=seg.r,
+                        score=float(1.0 if seg.confidence is None else seg.confidence),
                         label=int_label,
                         page=page_number,
                         content=content,
@@ -1338,6 +1282,7 @@ def _parse_with_layout_to_layout_output(
         image_width=max(output_width, 1),
         image_height=max(output_height, 1),
         predictions=predictions,
+        layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
     )
 
 
@@ -1597,7 +1542,8 @@ class ReductoLayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -1615,6 +1561,7 @@ class ReductoLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -1697,7 +1644,8 @@ class OIParserLayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -1715,6 +1663,7 @@ class OIParserLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -1769,6 +1718,7 @@ class DatabricksAiParseLayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
+                            r=seg.r,
                             score=float(seg.confidence) if seg.confidence is not None else 1.0,
                             label=label,
                             page=page_number,
@@ -1787,6 +1737,7 @@ class DatabricksAiParseLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -1859,7 +1810,8 @@ class TextractLayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -1877,6 +1829,7 @@ class TextractLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
     def to_granular_pages(self, inference_result: InferenceResult) -> list[_GranularPage]:
@@ -1958,7 +1911,8 @@ class LandingAILayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -1976,6 +1930,7 @@ class LandingAILayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -2048,7 +2003,8 @@ class ExtendLayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -2066,6 +2022,7 @@ class ExtendLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -2142,7 +2099,8 @@ class AzureDILayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -2161,6 +2119,7 @@ class AzureDILayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
     def to_granular_pages(self, inference_result: InferenceResult) -> list[_GranularPage]:
@@ -2248,7 +2207,8 @@ class GoogleDocAILayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -2266,6 +2226,7 @@ class GoogleDocAILayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -2339,7 +2300,8 @@ class UnstructuredLayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -2357,6 +2319,7 @@ class UnstructuredLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -2452,7 +2415,8 @@ class DeepSeekOCR2LayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -2470,6 +2434,7 @@ class DeepSeekOCR2LayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -2541,7 +2506,8 @@ class Chandra2LayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -2559,6 +2525,7 @@ class Chandra2LayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -2630,7 +2597,8 @@ class QfOcrLayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -2648,6 +2616,7 @@ class QfOcrLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -2833,7 +2802,8 @@ class DatalabLayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -2851,6 +2821,7 @@ class DatalabLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -2928,7 +2899,8 @@ class QwenLayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -2954,6 +2926,7 @@ class QwenLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -3025,7 +2998,8 @@ class MinerU25LayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -3043,6 +3017,7 @@ class MinerU25LayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -3058,9 +3033,8 @@ class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
     ParseOutput.layout_pages.
 
     The provider emits per-region elements with normalized [0,1] bboxes (no
-    page pixel dims). Coordinates are scaled to a consistent SCALE so the
-    layout metric's normalize_bbox_xyxy(image_width/height) recovers the
-    original [0,1] space.
+    page pixel dims in older outputs). Use each page's dimensions when supplied;
+    otherwise retain the legacy SCALE frame for normalized coordinates.
     """
 
     _SCALE = 1000
@@ -3092,11 +3066,16 @@ class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
         if not isinstance(inference_result.output, ParseOutput):
             raise ValueError("KdlFrontierNanoLayoutAdapter requires ParseOutput or LayoutOutput")
 
-        scale = self._SCALE
+        layout_pages = inference_result.output.layout_pages
+        first_page = layout_pages[0] if layout_pages else None
+        output_width = int(first_page.width or self._SCALE) if first_page else self._SCALE
+        output_height = int(first_page.height or self._SCALE) if first_page else self._SCALE
         predictions: list[LayoutPrediction] = []
-        for lp in inference_result.output.layout_pages:
+        for lp in layout_pages:
             if page_filter is not None and lp.page_number != page_filter:
                 continue
+            page_w = float(lp.width or output_width)
+            page_h = float(lp.height or output_height)
             for item in lp.items:
                 segs = item.layout_segments or ([item.bbox] if item.bbox else [])
                 for seg in segs:
@@ -3104,14 +3083,15 @@ class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
                         continue
                     raw_label = seg.label or item.type or "Text"
                     label = _NANO_LAYOUT_LABEL_TO_CANONICAL.get(str(raw_label), str(raw_label))
-                    x1, y1 = seg.x * scale, seg.y * scale
-                    x2, y2 = (seg.x + seg.w) * scale, (seg.y + seg.h) * scale
+                    x1, y1 = seg.x * page_w, seg.y * page_h
+                    x2, y2 = (seg.x + seg.w) * page_w, (seg.y + seg.h) * page_h
                     text = item.md or item.value or ""
                     content = _build_docling_parse_content("table" if str(label).lower() == "table" else "text", text)
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=1.0,
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=str(label),
                             page=lp.page_number,
                             content=content,
@@ -3124,9 +3104,10 @@ class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
             example_id=inference_result.request.example_id,
             pipeline_name=inference_result.pipeline_name,
             model=LayoutDetectionModel.KDL_FRONTIER_NANO_LAYOUT,
-            image_width=scale,
-            image_height=scale,
+            image_width=output_width,
+            image_height=output_height,
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -3191,8 +3172,8 @@ class PyMuPDF4LLMLayoutAdapter(LayoutAdapter):
                                 (segment.x + segment.w) * page_width,
                                 (segment.y + segment.h) * page_height,
                             ],
-                            # Deliberately not `float(seg.confidence or 1.0)`: that
-                            # maps a genuine 0.0 confidence to full confidence.
+                            r=segment.r,
+                            # Preserve genuine zero confidence; only None uses the default.
                             score=segment.confidence if segment.confidence is not None else 1.0,
                             label=label,
                             page=page.page_number,
@@ -3214,6 +3195,7 @@ class PyMuPDF4LLMLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
             markdown=inference_result.output.markdown,
         )
 
@@ -3286,7 +3268,8 @@ class PulseLayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -3304,6 +3287,7 @@ class PulseLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -3381,7 +3365,8 @@ class InfinityParser2LayoutAdapter(LayoutAdapter):
                     predictions.append(
                         LayoutPrediction(
                             bbox=[x1, y1, x2, y2],
-                            score=float(seg.confidence or 1.0),
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
                             label=label,
                             page=page_number,
                             content=content,
@@ -3399,6 +3384,7 @@ class InfinityParser2LayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
         )
 
 
@@ -3465,6 +3451,7 @@ class LiteParseLayoutAdapter(LayoutAdapter):
                                 (segment.x + segment.w) * page_width,
                                 (segment.y + segment.h) * page_height,
                             ],
+                            r=segment.r,
                             score=segment.confidence if segment.confidence is not None else 1.0,
                             label=label,
                             page=page.page_number,
@@ -3481,5 +3468,6 @@ class LiteParseLayoutAdapter(LayoutAdapter):
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
             markdown=inference_result.output.markdown,
         )
