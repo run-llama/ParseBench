@@ -55,6 +55,9 @@ class LayoutAdapter(ABC):
         if layout_output.image_width <= 0 or layout_output.image_height <= 0:
             return []
 
+        page = next((p for p in layout_output.layout_pages if p.page_number == page_number), None)
+        width = page.width if page is not None and page.width is not None else layout_output.image_width
+        height = page.height if page is not None and page.height is not None else layout_output.image_height
         blocks: list[PredBlock] = []
         for idx, prediction in enumerate(layout_output.predictions):
             if prediction.page != page_number:
@@ -73,8 +76,8 @@ class LayoutAdapter(ABC):
             tokens = tokenize(normalized_text)
             bbox_xyxy = normalize_bbox_xyxy(
                 prediction.bbox,
-                width=layout_output.image_width,
-                height=layout_output.image_height,
+                width=width,
+                height=height,
             )
             order_index = prediction.provider_metadata.get("order_index")
             if not isinstance(order_index, int):
@@ -83,6 +86,9 @@ class LayoutAdapter(ABC):
             blocks.append(
                 PredBlock(
                     bbox_xyxy=bbox_xyxy,
+                    r=prediction.r,
+                    page_width=width,
+                    page_height=height,
                     block_type=block_type,
                     label=prediction.label,
                     text=raw_text,
@@ -95,7 +101,7 @@ class LayoutAdapter(ABC):
         return blocks
 
 
-def normalize_bbox_xyxy(bbox: list[float], *, width: int, height: int) -> list[float]:
+def normalize_bbox_xyxy(bbox: list[float], *, width: float, height: float) -> list[float]:
     """Normalize pixel XYXY bbox coordinates into [0, 1] space."""
     return [
         bbox[0] / width,

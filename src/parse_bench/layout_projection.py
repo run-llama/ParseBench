@@ -48,6 +48,7 @@ def _build_canonical(  # type: ignore[no-untyped-def]
     attributes.update(prediction.attributes)
     return CanonicalLayoutPrediction(
         bbox=prediction.bbox,
+        r=prediction.r,
         score=prediction.score,
         canonical_class=canonical_class,
         attributes=attributes,
@@ -168,6 +169,7 @@ def project_to_core_predictions(
         core_predictions.append(
             CoreLayoutPrediction(
                 bbox=canonical.bbox,
+                r=canonical.r,
                 score=canonical.score,
                 core_class=core_class,
                 attributes=canonical.attributes,

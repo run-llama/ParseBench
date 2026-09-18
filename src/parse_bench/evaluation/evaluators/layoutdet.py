@@ -33,6 +33,8 @@ from parse_bench.evaluation.metrics.layoutdet.classification_utils import (
 )
 from parse_bench.evaluation.metrics.layoutdet.iou import (
     compute_iou_matrix,
+    compute_rotated_ioa_matrix,
+    compute_rotated_iou_matrix,
 )
 from parse_bench.evaluation.stats import build_operational_stats
 from parse_bench.layout_label_mapping import (
@@ -990,9 +992,35 @@ class LayoutDetectionEvaluator(BaseEvaluator):
                 if gt_elements and pred_blocks:
                     gt_boxes_attr = np.array([g.bbox_xyxy for g in gt_elements])
                     pred_boxes_attr = np.array([p.bbox_xyxy for p in pred_blocks])
-                    ioa_attr = compute_ioa_matrix(gt_boxes_attr, pred_boxes_attr)
-                    ioa_attr_pred = compute_ioa_matrix(pred_boxes_attr, gt_boxes_attr)
-                    iou_attr = compute_iou_matrix(gt_boxes_attr, pred_boxes_attr)
+                    gt_angles = [g.r for g in gt_elements]
+                    pred_angles = [p.r for p in pred_blocks]
+                    page_width = pred_blocks[0].page_width
+                    page_height = pred_blocks[0].page_height
+                    ioa_attr = compute_rotated_ioa_matrix(
+                        gt_boxes_attr,
+                        pred_boxes_attr,
+                        gt_angles,
+                        pred_angles,
+                        page_width=page_width,
+                        page_height=page_height,
+                    )
+                    ioa_attr_pred = compute_rotated_ioa_matrix(
+                        pred_boxes_attr,
+                        gt_boxes_attr,
+                        pred_angles,
+                        gt_angles,
+                        page_width=page_width,
+                        page_height=page_height,
+                    )
+                    iou_attr = compute_rotated_iou_matrix(
+                        gt_boxes_attr,
+                        pred_boxes_attr,
+                        gt_angles,
+                        pred_angles,
+                        page_width=page_width,
+                        page_height=page_height,
+                        force_rotated=True,
+                    )
                 elif gt_elements is not None and pred_blocks is not None:
                     ioa_attr = np.zeros((len(gt_elements), len(pred_blocks)))
                     ioa_attr_pred = np.zeros((len(pred_blocks), len(gt_elements)))

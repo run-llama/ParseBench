@@ -46,6 +46,7 @@ def canonical_to_core(
 
     return CoreLayoutPrediction(
         bbox=canonical_pred.bbox,
+        r=canonical_pred.r,
         score=canonical_pred.score,
         core_class=core_class,
         attributes=canonical_pred.attributes,

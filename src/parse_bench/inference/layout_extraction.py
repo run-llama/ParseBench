@@ -146,11 +146,13 @@ def extract_all_layouts_from_llamaparse_output(
     page_markdowns: list[str] = []
 
     for page_idx, page_data in enumerate(api_pages):
-        page_number = page_idx + 1
+        page_number = int(page_data.get("page", page_idx + 1))
         sdk_width = float(page_data.get("width", output_width))
         sdk_height = float(page_data.get("height", output_height))
-        x_scale = output_width / sdk_width if sdk_width > 0 else 1.0
-        y_scale = output_height / sdk_height if sdk_height > 0 else 1.0
+        page_width = output_width if len(api_pages) == 1 else sdk_width
+        page_height = output_height if len(api_pages) == 1 else sdk_height
+        x_scale = page_width / sdk_width if sdk_width > 0 else 1.0
+        y_scale = page_height / sdk_height if sdk_height > 0 else 1.0
 
         items = page_data.get("items", [])
         page_md = _page_markdown(page_data)
@@ -169,8 +171,8 @@ def extract_all_layouts_from_llamaparse_output(
         layout_pages.append(
             ParseLayoutPageIR(
                 page_number=page_number,
-                width=float(output_width),
-                height=float(output_height),
+                width=float(page_width),
+                height=float(page_height),
                 md=page_md,
                 items=page_layout_items,
             )
@@ -261,7 +263,8 @@ def _extract_page_predictions(
             attributes = _prediction_attributes(item_type=item_type, raw_label=label)
             prediction = LayoutPrediction(
                 bbox=[x, y, x + w, y + h],
-                score=float(bbox_data.get("confidence", 0.0)),
+                score=float(0.0 if bbox_data.get("confidence") is None else bbox_data["confidence"]),
+                r=bbox_data.get("r"),
                 label=label,
                 page=page_number,
                 content=content,
@@ -344,6 +347,7 @@ def _prediction_to_layout_item(
         w=x2 - x1,
         h=y2 - y1,
         confidence=prediction.score,
+        r=prediction.r,
         label=prediction.label,
     )
     item_kwargs: dict[str, Any] = {

@@ -231,6 +231,7 @@ def flatten_v2_items(
                 "y": first_bbox.y,
                 "w": first_bbox.w,
                 "h": first_bbox.h,
+                "r": getattr(first_bbox, "r", None),
                 "confidence": first_bbox.confidence,
                 "label": first_bbox.label,
             }
@@ -240,6 +241,7 @@ def flatten_v2_items(
                     "y": bbox.y,
                     "w": bbox.w,
                     "h": bbox.h,
+                    "r": getattr(bbox, "r", None),
                     "confidence": bbox.confidence,
                     "label": bbox.label,
                     "startIndex": bbox.start_index,
@@ -871,6 +873,7 @@ def _segment_to_legacy_bbox(
         "y": segment.y,
         "w": segment.w,
         "h": segment.h,
+        "r": segment.r,
         "confidence": segment.confidence,
         "label": segment.label,
     }

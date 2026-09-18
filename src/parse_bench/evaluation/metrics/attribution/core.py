@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
+from math import isfinite
 
 import numpy as np
 
@@ -59,6 +60,7 @@ class GTElement:
     content_type: str  # "text" or "table"
     html: str | None = None  # original HTML for tables
     attributes: dict[str, str] = field(default_factory=dict)
+    r: float | None = None
 
 
 @dataclass
@@ -72,6 +74,27 @@ class PredBlock:
     normalized_text: str  # normalized
     tokens: list[str]  # tokenized
     order_index: int  # position in output list
+    r: float | None = None
+    page_width: float = 1.0
+    page_height: float = 1.0
+
+
+def compute_attribution_overlap(gt_elements: list[GTElement], pred_blocks: list[PredBlock]) -> np.ndarray:
+    """Compare literal rotated boxes on a single page, preserving max-IoA semantics."""
+    dimensions = {(pred.page_width, pred.page_height) for pred in pred_blocks}
+    if len(dimensions) > 1:
+        raise ValueError("Attribution requires consistent page dimensions within a page")
+    width, height = next(iter(dimensions), (1.0, 1.0))
+    if not (isfinite(width) and isfinite(height) and width > 0 and height > 0):
+        raise ValueError("Attribution requires finite positive page dimensions")
+    return compute_overlap_matrix(
+        np.array([gt.bbox_xyxy for gt in gt_elements]),
+        np.array([pred.bbox_xyxy for pred in pred_blocks]),
+        gt_angles=[gt.r for gt in gt_elements],
+        pred_angles=[pred.r for pred in pred_blocks],
+        page_width=width,
+        page_height=height,
+    )
 
 
 @dataclass(frozen=True)
@@ -271,9 +294,7 @@ def _filter_pred_block_indices_for_lap(
     if not gt_elements or not pred_blocks:
         return list(range(len(pred_blocks)))
 
-    gt_boxes = np.array([g.bbox_xyxy for g in gt_elements])
-    pred_boxes = np.array([p.bbox_xyxy for p in pred_blocks])
-    ioa_matrix = compute_overlap_matrix(gt_boxes, pred_boxes)
+    ioa_matrix = compute_attribution_overlap(gt_elements, pred_blocks)
     explicit_mask = [gt_element_is_explicit(gt) for gt in gt_elements]
 
     filtered: list[int] = []
@@ -381,9 +402,7 @@ def _compute_pred_block_supports(
         return False, []
 
     if gt_elements:
-        gt_boxes = np.array([gt.bbox_xyxy for gt in gt_elements])
-        pred_boxes = np.array([pred.bbox_xyxy for pred in pred_blocks])
-        overlap_matrix = compute_overlap_matrix(gt_boxes, pred_boxes)
+        overlap_matrix = compute_attribution_overlap(gt_elements, pred_blocks)
     else:
         overlap_matrix = np.zeros((0, len(pred_blocks)))
 
@@ -501,6 +520,7 @@ def parse_gt_elements(test_rules: list[dict]) -> list[GTElement]:
         elements.append(
             GTElement(
                 bbox_coco=bbox_coco,
+                r=rule.get("r"),
                 bbox_xyxy=bbox_xyxy,
                 canonical_class=rule.get("canonical_class", "Unknown"),
                 attributes=attributes,
@@ -532,6 +552,8 @@ def parse_pred_blocks(
     :param page_height: Page height in pixels
     :return: List of PredBlock objects
     """
+    if not (isfinite(page_width) and isfinite(page_height) and page_width > 0 and page_height > 0):
+        raise ValueError("Attribution requires finite positive page dimensions")
     blocks = []
     # Split page markdown into table HTML sections for table content matching
     table_htmls = _extract_table_htmls(page_md)
@@ -589,6 +611,9 @@ def parse_pred_blocks(
                         normalized_text=normalized,
                         tokens=tokens,
                         order_index=idx,
+                        r=segment.get("r"),
+                        page_width=page_width,
+                        page_height=page_height,
                     )
                 )
             continue
@@ -628,6 +653,9 @@ def parse_pred_blocks(
                 normalized_text=normalized,
                 tokens=tokens,
                 order_index=idx,
+                r=bbox_dict.get("r"),
+                page_width=page_width,
+                page_height=page_height,
             )
         )
 
@@ -665,9 +693,7 @@ def compute_lap(
         return 1.0, {}, 0
 
     # Build IoA matrix: shape (num_gt, num_pred)
-    gt_boxes = np.array([g.bbox_xyxy for g in gt_elements]) if gt_elements else np.zeros((0, 4))
-    pred_boxes = np.array([p.bbox_xyxy for p in pred_blocks])
-    ioa_matrix = compute_overlap_matrix(gt_boxes, pred_boxes)  # (N_gt, N_pred)
+    ioa_matrix = compute_attribution_overlap(gt_elements, pred_blocks)  # (N_gt, N_pred)
 
     total_weighted_prec = 0.0
     total_tokens = 0
@@ -729,9 +755,7 @@ def compute_per_class_lap_by_gt(
     if not pred_blocks or not gt_elements:
         return {}
 
-    gt_boxes = np.array([g.bbox_xyxy for g in gt_elements])
-    pred_boxes = np.array([p.bbox_xyxy for p in pred_blocks])
-    ioa_matrix = compute_overlap_matrix(gt_boxes, pred_boxes)
+    ioa_matrix = compute_attribution_overlap(gt_elements, pred_blocks)
 
     class_numerator: dict[str, float] = {}
     class_denominator: dict[str, int] = {}
@@ -781,9 +805,7 @@ def compute_lar(
     if not gt_elements:
         return 1.0, {}, 0
 
-    gt_boxes = np.array([g.bbox_xyxy for g in gt_elements])
-    pred_boxes = np.array([p.bbox_xyxy for p in pred_blocks]) if pred_blocks else np.zeros((0, 4))
-    ioa_matrix = compute_overlap_matrix(gt_boxes, pred_boxes)  # (N_gt, N_pred)
+    ioa_matrix = compute_attribution_overlap(gt_elements, pred_blocks)  # (N_gt, N_pred)
 
     total_weighted_rec = 0.0
     total_tokens = 0
@@ -862,9 +884,7 @@ def compute_grounding_accuracy(
     if not eligible_gt:
         return 1.0, 0, 0, {}, {}, {}
 
-    gt_boxes = np.array([g.bbox_xyxy for g in eligible_gt])
-    pred_boxes = np.array([p.bbox_xyxy for p in pred_blocks]) if pred_blocks else np.zeros((0, 4))
-    overlap = compute_overlap_matrix(gt_boxes, pred_boxes)
+    overlap = compute_attribution_overlap(eligible_gt, pred_blocks)
 
     # Per-class counters
     class_pass: dict[str, int] = {}
@@ -932,9 +952,7 @@ def compute_reading_order(
     # Sort GT elements by reading order
     sorted_gt = sorted(eligible_gt, key=lambda g: g.ro_index)
 
-    gt_boxes = np.array([g.bbox_xyxy for g in sorted_gt])
-    pred_boxes = np.array([p.bbox_xyxy for p in pred_blocks])
-    ioa_matrix = compute_overlap_matrix(gt_boxes, pred_boxes)
+    ioa_matrix = compute_attribution_overlap(sorted_gt, pred_blocks)
 
     # Map each GT element to earliest pred index that covers it
     positions: list[int | None] = []
@@ -1023,13 +1041,11 @@ def compute_attribution_metrics(
         per_class_af1[cls] = compute_af1(lap_cls, lar_cls)
 
     # Count unmatched elements
-    gt_boxes = np.array([g.bbox_xyxy for g in attribution_gt]) if attribution_gt else np.zeros((0, 4))
-    pred_boxes = np.array([p.bbox_xyxy for p in pred_blocks]) if pred_blocks else np.zeros((0, 4))
 
     unmatched_gt = 0
     unmatched_pred = 0
     if attribution_gt and pred_blocks:
-        ioa_matrix = compute_overlap_matrix(gt_boxes, pred_boxes)
+        ioa_matrix = compute_attribution_overlap(attribution_gt, pred_blocks)
         for i in range(len(attribution_gt)):
             if not np.any(ioa_matrix[i, :] >= ioa_threshold):
                 unmatched_gt += 1
