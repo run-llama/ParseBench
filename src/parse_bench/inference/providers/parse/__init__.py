@@ -44,6 +44,7 @@ _PROVIDER_MODULES = [
     "mineru_diffusion",
     "mistral_ocr",
     "nemotron_omni",
+    "nutrient_dws",
     "openai",
     "paddleocr",
     "pulse",

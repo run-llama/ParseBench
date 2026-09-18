@@ -53,6 +53,7 @@ Mistral OCR 4 (Annotation),Commercial - IDP,68.23,73.94,40.11,89.55,66.37,71.17,
 Mistral OCR 4,Commercial - IDP,60.68,73.94,2.35,89.55,66.37,71.17,0.4,,,,,
 Databricks AI Parse,Commercial - IDP,60.68,83.67,0,88.25,55.25,76.23,6.06,,,,,
 Databricks AI Parse (batch),Commercial - IDP,60.68,83.93,0,88.3,55.04,76.14,0.2,,,,,
+Nutrient DWS (Agentic),Commercial - IDP,76.43,72.13,83.46,84.45,64.66,77.47,2.16,,,,,
 Infinity-Parser2-Pro,VLM - Open Weight,74.28,86.4,61.3,89.7,59.1,74.9,,,,,,infly/Infinity-Parser2-Pro
 Infinity-Parser2-Flash,VLM - Open Weight,73.25,82.88,55.56,89.52,57.7,80.61,,,,,,infly/Infinity-Parser2-Flash
 Qwen3-VL-8B-Instruct,VLM - Open Weight,61.97,74.61,28.18,87.63,64.23,55.18,,,,,,Qwen/Qwen3-VL-8B-Instruct

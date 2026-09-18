@@ -3568,3 +3568,109 @@ class LiteParseLayoutAdapter(LayoutAdapter):
             predictions=predictions,
             markdown=inference_result.output.markdown,
         )
+
+
+# Canonical label emitted by the Nutrient DWS provider -> LlamaParse-V3 raw label.
+# Keep in sync with `_CANONICAL_LABEL` in the provider: a label missing here is
+# downgraded to "text" and loses its attribution attrs.
+_NUTRIENT_DWS_TO_LLAMAPARSE_V3_LABEL = {
+    "Title": "title",
+    "Section-header": "section-header",
+    "Page-header": "page-header",
+    "Page-footer": "page-footer",
+    "Caption": "caption",
+    "Footnote": "footnote",
+    "Table": "table",
+    "Picture": "picture",
+    "Key-Value Region": "key-value-region",
+    "List-item": "list-item",
+    "Document Index": "document-index",
+    "Formula": "formula",
+    "Code": "code",
+    "Text": "text",
+}
+
+
+@register_layout_adapter("nutrient_dws", priority=90)
+class NutrientDwsLayoutAdapter(LayoutAdapter):
+    """Extract LayoutOutput from Nutrient DWS ``ParseOutput.layout_pages``.
+
+    DWS reports each element's ``bounds`` and its page's ``width``/``height`` in
+    the same coordinate space, so boxes pass through unscaled as xyxy and the
+    evaluator normalizes by ``image_width``/``image_height`` — unlike
+    ``DoclingParseLayoutAdapter``, there is no multiply. Labels are LlamaParse-V3
+    strings, so ``model`` is LLAMAPARSE to select that label map.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        out = inference_result.output
+        return isinstance(out, ParseOutput) and bool(out.layout_pages)
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        out = inference_result.output
+        if isinstance(out, LayoutOutput):
+            if page_filter is None:
+                return out
+            preds = [p for p in out.predictions if p.page == page_filter]
+            return out.model_copy(update={"predictions": preds})
+
+        if not isinstance(out, ParseOutput):
+            raise ValueError("NutrientDwsLayoutAdapter requires ParseOutput or LayoutOutput")
+
+        layout_pages = out.layout_pages
+        if not layout_pages:
+            raise ValueError("NutrientDwsLayoutAdapter requires non-empty layout_pages")
+
+        selected = [lp for lp in layout_pages if page_filter is None or lp.page_number == page_filter]
+        reference = selected[0] if selected else layout_pages[0]
+        out_w = max(int(reference.width or 1), 1)
+        out_h = max(int(reference.height or 1), 1)
+
+        predictions: list[LayoutPrediction] = []
+        markdown_parts: list[str] = []
+        for lp in layout_pages:
+            if page_filter is not None and lp.page_number != page_filter:
+                continue
+            if lp.md:
+                markdown_parts.append(lp.md)
+            for item_idx, item in enumerate(lp.items):
+                segments = item.layout_segments or ([item.bbox] if item.bbox is not None else [])
+                for seg_idx, seg in enumerate(segments):
+                    raw_label = _NUTRIENT_DWS_TO_LLAMAPARSE_V3_LABEL.get(seg.label or item.type or "Text", "text")
+                    if item.type == "Table" and item.html:
+                        content: LayoutTextContent | LayoutTableContent | None = LayoutTableContent(html=item.html)
+                    elif item.value:
+                        content = LayoutTextContent(text=item.value)
+                    else:
+                        content = None
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[seg.x, seg.y, seg.x + seg.w, seg.y + seg.h],
+                            score=float(seg.confidence or 1.0),
+                            label=raw_label,
+                            page=lp.page_number,
+                            content=content,
+                            provider_metadata={
+                                "order_index": len(predictions),
+                                "item_index": item_idx,
+                                "segment_index": seg_idx,
+                            },
+                        )
+                    )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.LLAMAPARSE,
+            image_width=out_w,
+            image_height=out_h,
+            predictions=predictions,
+            markdown="\n\n".join(markdown_parts),
+        )

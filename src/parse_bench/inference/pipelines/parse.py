@@ -2711,3 +2711,24 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                 per_file_timeout=900.0,
             )
         )
+
+    # Nutrient DWS Data Extraction (hosted API), one pipeline per mode.
+    # Credits per page: text 1.0, structure 1.5, understand 9.0, agentic 18.0.
+    # `text` returns no spatial elements, so it scores no Visual Grounding.
+    for _dws_mode, _dws_timeout in (
+        ("text", 300),
+        ("structure", 600),
+        ("understand", 900),
+        ("agentic", 1800),
+    ):
+        register_fn(
+            PipelineSpec(
+                pipeline_name=f"nutrient_dws_{_dws_mode}",
+                provider_name="nutrient_dws",
+                product_type=ProductType.PARSE,
+                config={
+                    "mode": _dws_mode,
+                    "timeout_s": _dws_timeout,
+                },
+            )
+        )
