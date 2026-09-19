@@ -45,6 +45,7 @@ _PROVIDER_MODULES = [
     "mistral_ocr",
     "nemotron_omni",
     "openai",
+    "ovisocr2",
     "paddleocr",
     "pulse",
     "pymupdf",

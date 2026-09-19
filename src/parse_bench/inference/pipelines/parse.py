@@ -1219,6 +1219,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # OvisOCR2 (ATH-MaaS, 0.8B end-to-end page parsing VLM)
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="ovisocr2_vllm",
+            provider_name="ovisocr2",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",  # Set via OVISOCR2_SERVER_URL or override
+            },
+        )
+    )
+
+    # =========================================================================
     # Unlimited-OCR (baidu/Unlimited-OCR, DeepSeek-OCR successor with grounding)
     # =========================================================================
 

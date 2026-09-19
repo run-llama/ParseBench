@@ -78,6 +78,7 @@ Qwen3.6-35B-A3B,VLM - Open Weight,44.1,19.1,5.1,90.7,58.3,47.4,,,,,,Qwen/Qwen3.6
 MinerU-Diffusion-V1-0320-2.5B,VLM - Open Weight,42.63,66.51,1.19,69.46,1.46,74.54,,,,,,opendatalab/MinerU-Diffusion-V1-0320-2.5B
 DeepSeek-OCR-2,VLM - Open Weight,41.2,61.7,1.1,82,54,7,,,,,,deepseek-ai/DeepSeek-OCR-2
 PaddleOCR-VL,VLM - Open Weight,40.9,67.1,0.9,82.7,54,0,,,,,,PaddlePaddle/PaddleOCR-VL
+OvisOCR2,VLM - Open Weight,40.84,77.37,1.01,88.47,37.35,0,,,,,,ATH-MaaS/OvisOCR2
 Gemma-4-E4B-it,VLM - Open Weight,40.5,25,7.7,81.4,52.5,35.8,,,,,,google/gemma-4-E4B-it
 Granite Vision 4.1 4B,VLM - Open Weight,39.45,63.81,47.47,64.43,21.52,0,,,,,,ibm-granite/granite-vision-4.1-4b
 Qwen3.5-4B,VLM - Open Weight,35.4,8,2.5,88.9,57.8,19.7,,,,,,Qwen/Qwen3.5-4B
