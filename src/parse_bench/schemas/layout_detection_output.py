@@ -323,6 +323,7 @@ class LayoutDetectionModel(StrEnum):
     COHERE_PARSE_LAYOUT = "cohere_parse_layout"
     PYMUPDF4LLM_LAYOUT = "pymupdf4llm_layout"
     LITEPARSE_LAYOUT = "liteparse_layout"
+    TELEOCR_LAYOUT = "teleocr_layout"
     FIRECRAWL_LAYOUT = "firecrawl_layout"
     ANYFORMAT_LAYOUT = "anyformat_layout"
 
@@ -467,6 +468,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.LITEPARSE_LAYOUT: {
         "name": "LiteParse Layout",
         "hf_url": "https://developers.llamaindex.ai/liteparse/guides/extraction/#layout-blocks",
+    },
+    LayoutDetectionModel.TELEOCR_LAYOUT: {
+        "name": "TeleOCR Layout",
+        "hf_url": "https://huggingface.co/StarDoc-AI/TeleOCR",
     },
     LayoutDetectionModel.FIRECRAWL_LAYOUT: {
         "name": "Firecrawl Layout",

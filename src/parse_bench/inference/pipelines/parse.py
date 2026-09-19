@@ -2531,6 +2531,18 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # TeleOCR (StarDoc-AI/TeleOCR, two-stage layout detection and recognition)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="teleocr_vllm",
+            provider_name="teleocr",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",  # Set via TELEOCR_SERVER_URL or override
+            },
+        )
+    )
+
     # =========================================================================
     # Surya OCR 2 (datalab-to/surya-ocr-2, 650M VLM)
     # =========================================================================

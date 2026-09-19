@@ -3568,3 +3568,75 @@ class LiteParseLayoutAdapter(LayoutAdapter):
             predictions=predictions,
             markdown=inference_result.output.markdown,
         )
+
+
+@register_layout_adapter("teleocr", priority=90)
+class TeleOCRLayoutAdapter(LayoutAdapter):
+    """Project TeleOCR's normalized page boxes into one common frame.
+
+    ``LayoutOutput`` carries one global width and height, so predictions from
+    differently sized PDF pages cannot use their original pixel dimensions.
+    TeleOCR already stores every segment in normalized [0, 1] coordinates;
+    scaling all pages to the same square preserves those coordinates through
+    evaluator normalization, with or without a page filter.
+    """
+
+    _SCALE = 1000
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            predictions = [
+                prediction for prediction in inference_result.output.predictions if prediction.page == page_filter
+            ]
+            return inference_result.output.model_copy(update={"predictions": predictions})
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("TeleOCRLayoutAdapter requires ParseOutput or LayoutOutput")
+        if not inference_result.output.layout_pages:
+            raise ValueError("TeleOCRLayoutAdapter requires non-empty layout_pages")
+
+        predictions: list[LayoutPrediction] = []
+        for page in inference_result.output.layout_pages:
+            if page_filter is not None and page.page_number != page_filter:
+                continue
+            for item in page.items:
+                segments = item.layout_segments or ([item.bbox] if item.bbox is not None else [])
+                for segment in segments:
+                    if segment is None:
+                        continue
+                    label = segment.label or item.type or "Text"
+                    is_table = label == "Table"
+                    content_text = item.html if is_table and item.html else item.md or item.value
+                    content = _build_docling_parse_content("table" if is_table else "text", content_text)
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[
+                                segment.x * self._SCALE,
+                                segment.y * self._SCALE,
+                                (segment.x + segment.w) * self._SCALE,
+                                (segment.y + segment.h) * self._SCALE,
+                            ],
+                            score=segment.confidence if segment.confidence is not None else 1.0,
+                            label=label,
+                            page=page.page_number,
+                            content=content,
+                            provider_metadata={"order_index": len(predictions), "score_source": "unavailable_default"},
+                        )
+                    )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.TELEOCR_LAYOUT,
+            image_width=self._SCALE,
+            image_height=self._SCALE,
+            predictions=predictions,
+            markdown=inference_result.output.markdown,
+        )

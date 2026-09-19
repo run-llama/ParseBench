@@ -66,6 +66,7 @@ PaddleOCR-VL-1.6,VLM - Open Weight,67.43,67.77,54.24,82.71,54.64,77.8,,,,,,Paddl
 PaddleOCR-VL-1.5,VLM - Open Weight,65.95,67.38,47.62,82.72,54.27,77.78,,,,,,PaddlePaddle/PaddleOCR-VL-1.5
 Surya OCR 2,VLM - Open Weight,64.83,82.68,21.95,86.57,61.36,71.59,,,,,,datalab-to/surya-ocr-2
 Gemma-4-31B-it,VLM - Open Weight,62.4,80.6,15,89.9,69.3,57.4,,,,,,google/gemma-4-31B-it
+TeleOCR,VLM - Open Weight,58.67,72.74,9.97,85.39,45.13,80.14,,,,,,StarDoc-AI/TeleOCR
 Gemma-4-26B-A4B-it,VLM - Open Weight,58.5,70,14.2,83.8,65.1,59.2,,,,,,google/gemma-4-26B-A4B-it
 Nemotron-3-Nano-Omni-30B-A3B (Thinking),VLM - Open Weight,48.51,70.44,31.47,80.97,59.69,0,,,,,,nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16
 LightOnOCR-2-1B,VLM - Open Weight,48,75.5,13.5,87.8,63.2,0,,,,,,lightonai/LightOnOCR-2-1B
