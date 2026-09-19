@@ -30,6 +30,7 @@ def test_amazon_nova_with_layout_pipeline_enables_layout_mode() -> None:
         ("google_gemini_3_1_flash_lite_thinking_high_parse_with_layout_file", "google"),
         ("mistral_ocr_4_1", "mistral_ocr"),
         ("mistral_ocr_4_1_annotation", "mistral_ocr"),
+        ("hpd_parsing_vllm_parse", "hpd_parsing"),
         ("nemotron_omni_30b_vllm", "nemotron_omni"),
         ("qwen3_8_flash_next_parse_with_layout", "qwen3_8"),
         ("qwen3_8_flash_next_thinking_parse_with_layout", "qwen3_8"),
@@ -81,6 +82,12 @@ def test_self_hosted_pipelines_do_not_ship_internal_endpoints() -> None:
             value = config.get(key)
             if isinstance(value, str):
                 assert "modal.run" not in value, f"{name}.{key} points at an internal deployment"
+
+
+def test_hpd_parsing_uses_public_endpoint_configuration() -> None:
+    config = get_pipeline("hpd_parsing_vllm_parse").config
+    assert config["server_url_env"] == "HPD_PARSING_SERVER_URL"
+    assert "server_url" not in config
 
 
 def test_anyformat_pipelines_differ_only_by_tier() -> None:

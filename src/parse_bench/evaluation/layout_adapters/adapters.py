@@ -3568,3 +3568,30 @@ class LiteParseLayoutAdapter(LayoutAdapter):
             predictions=predictions,
             markdown=inference_result.output.markdown,
         )
+
+
+@register_layout_adapter("hpd_parsing", priority=90)
+class HpdParsingLayoutAdapter(LiteParseLayoutAdapter):
+    """Convert HPD-Parsing's normalized ``layout_pages`` to layout output."""
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput) or not inference_result.output.layout_pages:
+            return False
+        pages = inference_result.raw_output.get("pages")
+        return (
+            isinstance(pages, list)
+            and bool(pages)
+            and isinstance(pages[0], dict)
+            and "raw_response" in pages[0]
+            and inference_result.raw_output.get("prompt_mode") in {"fork", "plain"}
+        )
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        layout_output = super().to_layout_output(inference_result, page_filter=page_filter)
+        return layout_output.model_copy(update={"model": LayoutDetectionModel.HPD_PARSING_LAYOUT})

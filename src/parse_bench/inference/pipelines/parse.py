@@ -1527,6 +1527,25 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # HPD-Parsing (PaddlePaddle/HPD-Parsing, 1B InternVL3.5 backbone)
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="hpd_parsing_vllm_parse",
+            provider_name="hpd_parsing",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url_env": "HPD_PARSING_SERVER_URL",
+                "model": "PaddlePaddle/HPD-Parsing",
+                "prompt_mode": "fork",
+                "dpi": 200,
+                "timeout": 900,
+            },
+        )
+    )
+
+    # =========================================================================
     # Nemotron-3-Nano-Omni 30B-A3B Reasoning (BF16)
     # =========================================================================
 
