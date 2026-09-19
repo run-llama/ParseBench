@@ -57,6 +57,7 @@ _PROVIDER_MODULES = [
     "unlimitedocr",
     "unstructured",
     "warp_ingest",
+    "wevisdoc",
     "oi_parser",
 ]
 

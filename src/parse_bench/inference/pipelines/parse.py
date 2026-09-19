@@ -2711,3 +2711,33 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                 per_file_timeout=900.0,
             )
         )
+
+    # =========================================================================
+    # WeVisDoc 2B and 4B
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="wevisdoc_2b_vllm",
+            provider_name="wevisdoc",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",
+                "server_url_env": "WEVISDOC_2B_SERVER_URL",
+                "served_model_name": "wevisdoc-2b",
+            },
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="wevisdoc_4b_vllm",
+            provider_name="wevisdoc",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",
+                "server_url_env": "WEVISDOC_4B_SERVER_URL",
+                "served_model_name": "wevisdoc-4b",
+            },
+        )
+    )

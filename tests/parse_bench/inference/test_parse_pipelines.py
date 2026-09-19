@@ -37,6 +37,8 @@ def test_amazon_nova_with_layout_pipeline_enables_layout_mode() -> None:
         ("anyformat_agentic", "anyformat"),
         ("anyformat_lite", "anyformat"),
         ("anyformat_flash", "anyformat"),
+        ("wevisdoc_2b_vllm", "wevisdoc"),
+        ("wevisdoc_4b_vllm", "wevisdoc"),
     ],
 )
 def test_ported_pipelines_are_registered(pipeline_name: str, provider_name: str) -> None:
@@ -65,6 +67,29 @@ def test_qwen38_flash_next_pipelines_differ_only_by_thinking() -> None:
         k: v for k, v in on.items() if k != "enable_thinking"
     }
     assert off["server_url_env"] == "QWEN3_8_FLASH_NEXT_SERVER_URL"
+
+
+@pytest.mark.parametrize(
+    ("pipeline_name", "server_url_env", "served_model_name"),
+    [
+        ("wevisdoc_2b_vllm", "WEVISDOC_2B_SERVER_URL", "wevisdoc-2b"),
+        ("wevisdoc_4b_vllm", "WEVISDOC_4B_SERVER_URL", "wevisdoc-4b"),
+    ],
+)
+def test_wevisdoc_pipelines_use_public_endpoint_variables(
+    pipeline_name: str,
+    server_url_env: str,
+    served_model_name: str,
+) -> None:
+    spec = get_pipeline(pipeline_name)
+
+    assert spec.provider_name == "wevisdoc"
+    assert spec.product_type == ProductType.PARSE
+    assert spec.config == {
+        "server_url": "",
+        "server_url_env": server_url_env,
+        "served_model_name": served_model_name,
+    }
 
 
 def test_no_internal_only_pipeline_names_are_registered() -> None:
