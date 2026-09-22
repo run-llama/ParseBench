@@ -15,11 +15,18 @@ xcrun swiftc -O scripts/apple_vision_documents.swift -o .build/apple-vision-docu
 uv sync --extra runners --extra dev
 uv run parse-bench inference run apple_vision_documents --input_dir data/test --output_dir output/apple-vision-test --max_concurrent 1 --no_rich --timeout_retries 0
 uv run parse-bench evaluation run output/apple-vision-test --test_cases_dir data/test --max_workers 1
+uv run parse-bench evaluation run output/apple-vision-test --test_cases_dir data/test --group text_content --report_dir output/apple-vision-text-content --max_workers 1
 ```
 
 These commands use only the already downloaded test dataset. Inference and
 evaluation are separate so results can be inspected without repeating OCR.
-The shorter end-to-end command is:
+The extra text-content evaluation works around
+[ParseBench issue #173](https://github.com/run-llama/ParseBench/issues/173):
+unfiltered evaluation overwrites text-content cases with text-formatting cases
+that share an inference ID. Keep both reports; do not treat the unfiltered
+report alone as complete coverage of all five categories.
+
+The shorter end-to-end command (still requiring the separate content evaluation) is:
 
 ```sh
 uv run parse-bench run apple_vision_documents --input_dir data/test --output_dir output/apple-vision-test --max_concurrent 1 --open_report=False
