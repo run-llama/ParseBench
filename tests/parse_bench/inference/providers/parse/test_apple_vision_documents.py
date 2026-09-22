@@ -1,6 +1,7 @@
 import json
 import subprocess
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -8,7 +9,11 @@ import pytest
 from parse_bench.evaluation.layout_adapters.registry import create_layout_adapter_for_result
 from parse_bench.inference.pipelines import get_pipeline
 from parse_bench.inference.providers.base import ProviderPermanentError
-from parse_bench.inference.providers.parse.apple_vision_documents import AppleVisionDocumentsProvider, _document_items
+from parse_bench.inference.providers.parse.apple_vision_documents import (
+    AppleVisionDocumentsProvider,
+    _document_items,
+    _granular_layers,
+)
 from parse_bench.schemas.pipeline_io import InferenceRequest, RawInferenceResult
 
 
@@ -66,24 +71,22 @@ def test_table_order_spans_escaping_boxes_and_blank_page():
     assert layout.predictions[1].label == "Table"
 
 
-@pytest.mark.parametrize(
-    "output", ["not json", "{}", json.dumps({"coordinate_system": "bottom_left", "documents": []})]
-)
+@pytest.mark.parametrize("output", ["not json", "{}", json.dumps({"coordinate_system": "bottom_left", "pages": []})])
 def test_invalid_cli_output_fails(output):
     provider = AppleVisionDocumentsProvider("apple_vision_documents")
     with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, output, "")):
         with pytest.raises(ProviderPermanentError, match="Invalid Apple Vision JSON"):
-            provider._recognize("page.png")
+            provider._recognize([Path("page.png")])
 
 
 def test_cli_timeout_and_failure_are_not_empty_success():
     provider = AppleVisionDocumentsProvider("apple_vision_documents")
     with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("vision", 120)):
-        with pytest.raises(ProviderPermanentError, match="exceeded"):
-            provider._recognize("page.png")
+        with pytest.raises(ProviderPermanentError, match="document timeout"):
+            provider._recognize([Path("page.png")])
     with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 1, "", "recognition failed")):
         with pytest.raises(ProviderPermanentError, match="recognition failed"):
-            provider._recognize("page.png")
+            provider._recognize([Path("page.png")])
 
 
 def test_pdf_pages_rendered_in_order_and_timed(tmp_path):
@@ -97,10 +100,13 @@ def test_pdf_pages_rendered_in_order_and_timed(tmp_path):
     provider = AppleVisionDocumentsProvider(pipeline.provider_name, {"dpi": 72})
     images = []
 
-    def recognize(image):
-        pixmap = pymupdf.Pixmap(str(image))
-        images.append((pixmap.width, pixmap.height))
-        return {"documents": [], "recognition_latency_ms": 0, "coordinate_system": "normalized_top_left"}
+    def recognize(image_paths):
+        results = []
+        for index, image in enumerate(image_paths):
+            pixmap = pymupdf.Pixmap(str(image))
+            images.append((pixmap.width, pixmap.height))
+            results.append({"page_index": index, "documents": [], "recognition_latency_ms": 0})
+        return results
 
     request = InferenceRequest(example_id="two", source_file_path=str(path), product_type="parse")
     with patch("platform.system", return_value="Darwin"), patch("platform.mac_ver", return_value=("26.0", (), "")):
@@ -123,3 +129,50 @@ def test_list_markers_are_preserved_without_duplicate_paragraphs():
     items = _document_items(document)
     assert len(items) == 1
     assert items[0].md == "3. Third"
+
+
+def test_title_and_granular_geometry_are_normalized():
+    title_box = {"x": 0.1, "y": 0.1, "w": 0.5, "h": 0.1}
+    text_box = {"x": 0.1, "y": 0.3, "w": 0.5, "h": 0.1}
+    cell_box = {"x": 0.1, "y": 0.5, "w": 0.2, "h": 0.1}
+    document = {
+        "text": "Report Body",
+        "title": {"text": "Report", "bbox": title_box},
+        "paragraphs": [{"text": "Report", "bbox": title_box}, {"text": "Body", "bbox": text_box}],
+        "lists": [],
+        "lines": [{"text": "Body", "bbox": text_box, "confidence": 0.9}],
+        "words": [{"text": "Body", "bbox": text_box, "confidence": 0.8}],
+        "tables": [
+            {
+                "bbox": cell_box,
+                "row_count": 1,
+                "column_count": 1,
+                "cells": [{"text": "A", "bbox": cell_box, "row": 0, "column": 0, "row_span": 1, "column_span": 1}],
+            }
+        ],
+    }
+    items = _document_items(document)
+    assert items[0].type == "Title"
+    assert items[0].md == "# Report"
+    assert [item.type for item in items].count("Title") == 1
+    layers = {layer.granularity: layer for layer in _granular_layers([document], 0)}
+    assert layers["line"].units[0].bbox.confidence == pytest.approx(0.9)
+    assert layers["word"].units[0].text == "Body"
+    assert layers["cell"].units[0].row_index == 0
+    assert layers["cell"].units[0].column_span == 1
+
+
+def test_batch_output_requires_one_ordered_result_per_image():
+    provider = AppleVisionDocumentsProvider("apple_vision_documents")
+    wrong_count = json.dumps({"coordinate_system": "normalized_top_left", "pages": []})
+    with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, wrong_count, "")):
+        with pytest.raises(ProviderPermanentError, match="expected 1 page results"):
+            provider._recognize([Path("page.png")])
+    page_error = json.dumps(
+        {
+            "coordinate_system": "normalized_top_left",
+            "pages": [{"page_index": 0, "error": "bad page"}],
+        }
+    )
+    with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, page_error, "")):
+        assert provider._recognize([Path("page.png")])[0]["error"] == "bad page"

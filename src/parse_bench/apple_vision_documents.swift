@@ -1,4 +1,4 @@
-// Build: xcrun swiftc -O scripts/apple_vision_documents.swift -o .build/apple-vision-documents
+// Build: xcrun swiftc -O apple_vision_documents.swift -o apple-vision-documents
 import Foundation
 import Vision
 
@@ -48,6 +48,12 @@ func documentJSON(_ document: DocumentObservation.Container) -> [String: Any] {
     var result: [String: Any] = [
         "text": document.text.transcript, "bbox": bbox(document.boundingRegion),
         "paragraphs": paragraphs, "tables": tables, "lists": lists,
+        "lines": document.text.lines.map {
+            ["text": $0.transcript, "bbox": bbox($0.boundingRegion), "confidence": $0.confidence]
+        },
+        "words": (document.text.words ?? []).map {
+            ["text": $0.transcript, "bbox": bbox($0.boundingRegion), "confidence": $0.confidence]
+        },
     ]
     if let title = document.title {
         result["title"] = ["text": title.transcript, "bbox": bbox(title.boundingRegion)]
@@ -55,31 +61,43 @@ func documentJSON(_ document: DocumentObservation.Container) -> [String: Any] {
     return result
 }
 
-guard CommandLine.arguments.count == 2 else {
-    fail("Usage: apple-vision-documents IMAGE_PATH")
+guard CommandLine.arguments.count >= 2 else {
+    fail("Usage: apple-vision-documents IMAGE_PATH...")
 }
 guard #available(macOS 26.0, *) else {
     fail("Apple Vision document recognition requires macOS 26 or newer.")
 }
-let imageURL = URL(fileURLWithPath: CommandLine.arguments[1])
-guard FileManager.default.isReadableFile(atPath: imageURL.path) else {
-    fail("Image is not readable: \(imageURL.path)")
-}
 do {
-    let request = RecognizeDocumentsRequest(.revision1)
-    let started = DispatchTime.now().uptimeNanoseconds
-    let observations = try await request.perform(on: imageURL)
-    let latency = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
+    var pages: [[String: Any]] = []
+    for (pageIndex, imagePath) in CommandLine.arguments.dropFirst().enumerated() {
+        let imageURL = URL(fileURLWithPath: imagePath)
+        guard FileManager.default.isReadableFile(atPath: imageURL.path) else {
+            pages.append(["page_index": pageIndex, "error": "Image is not readable: \(imageURL.path)"])
+            continue
+        }
+        let request = RecognizeDocumentsRequest(.revision1)
+        let started = DispatchTime.now().uptimeNanoseconds
+        do {
+            let observations = try await request.perform(on: imageURL)
+            let latency = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
+            pages.append([
+                "page_index": pageIndex,
+                "recognition_latency_ms": latency,
+                "documents": observations.map { documentJSON($0.document) },
+            ])
+        } catch {
+            pages.append(["page_index": pageIndex, "error": "Apple Vision recognition failed: \(error)"])
+        }
+    }
     let result: [String: Any] = [
         "coordinate_system": "normalized_top_left",
         "revision": "revision1",
         "os_version": ProcessInfo.processInfo.operatingSystemVersionString,
-        "recognition_latency_ms": latency,
-        "documents": observations.map { documentJSON($0.document) },
+        "pages": pages,
     ]
     let data = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
     FileHandle.standardOutput.write(data)
     FileHandle.standardOutput.write(Data("\n".utf8))
 } catch {
-    fail("Apple Vision recognition failed: \(error)")
+    fail("Apple Vision output serialization failed: \(error)")
 }

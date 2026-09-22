@@ -11,7 +11,7 @@ From the repository root:
 
 ```sh
 mkdir -p .build
-xcrun swiftc -O scripts/apple_vision_documents.swift -o .build/apple-vision-documents
+xcrun swiftc -O src/parse_bench/apple_vision_documents.swift -o .build/apple-vision-documents
 uv sync --extra runners --extra dev
 uv run parse-bench inference run apple_vision_documents --input_dir data/test --output_dir output/apple-vision-test --max_concurrent 1 --no_rich --timeout_retries 0
 uv run parse-bench evaluation run output/apple-vision-test --test_cases_dir data/test --max_workers 1
@@ -41,37 +41,45 @@ Test the bridge directly with any page image:
 The provider checks `APPLE_VISION_DOCUMENTS_BIN`, then the executable on `PATH`,
 then `.build/apple-vision-documents` in the current directory. A pipeline config
 `binary` overrides those choices. Build explicitly before benchmarking; build
-time is excluded. The Swift source lives in this checkout, not the Python wheel.
+time is excluded. The Python wheel includes the Swift source. To locate it from
+an installed package, run:
+
+```sh
+uv run python -c 'from importlib.resources import files; print(files("parse_bench") / "apple_vision_documents.swift")'
+```
 
 ## Output and timing
 
-- Render each PDF page at 200 DPI in RGB with PyMuPDF. Pages run sequentially
-  within each PDF. Use `--max_concurrent 1` for comparable local timings.
-- Start a separate Swift process for each page. Pin Vision request revision 1;
-  retain its OS version in the raw page result. OS/model changes can affect scores.
+- Render each PDF page at 200 DPI in RGB with PyMuPDF. Invoke one Swift process
+  per PDF and run its pages sequentially with a fresh Vision request per page.
+  Use `--max_concurrent 1` for comparable local timings.
+- Pin Vision request revision 1 and retain its OS version in every raw page
+  result. OS/model changes can affect scores.
 - Emit JSON to stdout and errors to stderr. Missing input, recognition errors,
-  malformed JSON, and a 120-second page timeout fail the document. A successful
-  blank page remains an empty page. `dpi` and `page_timeout` are pipeline settings.
+  malformed JSON, and an aggregate timeout of 120 seconds per page fail the
+  document. A successful blank page remains empty. `dpi` and `page_timeout` are
+  pipeline settings.
 - Preserve raw paragraphs, tables, cell text/ranges/spans, lists, and detected
   titles. Boxes are normalized to `[0, 1]` with a top-left origin. Vision's
   bounding regions become axis-aligned enclosing rectangles.
-- Normalize paragraphs to Markdown and tables to HTML, including `rowspan` and
-  `colspan`. Table metrics require HTML. Cell boxes stay in raw JSON; page/block
-  boxes feed ParseBench's layout adapter and visual-grounding evaluation.
+- Normalize detected titles to level-one Markdown headings, paragraphs to
+  Markdown, and tables to HTML, including `rowspan` and `colspan`. Table metrics
+  require HTML. Line, word, and cell boxes populate ParseBench's granular
+  grounding layers; page/block boxes feed the layout adapter.
 - Keep Vision's paragraph order. Replace paragraphs whose centers fall inside
   a table or list with that region once. Regions not matched to a paragraph are
   inserted by vertical position. This fallback can misorder columns; Apple also
-  makes reading-order errors. List markers are retained. Detected titles are
-  retained raw, without guessing heading levels or table headers.
+  makes reading-order errors. List markers are retained. Detected document titles
+  become level-one headings; deeper heading levels and table headers are not guessed.
 - Raw `pages[].recognition_latency_ms` measures the Vision request only.
   `render_latency_ms` measures rasterization and PNG writing.
-  `latency_in_ms` measures the whole page, including process launch and JSON
-  decoding. The result's top-level latency includes opening the PDF and cleanup,
-  but excludes normalization/evaluation. Cold model startup is included; there
-  is no warmup, and local compute cost is not assigned a dollar price.
+  Per-page `latency_in_ms` is render plus recognition time. The result's top-level
+  latency also includes process launch, JSON decoding, PDF opening, and cleanup,
+  but excludes normalization/evaluation. There is no warmup, and local compute
+  cost is not assigned a dollar price.
 
 This first integration does not infer chart data, formulas, styling, or semantic
-labels beyond text, table, and list regions. Test-subset scores are smoke-test
+labels beyond title, text, table, and list regions. Test-subset scores are smoke-test
 results, not comparable to the full ParseBench leaderboard.
 
 ## Checks

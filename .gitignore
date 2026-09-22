@@ -220,5 +220,8 @@ CLAUDE.md
 .DS_Store
 output/
 data_small/
-# Local Apple Vision executable and smoke-test images
-.build/
+# Local Apple Vision executable
+.build/apple-vision-documents
+.build/apple-vision-documents-*
+.build/test-*
+.build/*.log

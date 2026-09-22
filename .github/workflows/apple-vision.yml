@@ -1,0 +1,31 @@
+name: Apple Vision
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/parse_bench/apple_vision_documents.swift
+      - src/parse_bench/inference/providers/parse/apple_vision_documents.py
+      - tests/parse_bench/inference/providers/parse/test_apple_vision_documents.py
+      - .github/workflows/apple-vision.yml
+  pull_request:
+    paths:
+      - src/parse_bench/apple_vision_documents.swift
+      - src/parse_bench/inference/providers/parse/apple_vision_documents.py
+      - tests/parse_bench/inference/providers/parse/test_apple_vision_documents.py
+      - .github/workflows/apple-vision.yml
+
+jobs:
+  swift:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile Apple Vision bridge
+        run: xcrun swiftc -O src/parse_bench/apple_vision_documents.swift -o /tmp/apple-vision-documents
+      - name: Check bridge error contract
+        run: |
+          if /tmp/apple-vision-documents > /tmp/apple-output.json; then
+            echo "Expected an invocation without images to fail"
+            exit 1
+          fi
+          test ! -s /tmp/apple-output.json

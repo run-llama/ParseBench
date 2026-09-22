@@ -15,7 +15,15 @@ from typing import Any
 
 from parse_bench.inference.providers.base import Provider, ProviderConfigError, ProviderPermanentError
 from parse_bench.inference.providers.registry import register_provider
-from parse_bench.schemas.parse_output import LayoutItemIR, LayoutSegmentIR, PageIR, ParseLayoutPageIR, ParseOutput
+from parse_bench.schemas.parse_output import (
+    GranularLayerIR,
+    GranularUnitIR,
+    LayoutItemIR,
+    LayoutSegmentIR,
+    PageIR,
+    ParseLayoutPageIR,
+    ParseOutput,
+)
 from parse_bench.schemas.pipeline import PipelineSpec
 from parse_bench.schemas.pipeline_io import InferenceRequest, InferenceResult, RawInferenceResult
 from parse_bench.schemas.product import ProductType
@@ -52,6 +60,9 @@ def _table_html(table: dict[str, Any]) -> str:
 def _document_items(document: dict[str, Any]) -> list[LayoutItemIR]:
     """Keep Vision's paragraph order; replace covered prose with tables/lists."""
     structured = [dict(t, kind="Table", md=_table_html(t)) for t in document["tables"]]
+    title = document.get("title")
+    if title and title.get("text"):
+        structured.insert(0, dict(title, kind="Title", md=f"# {escape(title['text'])}"))
     for listing in document.get("lists", []):
         md = "\n".join(f"{escape(item['marker'] or '-')} {escape(item['text'])}" for item in listing["items"])
         structured.append(dict(listing, kind="List-item", md=md))
@@ -92,6 +103,53 @@ def _document_items(document: dict[str, Any]) -> list[LayoutItemIR]:
     return items
 
 
+def _granular_layers(documents: list[dict[str, Any]], page_index: int) -> list[GranularLayerIR]:
+    """Preserve Vision's real line, word, and table-cell geometry."""
+    units: dict[str, list[GranularUnitIR]] = {"line": [], "word": [], "cell": []}
+    for document_index, document in enumerate(documents):
+        for granularity in ("line", "word"):
+            for unit_index, unit in enumerate(document.get(f"{granularity}s", [])):
+                segment = LayoutSegmentIR(**unit["bbox"], confidence=unit.get("confidence"), label="Text")
+                units[granularity].append(
+                    GranularUnitIR(
+                        unit_id=f"p{page_index}-d{document_index}-{granularity}{unit_index}",
+                        granularity=granularity,
+                        order_index=len(units[granularity]),
+                        text=unit.get("text", ""),
+                        bbox=segment,
+                        label="Text",
+                        provider="apple_vision_documents",
+                    )
+                )
+        for table_index, table in enumerate(document.get("tables", [])):
+            for cell_index, cell in enumerate(table.get("cells", [])):
+                segment = LayoutSegmentIR(**cell["bbox"], label="Table")
+                units["cell"].append(
+                    GranularUnitIR(
+                        unit_id=f"p{page_index}-d{document_index}-t{table_index}-cell{cell_index}",
+                        granularity="cell",
+                        order_index=len(units["cell"]),
+                        text=cell.get("text", ""),
+                        bbox=segment,
+                        label="Table",
+                        row_index=cell.get("row"),
+                        column_index=cell.get("column"),
+                        row_span=cell.get("row_span"),
+                        column_span=cell.get("column_span"),
+                        provider="apple_vision_documents",
+                    )
+                )
+    return [
+        GranularLayerIR(
+            granularity=granularity,
+            availability="available" if layer_units else "empty",
+            units=layer_units,
+            source="apple_vision_documents",
+        )
+        for granularity, layer_units in units.items()
+    ]
+
+
 @register_provider("apple_vision_documents")
 class AppleVisionDocumentsProvider(Provider):
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
@@ -104,28 +162,48 @@ class AppleVisionDocumentsProvider(Provider):
         )
         self.dpi = self.base_config.get("dpi", 200)
         self.page_timeout = self.base_config.get("page_timeout", 120)
+        self.swift_source = Path(__file__).parents[3] / "apple_vision_documents.swift"
         for name, value in (("dpi", self.dpi), ("page_timeout", self.page_timeout)):
             if not isinstance(value, int | float) or not math.isfinite(value) or value <= 0:
                 raise ProviderConfigError(f"{name} must be a positive finite number")
 
-    def _recognize(self, image: Path) -> dict[str, Any]:
+    def _recognize(self, images: list[Path]) -> list[dict[str, Any]]:
+        if not images:
+            return []
         try:
             proc = subprocess.run(
-                [self.binary, str(image)], capture_output=True, text=True, timeout=self.page_timeout, check=False
+                [self.binary, *(str(image) for image in images)],
+                capture_output=True,
+                text=True,
+                timeout=self.page_timeout * len(images),
+                check=False,
             )
         except OSError as exc:
-            raise ProviderConfigError(
-                "Build scripts/apple_vision_documents.swift and set APPLE_VISION_DOCUMENTS_BIN"
-            ) from exc
+            raise ProviderConfigError(f"Build {self.swift_source} and set APPLE_VISION_DOCUMENTS_BIN") from exc
         except subprocess.TimeoutExpired as exc:
-            raise ProviderPermanentError(f"Apple Vision exceeded {self.page_timeout}s for one page") from exc
+            raise ProviderPermanentError(
+                f"Apple Vision exceeded the {self.page_timeout * len(images)}s document timeout"
+            ) from exc
         if proc.returncode:
             raise ProviderPermanentError(f"Apple Vision exited {proc.returncode}: {proc.stderr.strip()}")
         try:
             result = json.loads(proc.stdout)
-            if result["coordinate_system"] != "normalized_top_left" or not isinstance(result["documents"], list):
+            pages = result["pages"]
+            if result["coordinate_system"] != "normalized_top_left" or not isinstance(pages, list):
                 raise ValueError("unexpected document schema or coordinate system")
-            return result
+            if len(pages) != len(images):
+                raise ValueError(f"expected {len(images)} page results, got {len(pages)}")
+            for index, page in enumerate(pages):
+                if page.get("page_index") != index:
+                    raise ValueError(f"expected page_index {index}, got {page.get('page_index')}")
+                if "error" not in page and not isinstance(page.get("documents"), list):
+                    raise ValueError(f"page {index} has neither documents nor an error")
+                page.update(
+                    coordinate_system=result["coordinate_system"],
+                    revision=result.get("revision"),
+                    os_version=result.get("os_version"),
+                )
+            return pages
         except (ValueError, KeyError, TypeError) as exc:
             raise ProviderPermanentError(f"Invalid Apple Vision JSON: {exc}") from exc
 
@@ -147,23 +225,36 @@ class AppleVisionDocumentsProvider(Provider):
             with fitz.open(path) as pdf, tempfile.TemporaryDirectory(prefix="apple-vision-") as temp:
                 if pdf.needs_pass:
                     raise ProviderPermanentError("Password-protected PDF is not supported")
+                images = []
+                page_metadata = []
                 for index, page in enumerate(pdf):
-                    page_started = perf_counter()
-                    image = Path(temp) / "page.png"
+                    render_started = perf_counter()
+                    image = Path(temp) / f"page-{index:04d}.png"
                     pixmap = page.get_pixmap(
                         matrix=fitz.Matrix(self.dpi / 72, self.dpi / 72), colorspace=fitz.csRGB, alpha=False
                     )
                     pixmap.save(image)
-                    render_ms = (perf_counter() - page_started) * 1000
-                    result = self._recognize(image)
+                    render_ms = (perf_counter() - render_started) * 1000
+                    images.append(image)
+                    page_metadata.append(
+                        {
+                            "page_index": index,
+                            "width": page.rect.width,
+                            "height": page.rect.height,
+                            "render_latency_ms": render_ms,
+                        }
+                    )
+                results = self._recognize(images)
+                for metadata, result in zip(page_metadata, results, strict=True):
+                    if error := result.get("error"):
+                        raise ProviderPermanentError(
+                            f"Apple Vision failed on page {metadata['page_index'] + 1}: {error}"
+                        )
                     pages.append(
                         dict(
                             result,
-                            page_index=index,
-                            width=page.rect.width,
-                            height=page.rect.height,
-                            render_latency_ms=render_ms,
-                            latency_in_ms=(perf_counter() - page_started) * 1000,
+                            **metadata,
+                            latency_in_ms=metadata["render_latency_ms"] + result["recognition_latency_ms"],
                         )
                     )
         except (ProviderConfigError, ProviderPermanentError):
@@ -194,6 +285,7 @@ class AppleVisionDocumentsProvider(Provider):
                     height=page["height"],
                     md=markdown,
                     items=items,
+                    granular_layers=_granular_layers(page["documents"], page["page_index"]),
                 )
             )
         output = ParseOutput(
