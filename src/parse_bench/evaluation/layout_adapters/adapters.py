@@ -3572,6 +3572,8 @@ class LiteParseLayoutAdapter(LayoutAdapter):
     points so they line up with the ground-truth frame.
     """
 
+    model = LayoutDetectionModel.LITEPARSE_LAYOUT
+
     @classmethod
     def matches(cls, inference_result: InferenceResult) -> bool:
         if not isinstance(inference_result.output, ParseOutput) or not inference_result.output.layout_pages:
@@ -3634,13 +3636,24 @@ class LiteParseLayoutAdapter(LayoutAdapter):
             task_type="layout_detection",
             example_id=inference_result.request.example_id,
             pipeline_name=inference_result.pipeline_name,
-            model=LayoutDetectionModel.LITEPARSE_LAYOUT,
+            model=self.model,
             image_width=max(output_width, 1),
             image_height=max(output_height, 1),
             predictions=predictions,
             layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
             markdown=inference_result.output.markdown,
         )
+
+
+@register_layout_adapter("apple_vision_documents", priority=90)
+class AppleVisionDocumentsLayoutAdapter(LiteParseLayoutAdapter):
+    """Reuse canonical labels and normalized boxes from the local CLI adapter."""
+
+    model = LayoutDetectionModel.APPLE_VISION_DOCUMENTS
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        return inference_result.pipeline_name == "apple_vision_documents"
 
 
 @register_layout_adapter("hpd_parsing", priority=90)

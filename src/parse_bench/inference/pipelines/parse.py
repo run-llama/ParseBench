@@ -474,6 +474,15 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
+            pipeline_name="apple_vision_documents",
+            provider_name="apple_vision_documents",
+            product_type=ProductType.PARSE,
+            config={"dpi": 200, "page_timeout": 120},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
             pipeline_name="liteparse_markdown",
             provider_name="liteparse",
             product_type=ProductType.PARSE,

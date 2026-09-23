@@ -324,6 +324,7 @@ class LayoutDetectionModel(StrEnum):
     COHERE_PARSE_LAYOUT = "cohere_parse_layout"
     PYMUPDF4LLM_LAYOUT = "pymupdf4llm_layout"
     LITEPARSE_LAYOUT = "liteparse_layout"
+    APPLE_VISION_DOCUMENTS = "apple_vision_documents"
     HPD_PARSING_LAYOUT = "hpd_parsing_layout"
     TELEOCR_LAYOUT = "teleocr_layout"
     FIRECRAWL_LAYOUT = "firecrawl_layout"
@@ -474,6 +475,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.LITEPARSE_LAYOUT: {
         "name": "LiteParse Layout",
         "hf_url": "https://developers.llamaindex.ai/liteparse/guides/extraction/#layout-blocks",
+    },
+    LayoutDetectionModel.APPLE_VISION_DOCUMENTS: {
+        "name": "Apple Vision Documents",
+        "hf_url": "https://developer.apple.com/documentation/vision/recognizedocumentsrequest",
     },
     LayoutDetectionModel.HPD_PARSING_LAYOUT: {
         "name": "HPD-Parsing Layout",

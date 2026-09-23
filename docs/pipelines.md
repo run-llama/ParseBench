@@ -357,6 +357,7 @@ These run entirely locally and do not require API keys.
 
 | Pipeline | Description | Requirements |
 |---|---|---|
+| `apple_vision_documents` | Apple Vision `RecognizeDocumentsRequest` with paragraphs, lists, tables, and normalized grounding | macOS 26+; build `src/parse_bench/apple_vision_documents.swift` as described in [Apple Vision Documents](apple-vision-documents.md) |
 | `pypdf_baseline` | PyPDF text extraction | None |
 | `pymupdf_text` | PyMuPDF text extraction | None |
 | `pymupdf_html` | PyMuPDF HTML extraction | None |
