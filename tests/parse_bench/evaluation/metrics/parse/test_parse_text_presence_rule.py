@@ -1817,3 +1817,29 @@ def test_is_latex_rule_ignores_delimiter_sizing_and_equation_number() -> None:
 
     assert passed
     assert message == ""
+
+
+def test_is_latex_rule_keeps_function_arguments_distinct_from_equation_numbers() -> None:
+    # Regression: the trailing-(N) strip must not eat a FUNCTION ARGUMENT. Without a
+    # separator, `(1)` is an argument, and stripping it made `y = f(1)` compare equal to
+    # `y = f(2)` -- crediting a wrong argument.
+    rule = LatexRule({"type": "is_latex", "formula": r"y = f(1)"})
+
+    passed, message = rule.run(r"$y = f(2)$")
+
+    assert not passed
+    assert "not found" in message
+
+
+def test_is_latex_rule_strips_a_separated_equation_number_only() -> None:
+    # A genuine equation number is separated from the expression, as a page prints it.
+    separated = LatexRule({"type": "is_latex", "formula": r"y = f(x) \quad (1)"})
+    assert separated.run(r"$y = f(x)$")[0]
+
+    # ... and plain whitespace counts as that separator.
+    spaced = LatexRule({"type": "is_latex", "formula": r"y = f(x) (2)"})
+    assert spaced.run(r"$y = f(x)$")[0]
+
+    # ... while an unseparated group is an argument and must still match exactly.
+    argument = LatexRule({"type": "is_latex", "formula": r"y = f(3)"})
+    assert argument.run(r"$y = f(3)$")[0]

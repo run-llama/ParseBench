@@ -878,6 +878,16 @@ def _normalize_latex_formula(formula: str) -> str:
     body = re.sub(r"\\(?:display|text|script|scriptscript)style\b", "", body)
     # Delimiter sizing is presentation, same policy as ``\left``/``\right`` above.
     body = re.sub(r"\\[Bb]igg?[lrm]?(?=\s|[()\[\]{}|\\.]|$)", "", body)
+    # A trailing ``(1)`` is an equation number ONLY when the source separated it from the
+    # expression -- ``\quad``/``\qquad``/``\hfill`` or plain whitespace, which is how a page
+    # prints one. Without that separator it is a function argument, and stripping it would
+    # make ``y = f(1)`` compare equal to ``y = f(2)`` and credit a wrong argument. This must
+    # run BEFORE the spacing strip and whitespace collapse below, which erase the evidence.
+    body = re.sub(
+        r"(?:\\(?:quad|qquad|hfill|hspace\*?\{[^{}]*\})|\s)\s*\((\d{1,3}[a-z]?)\)\s*$",
+        "",
+        body,
+    )
     body = re.sub(r"\\(?:quad|qquad|,|;|:|!|>|enspace|hspace\*?\{[^{}]*\})", "", body)
     body = re.sub(r"\\[ \t]+", "", body)
     body = re.sub(r"\\tag\s*\{[^{}]*\}", "", body)
@@ -895,9 +905,6 @@ def _normalize_latex_formula(formula: str) -> str:
     # sub/superscript groups so brace style cannot fail a match. Multi-character
     # groups are left alone -- ``x_{12}`` and ``x_1 2`` genuinely differ.
     body = re.sub(r"([_^])\{([A-Za-z0-9*'+\-])\}", r"\1\2", body)
-    # A trailing ``(1)`` is an equation number, the same presentation detail the
-    # ``\tag``/``\eqno`` strips above already ignore.
-    body = re.sub(r"\((\d{1,3})\)$", "", body)
     return body
 
 
