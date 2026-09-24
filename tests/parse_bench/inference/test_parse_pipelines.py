@@ -117,6 +117,55 @@ def test_hpd_parsing_uses_public_endpoint_configuration() -> None:
     assert "server_url" not in config
 
 
+@pytest.mark.parametrize(
+    ("prefix", "model_suffixes"),
+    [
+        ("openai_gpt_5_6", ("sol", "terra", "luna")),
+        ("openai_gpt_6", ("astra", "sol", "luna")),
+    ],
+)
+def test_openai_reasoning_sweeps_route_only_max_through_responses(prefix: str, model_suffixes: tuple[str, ...]) -> None:
+    efforts = {"none": "none", "low": "low", "med": "medium", "high": "high", "xhigh": "xhigh", "max": "max"}
+    for suffix in model_suffixes:
+        for name_effort, effort in efforts.items():
+            name = f"{prefix}_{suffix}_reasoning_{name_effort}_parse_with_layout_file"
+            if suffix == "astra" and effort == "none":
+                assert name not in list_pipelines()
+                continue
+            spec = get_pipeline(name)
+            assert spec.provider_name == "openai"
+            assert spec.config["mode"] == "parse_with_layout_file"
+            assert spec.config["reasoning_effort"] == effort
+            assert spec.config.get("api", "chat") == ("responses" if effort == "max" else "chat")
+
+
+@pytest.mark.parametrize("effort", ["low", "high"])
+def test_opus_5_5_effort_pipelines_send_output_config_effort(effort: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from parse_bench.inference.providers.parse.anthropic import AnthropicProvider
+
+    base = get_pipeline("anthropic_opus_5_5_parse_with_layout_file")
+    spec = get_pipeline(f"anthropic_opus_5_5_effort_{effort}_parse_with_layout_file")
+    assert spec.provider_name == base.provider_name
+    assert spec.config == {**base.config, "effort": effort}
+
+    calls: list[dict] = []
+
+    def create(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return SimpleNamespace(content=[], usage=None)
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    provider = AnthropicProvider(spec.provider_name, spec.config)
+    provider._client = SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(create=create)))
+    provider._parse_pdf_page_with_layout(b"%PDF-1.4")
+
+    assert calls[0]["output_config"] == {"effort": effort}
+    assert "thinking" not in calls[0]
+    assert "temperature" not in calls[0]
+
+
 def test_anyformat_pipelines_differ_only_by_tier() -> None:
     configs = {tier: get_pipeline(f"anyformat_{tier}").config for tier in ("standard", "agentic", "lite", "flash")}
     assert configs == {tier: {"mode": tier} for tier in configs}
