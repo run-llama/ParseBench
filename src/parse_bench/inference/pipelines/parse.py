@@ -2015,6 +2015,34 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Gemini - Parse with Layout File - thinking-level sweep. Adds levels for models
+    # whose other layout-file pipelines are registered above; each config matches that
+    # model's sibling except for thinking_level.
+    for _gemini_name, _gemini_model, _gemini_max_tokens, _gemini_levels in (
+        ("gemini_3_flash", "gemini-3-flash-preview", 65536, ("medium",)),
+        ("gemini_3_1_flash_lite", "gemini-3.1-flash-lite-preview", 32768, ("medium",)),
+        ("gemini_3_5_flash", "gemini-3.5-flash", 32768, ("high",)),
+        ("gemini_3_5_flash_lite", "gemini-3.5-flash-lite", 32768, ("medium", "high")),
+        ("gemini_3_6_flash", "gemini-3.6-flash", 32768, ("high",)),
+        ("gemini_3_7_flash", "gemini-3.7-flash", 32768, ("low", "medium")),
+        ("gemini_3_8_flash", "gemini-3.8-flash", 32768, ("medium",)),
+        ("gemini_3_1_pro", "gemini-3.1-pro-preview", 32768, ("low",)),
+    ):
+        for _gemini_level in _gemini_levels:
+            register_fn(
+                PipelineSpec(
+                    pipeline_name=f"google_{_gemini_name}_thinking_{_gemini_level}_parse_with_layout_file",
+                    provider_name="google",
+                    product_type=ProductType.PARSE,
+                    config={
+                        "model": _gemini_model,
+                        "max_tokens": _gemini_max_tokens,
+                        "mode": "parse_with_layout_file",
+                        "thinking_level": _gemini_level,
+                    },
+                )
+            )
+
     # =========================================================================
     # Gemini - Agentic Vision
     # =========================================================================
