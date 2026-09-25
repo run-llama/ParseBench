@@ -742,6 +742,49 @@ class TestInlineYesNoCheckboxGroups:
     def _rule(self, label: str | list[str], value: bool) -> FormFieldRule:
         return FormFieldRule({"type": "form_field", "label": label, "value": value, "value_type": "checkbox"})
 
+    # --- marker-first ordering: the conventional markdown spelling ------------
+
+    def test_marker_first_option_under_a_colon_prompt(self):
+        md = "**Initial each category that applies:**\n\n[ ] Demographics\n[x] Medications\n"
+        assert self._rule(["Initial each category that applies:", "Demographics"], False).run(md)[0]
+        assert self._rule(["Initial each category that applies:", "Medications"], True).run(md)[0]
+
+    def test_marker_first_option_as_a_bullet_list(self):
+        md = "**Initial each category that applies:**\n\n* [ ] Demographics\n* [x] Medications\n"
+        assert self._rule(["Initial each category that applies:", "Demographics"], False).run(md)[0]
+        assert self._rule(["Initial each category that applies:", "Medications"], True).run(md)[0]
+
+    def test_marker_first_group_on_one_line(self):
+        md = "**Please select one of the following:**\n\n[ ] Married [x] Unmarried [ ] Separated\n"
+        assert self._rule(["Please select one of the following:", "Unmarried"], True).run(md)[0]
+        assert self._rule(["Please select one of the following:", "Married"], False).run(md)[0]
+
+    def test_marker_first_under_a_question_prompt(self):
+        md = "**Are the owner and the organization the same?**\n\n[ ] Yes [x] No\n"
+        assert self._rule(["Are the owner and the organization the same?", "No"], True).run(md)[0]
+        assert self._rule(["Are the owner and the organization the same?", "Yes"], False).run(md)[0]
+
+    def test_nearest_prompt_wins_over_an_earlier_one(self):
+        md = "**Do you own the property?**\n\n[x] Yes [ ] No\n\n**Do you rent the property?**\n\n[ ] Yes [x] No\n"
+        assert self._rule(["Do you own the property?", "Yes"], True).run(md)[0]
+        assert self._rule(["Do you rent the property?", "No"], True).run(md)[0]
+
+    def test_emphasis_around_the_option_is_not_part_of_it(self):
+        md = "**Certifications:**\n\n[ ] **Woman-Owned** [x] **Veteran-Owned**\n"
+        assert self._rule(["Certifications:", "Veteran-Owned"], True).run(md)[0]
+
+    def test_prose_is_not_a_prompt(self):
+        # No colon or question mark, so the sentence must not become the group label.
+        md = "This form is provided for your convenience\n\n[ ] Demographics\n"
+        passed, expl, _ = self._rule(["This form is provided for your convenience", "Demographics"], False).run(md)
+        assert not passed
+        assert "label not found" in expl
+
+    def test_marker_first_does_not_disturb_label_first_ordering(self):
+        md = "Multistage cement?  Yes [ ] No [x]\n"
+        assert self._rule(["Multistage cement?", "No"], True).run(md)[0]
+        assert not self._rule(["Multistage cement?", "Yes"], True).run(md)[0]
+
     def test_multilabel_yes_no_option_checked(self):
         md = "Multistage cement?  Yes [ ] No [x]\n"
         passed, _, _ = self._rule(["Multistage cement?", "No"], True).run(md)
