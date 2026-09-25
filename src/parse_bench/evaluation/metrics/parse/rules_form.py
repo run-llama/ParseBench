@@ -1430,33 +1430,64 @@ _TRAILING_BOOL_OPTION_RE = re.compile(
 )
 
 
-def _tokenize_checkbox_line_with_context(line: str) -> list[tuple[list[str], bool]]:
-    """Pair inline yes/no checkbox markers with their question context.
+# Bullet, numbered-list or blockquote marker opening a line, optionally escaped.
+# Spelled out rather than reusing `_LIST_MARKER_RE_INLINE`, which is defined below.
+_LEADING_LIST_MARKER_RE = re.compile(r"^\s*\\?(?:[-*+]|\d+\.|>)\s*")
 
-    Typical form parsers render a yes/no row as one line:
 
-    ``Multistage cement? Yes [ ] No [x]``
+def _strip_leading_list_marker(line: str) -> str:
+    """Drop a bullet, numbered-list or blockquote marker opening the line.
 
-    The plain tokenizer sees ``"Multistage cement? Yes" -> False`` and
-    ``"No" -> True``. For a multi-label checkbox rule we want the more precise
-    candidates ``["Multistage cement?", "Yes"] -> False`` and
-    ``["Multistage cement?", "No"] -> True`` so repeated Yes/No options can be
-    disambiguated by the surrounding question without adding a new schema.
+    Without this the marker itself becomes the option's label: ``* [ ] Demographics``
+    tokenizes as ``["*"] -> False``, which matches nothing.
+    """
+
+    return _LEADING_LIST_MARKER_RE.sub("", line, count=1)
+
+
+def _tokenize_checkbox_line_with_context(
+    line: str,
+    group_context: str | None = None,
+) -> list[tuple[list[str], bool]]:
+    """Pair inline checkbox markers with their labels, in either order.
+
+    Two orderings occur, and both are tokenized:
+
+    - *Label first*, the classic yes/no row — ``Multistage cement? Yes [ ] No [x]``.
+      Each marker's label is the text that precedes it, so the candidates are
+      ``["Multistage cement?", "Yes"] -> False`` and ``["Multistage cement?", "No"]
+      -> True``: repeated Yes/No options are disambiguated by the question.
+    - *Marker first*, the conventional markdown spelling — ``[ ] Demographics`` or
+      ``[ ] Single [x] Married``. Each marker's label is the text that FOLLOWS it,
+      up to the next marker. A line opening with a marker is read this way.
+
+    ``group_context`` is the heading that introduced the list (see
+    ``_find_checkbox_state_for_label_list``). A hierarchical rule names its group and
+    its option — ``["Initial each category that applies:", "Demographics"]`` — and an
+    option listed under a heading carries the group on no line of its own, so each
+    candidate is also offered with the heading prepended. Offered in addition to the
+    bare candidate, never instead of it, so a line that already supplies its own
+    context is unaffected.
     """
 
     marker_matches = list(_MARKER_RE.finditer(line))
     if not marker_matches:
         return []
 
-    text_before_first = line[: marker_matches[0].start()].strip()
-    if not text_before_first:
+    body = _strip_leading_list_marker(line)
+    marker_matches = list(_MARKER_RE.finditer(body))
+    if not marker_matches:
         return []
+
+    text_before_first = body[: marker_matches[0].start()].strip()
+    if not text_before_first:
+        return _with_group_context(_tokenize_marker_first(body, marker_matches), group_context)
 
     pairs: list[tuple[list[str], bool]] = []
     current_context: str | None = None
     prev_end = 0
     for marker in marker_matches:
-        label_text = line[prev_end : marker.start()].strip()
+        label_text = body[prev_end : marker.start()].strip()
         prev_end = marker.end()
         if not label_text:
             continue
@@ -1476,7 +1507,39 @@ def _tokenize_checkbox_line_with_context(line: str) -> list[tuple[list[str], boo
         if parts:
             pairs.append((parts, _marker_is_checked(marker.group())))
 
+    return _with_group_context(pairs, group_context)
+
+
+def _tokenize_marker_first(body: str, marker_matches: list[re.Match[str]]) -> list[tuple[list[str], bool]]:
+    """Label each marker with the text that follows it, up to the next marker."""
+
+    pairs: list[tuple[list[str], bool]] = []
+    for idx, marker in enumerate(marker_matches):
+        end = marker_matches[idx + 1].start() if idx + 1 < len(marker_matches) else len(body)
+        label_text = body[marker.end() : end].strip().strip("*_~").strip()
+        if not label_text:
+            continue
+        parts = _dedupe_nonempty_text([label_text])
+        if parts:
+            pairs.append((parts, _marker_is_checked(marker.group())))
     return pairs
+
+
+def _with_group_context(
+    pairs: list[tuple[list[str], bool]],
+    group_context: str | None,
+) -> list[tuple[list[str], bool]]:
+    """Offer each candidate a second time with the list's heading prepended."""
+
+    if not group_context:
+        return pairs
+    out: list[tuple[list[str], bool]] = []
+    for labels, state in pairs:
+        out.append((labels, state))
+        enriched = _dedupe_nonempty_text([group_context, *labels])
+        if enriched != labels:
+            out.append((enriched, state))
+    return out
 
 
 def _checkbox_label_list_match_score(
@@ -1595,6 +1658,25 @@ def _find_checkbox_state_for_label(
     return None
 
 
+def _group_heading(line: str) -> str | None:
+    """The heading that introduces a list of options, or None.
+
+    A form groups its options under a prompt — ``Initial each category that applies:``
+    or ``Are the owner and the organization the same?`` — and a hierarchical rule names
+    that prompt as the option's first label. The options are listed on later lines, so
+    the prompt has to be carried forward to them.
+
+    A prompt ends in a colon or a question mark; that terminator is what separates it
+    from ordinary prose, which would otherwise attach itself to every option below.
+    """
+
+    text = re.sub(r"<[^<>]+>", " ", line)
+    text = text.replace("*", "").replace("_", "").replace("~", "").replace("#", "").strip()
+    if len(text) < 3 or len(text) > 300 or not text.endswith((":", "?")):
+        return None
+    return text
+
+
 def _find_checkbox_state_for_label_list(
     content: str,
     labels: list[str],
@@ -1604,10 +1686,14 @@ def _find_checkbox_state_for_label_list(
 
     candidates: list[tuple[float, int, bool]] = []
     candidate_idx = 0
+    group_context: str | None = None
     for line in content.splitlines():
         if not _MARKER_RE.search(line):
+            heading = _group_heading(line)
+            if heading:
+                group_context = heading
             continue
-        for candidate_labels, state in _tokenize_checkbox_line_with_context(line):
+        for candidate_labels, state in _tokenize_checkbox_line_with_context(line, group_context):
             score = _checkbox_label_list_match_score(candidate_labels, labels, label_max_diffs)
             if score > 0.0:
                 candidates.append((-score, candidate_idx, state))
