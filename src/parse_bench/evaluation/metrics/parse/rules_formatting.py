@@ -920,7 +920,24 @@ def _normalize_latex_formula(formula: str) -> str:
     body = re.sub(r"\\(?:leq|le)\b", r"\\le", body)
     body = re.sub(r"\\(?:geq|ge)\b", r"\\ge", body)
     body = re.sub(r"\\text\s*\{([^{}]*)\}", r"\1", body)
+    # Font wrappers (\mathbb, \mathcal, \mathbf, ...) are deliberately NOT
+    # stripped: double-struck, script and bold letters are visually distinct
+    # glyphs on the page, so emitting them is transcription fidelity a model
+    # can and should learn -- unlike the pure syntax below, which no page
+    # rendering distinguishes.
     body = re.sub(r"\\(?:display|text|script|scriptscript)style\b", "", body)
+    # Delimiter sizing is presentation, same policy as ``\left``/``\right`` above.
+    body = re.sub(r"\\[Bb]igg?[lrm]?(?=\s|[()\[\]{}|\\.]|$)", "", body)
+    # A trailing ``(1)`` is an equation number ONLY when the source separated it from the
+    # expression -- ``\quad``/``\qquad``/``\hfill`` or plain whitespace, which is how a page
+    # prints one. Without that separator it is a function argument, and stripping it would
+    # make ``y = f(1)`` compare equal to ``y = f(2)`` and credit a wrong argument. This must
+    # run BEFORE the spacing strip and whitespace collapse below, which erase the evidence.
+    body = re.sub(
+        r"(?:\\(?:quad|qquad|hfill|hspace\*?\{[^{}]*\})|\s)\s*\((\d{1,3}[a-z]?)\)\s*$",
+        "",
+        body,
+    )
     body = re.sub(r"\\(?:quad|qquad|,|;|:|!|>|enspace|hspace\*?\{[^{}]*\})", "", body)
     body = re.sub(r"\\[ \t]+", "", body)
     body = re.sub(r"\\tag\s*\{[^{}]*\}", "", body)
@@ -935,6 +952,10 @@ def _normalize_latex_formula(formula: str) -> str:
         body = body.replace(unicode_operator, latex_operator)
     body = _normalize_latex_scripts(body)
     body = re.sub(r"\s+", "", body)
+    # ``x_{2}`` and ``x_2`` are the same subscript; canonicalize single-character
+    # sub/superscript groups so brace style cannot fail a match. Multi-character
+    # groups are left alone -- ``x_{12}`` and ``x_1 2`` genuinely differ.
+    body = re.sub(r"([_^])\{([A-Za-z0-9*'+\-])\}", r"\1\2", body)
     return body
 
 

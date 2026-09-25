@@ -1757,3 +1757,89 @@ def test_mark_color_rule_with_nested_formatting() -> None:
     passed, message = rule.run('<mark style="background-color: green">**hello** world</mark>')
     assert passed
     assert message == ""
+
+
+def test_is_latex_rule_keeps_font_selection_commands_distinct() -> None:
+    # \mathbb{E} is a visually distinct glyph (double-struck) on the page, so a
+    # plain E is a real transcription difference — deliberately NOT normalized.
+    rule = LatexRule(
+        {
+            "type": "is_latex",
+            "formula": r"\mathbb{E}[X]",
+        }
+    )
+
+    passed, _ = rule.run(r"So $E[X]$ holds.")
+
+    assert not passed
+
+
+def test_is_latex_rule_treats_single_char_subscript_braces_as_equal() -> None:
+    # x_{2} and x_2 are the same subscript; brace style must not fail a match.
+    rule = LatexRule(
+        {
+            "type": "is_latex",
+            "formula": r"\alpha_{o} + \alpha_{1} \cdot \ln(M)",
+        }
+    )
+
+    passed, message = rule.run(r"$\alpha_o + \alpha_1 \cdot \ln(M)$")
+
+    assert passed
+    assert message == ""
+
+
+def test_is_latex_rule_keeps_multi_char_subscript_groups_distinct() -> None:
+    # x_{12} is a two-character subscript; x_1 2 is not the same expression.
+    rule = LatexRule(
+        {
+            "type": "is_latex",
+            "formula": r"x_{12}",
+        }
+    )
+
+    passed, _ = rule.run(r"$x_1 2$")
+
+    assert not passed
+
+
+def test_is_latex_rule_ignores_delimiter_sizing_and_equation_number() -> None:
+    # \Big sizing and a trailing (1) equation number are presentation, the same
+    # policy already applied to \left / \right and \tag / \eqno.
+    rule = LatexRule(
+        {
+            "type": "is_latex",
+            "formula": r"\Big( a + b \Big) \quad (1)",
+        }
+    )
+
+    passed, message = rule.run(r"$( a + b )$")
+
+    assert passed
+    assert message == ""
+
+
+def test_is_latex_rule_keeps_function_arguments_distinct_from_equation_numbers() -> None:
+    # Regression: the trailing-(N) strip must not eat a FUNCTION ARGUMENT. Without a
+    # separator, `(1)` is an argument, and stripping it made `y = f(1)` compare equal to
+    # `y = f(2)` -- crediting a wrong argument.
+    rule = LatexRule({"type": "is_latex", "formula": r"y = f(1)"})
+
+    passed, message = rule.run(r"$y = f(2)$")
+
+    assert not passed
+    assert "not found" in message
+
+
+def test_is_latex_rule_strips_a_separated_equation_number_only() -> None:
+    # A genuine equation number is separated from the expression, as a page prints it.
+    separated = LatexRule({"type": "is_latex", "formula": r"y = f(x) \quad (1)"})
+    assert separated.run(r"$y = f(x)$")[0]
+
+    # ... and plain whitespace counts as that separator.
+    spaced = LatexRule({"type": "is_latex", "formula": r"y = f(x) (2)"})
+    assert spaced.run(r"$y = f(x)$")[0]
+
+    # ... while an unseparated group is an argument and must still match exactly.
+    argument = LatexRule({"type": "is_latex", "formula": r"y = f(3)"})
+    assert argument.run(r"$y = f(3)$")[0]
