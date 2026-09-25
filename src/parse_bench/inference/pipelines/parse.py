@@ -317,6 +317,19 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # DocAI (ProvidusAI) hosted parse API
+    # =========================================================================
+    register_fn(
+        PipelineSpec(
+            pipeline_name="docai_default",
+            provider_name="docai",
+            product_type=ProductType.PARSE,
+            config={"parse_options": {"redact": False}},
+            per_file_timeout=1800.0,
+        )
+    )
+
+    # =========================================================================
     # Docling Pipelines
     # =========================================================================
 

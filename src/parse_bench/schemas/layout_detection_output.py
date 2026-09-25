@@ -328,6 +328,7 @@ class LayoutDetectionModel(StrEnum):
     TELEOCR_LAYOUT = "teleocr_layout"
     FIRECRAWL_LAYOUT = "firecrawl_layout"
     ANYFORMAT_LAYOUT = "anyformat_layout"
+    DOCAI_LAYOUT = "docai_layout"
 
 
 LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
@@ -386,6 +387,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.ANYFORMAT_LAYOUT: {
         "name": "anyformat",
         "hf_url": "https://anyformat.ai/",
+    },
+    LayoutDetectionModel.DOCAI_LAYOUT: {
+        "name": "DocAI (ProvidusAI)",
+        "hf_url": "https://providus.ai/",
     },
     LayoutDetectionModel.CHECKBOX_DETECTOR_YOLOV8: {
         "name": "YOLOv8 Checkbox Detector (mark-scope)",

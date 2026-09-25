@@ -82,6 +82,7 @@ Extend Light (1.0),Commercial - Startup APIs,73.26,75.8,78.6,84.8,58.6,68.5,0.62
 LandingAI,Commercial - Startup APIs,45.23,73.72,10.88,88.60,27.87,25.08,3,,,,,
 Firecrawl,Commercial - Startup APIs,31.08,55.88,0,74.37,25.16,0,0.9,,,,,
 oi-parser,Commercial - Startup APIs,78.30,92.62,78.28,86.17,66.88,67.53,,,,,,
+DocAI,Commercial - Startup APIs,60.74,51.39,60.45,80.42,42.12,69.32,1.00,,,,,
 Mistral OCR 4 (Annotation),Commercial - IDP,68.23,73.94,40.11,89.55,66.37,71.17,0.5,,,,,
 Mistral OCR 4,Commercial - IDP,60.68,73.94,2.35,89.55,66.37,71.17,0.4,,,,,
 Databricks AI Parse,Commercial - IDP,60.68,83.67,0,88.25,55.25,76.23,6.06,,,,,

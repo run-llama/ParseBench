@@ -208,6 +208,19 @@ Hosted document-parsing API. Sign up at [oi-parser.ai](https://oi-parser.ai/) to
 |---|---|---|
 | **`oi_parser`** | oi-parser hosted `/v1/extract` API | `OI_PARSER_API_KEY`, `OI_PARSER_BASE_URL` (optional) |
 
+### DocAI (ProvidusAI)
+
+Hosted parse API. Documents are uploaded into a knowledge base named `ParseBench` (created on first
+use) with auto-parse on; the job is polled and `result.md` plus `grounding.json` are fetched. Tables
+come back as HTML with row and column spans; grounding boxes feed the layout vertical through the
+`docai` layout adapter. Cost is one credit per parsed page at the pay-as-you-go rate of USD 0.01
+(1¢ per page); override with `credit_rate_usd` or `DOCAI_CREDIT_RATE_USD`. Sign up at
+https://platform.providus.ai. Recommended `--max_concurrent 8`.
+
+| Pipeline | Description | Env Vars |
+|---|---|---|
+| **`docai_default`** | DocAI parsing pipeline by ProvidusAI (In paper: *DocAI*) | `DOCAI_API_KEY`, `DOCAI_BASE_URL` (optional) |
+
 ### anyformat
 
 Hosted parse API. Each pipeline creates a one-node parse workflow for its tier (cache off) on first

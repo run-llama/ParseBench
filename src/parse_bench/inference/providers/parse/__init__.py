@@ -17,6 +17,7 @@ _PROVIDER_MODULES = [
     "datalab",
     "deepseek",
     "deepseekocr2",
+    "docai",
     "docling",
     "docling_serve",
     "dots_ocr",
