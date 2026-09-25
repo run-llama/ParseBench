@@ -68,8 +68,9 @@ USER_PROMPT = (
 
 # OpenAI standard short-context pricing: USD per million tokens (input, output)
 # Reasoning tokens billed at output rate.
-# Source: https://developers.openai.com/api/docs/pricing (verified 2026-07-09;
-# the gpt-6 rows verified 2026-09-22 against https://developers.openai.com/api/docs/models)
+# Source: https://developers.openai.com/api/docs/pricing (gpt-5.6 and gpt-6 rows,
+# including the cached-input and cache-write tables below, verified 2026-09-24).
+# gpt-5.6-sol is on promotional pricing through at least 2026-11-21.
 _OPENAI_PRICING_PER_M: dict[str, tuple[float, float]] = {
     # model-prefix: (input_per_M, output_per_M)
     "gpt-5-mini": (0.25, 2.00),
@@ -82,6 +83,7 @@ _OPENAI_PRICING_PER_M: dict[str, tuple[float, float]] = {
     "gpt-5.6-sol": (4.00, 20.00),
     "gpt-5.6-terra": (2.00, 12.00),
     "gpt-5.6-luna": (0.20, 1.20),
+    "gpt-6-astra": (10.00, 50.00),
     "gpt-6-sol": (2.00, 10.00),
     "gpt-6-luna": (0.10, 0.50),
     "gpt-4o-mini": (0.15, 0.60),
@@ -99,6 +101,10 @@ _OPENAI_PRICING_PER_M: dict[str, tuple[float, float]] = {
 # Cached-input rate (USD per 1M tokens) for the prompt_tokens_details.cached_tokens
 # share of the input. A model absent here bills cached tokens at its full input rate.
 _OPENAI_CACHED_INPUT_PER_M: dict[str, float] = {
+    "gpt-5.6-sol": 0.40,
+    "gpt-5.6-terra": 0.20,
+    "gpt-5.6-luna": 0.02,
+    "gpt-6-astra": 1.00,
     "gpt-6-sol": 0.20,
     "gpt-6-luna": 0.01,
 }
@@ -106,6 +112,10 @@ _OPENAI_CACHED_INPUT_PER_M: dict[str, float] = {
 # Cache-write rate (USD per 1M tokens) for prompt_tokens_details.cache_write_tokens,
 # a subset of the uncached input. A model absent here bills writes as uncached input.
 _OPENAI_CACHE_WRITE_PER_M: dict[str, float] = {
+    "gpt-5.6-sol": 5.00,
+    "gpt-5.6-terra": 2.50,
+    "gpt-5.6-luna": 0.25,
+    "gpt-6-astra": 12.50,
     "gpt-6-sol": 2.50,
     "gpt-6-luna": 0.125,
 }
@@ -120,6 +130,10 @@ class OpenAIProvider(Provider):
     capabilities to parse document content to markdown.
     """
 
+    # Class-level default: DeepSeek and GLM subclass this provider but skip its
+    # __init__, and run_inference still reads _api.
+    _api = "chat"
+
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         """
         Initialize the provider.
@@ -131,8 +145,12 @@ class OpenAIProvider(Provider):
             - `max_tokens`: Max tokens per response (default: 8192)
             - `timeout`: Request timeout in seconds (default: 120)
             - `reasoning_effort`: Reasoning effort for OpenAI reasoning models.
-              Supported values depend on the model; GPT-5.6 accepts "none", "low",
-              "medium", "high", "xhigh", and "max". If unset, uses the model default.
+              Supported values depend on the model; GPT-5.6 and GPT-6 accept "none", "low",
+              "medium", "high" and "xhigh" on Chat Completions; "max" needs `api: "responses"`.
+              If unset, uses the model default.
+            - `api`: "chat" (default) for Chat Completions, or "responses" for the Responses
+              API, which is the only one accepting reasoning effort "max". Responses is
+              supported in `parse_with_layout_file` mode only.
             - `mode`: "image" (default) to send page screenshots, or "file" to send raw PDF
         """
         super().__init__(provider_name, base_config)
@@ -155,6 +173,11 @@ class OpenAIProvider(Provider):
                 f"Invalid mode '{self._mode}'. "
                 "Must be 'image', 'file', 'parse_with_layout', or 'parse_with_layout_file'."
             )
+        self._api = self.base_config.get("api", "chat")
+        if self._api not in ("chat", "responses"):
+            raise ProviderConfigError(f"Invalid api '{self._api}'. Must be 'chat' or 'responses'.")
+        if self._api == "responses" and self._mode != "parse_with_layout_file":
+            raise ProviderConfigError("api 'responses' is supported in 'parse_with_layout_file' mode only.")
 
         # Grid the layout-mode bboxes are on: 1000 (the 0-1000 prompt, the
         # default) or None (absolute pixels of the sent image, for models
@@ -265,6 +288,38 @@ class OpenAIProvider(Provider):
             "output_tokens": max(0, completion_tok - thinking_tok),
             "thinking_tokens": thinking_tok,
             "total_tokens": total_tok,
+        }
+
+    @staticmethod
+    def _extract_responses_usage(response) -> dict[str, int]:  # type: ignore[no-untyped-def]
+        """Token counts from a Responses API response, in the ``_extract_usage`` shape.
+
+        ``output_tokens`` includes reasoning there too, so reasoning is split out the same way.
+        """
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return {
+                "input_tokens": 0,
+                "cached_tokens": 0,
+                "cache_write_tokens": 0,
+                "output_tokens": 0,
+                "thinking_tokens": 0,
+                "total_tokens": 0,
+            }
+        input_tok = getattr(usage, "input_tokens", 0) or 0
+        output_tok = getattr(usage, "output_tokens", 0) or 0
+        out_details = getattr(usage, "output_tokens_details", None)
+        thinking_tok = (getattr(out_details, "reasoning_tokens", 0) or 0) if out_details else 0
+        in_details = getattr(usage, "input_tokens_details", None)
+        cached_tok = (getattr(in_details, "cached_tokens", 0) or 0) if in_details else 0
+        cache_write_tok = (getattr(in_details, "cache_write_tokens", 0) or 0) if in_details else 0
+        return {
+            "input_tokens": input_tok,
+            "cached_tokens": cached_tok,
+            "cache_write_tokens": cache_write_tok,
+            "output_tokens": max(0, output_tok - thinking_tok),
+            "thinking_tokens": thinking_tok,
+            "total_tokens": getattr(usage, "total_tokens", 0) or 0,
         }
 
     def _prepare_image_for_api(self, image: Image.Image) -> Image.Image:
@@ -406,6 +461,25 @@ class OpenAIProvider(Provider):
         except Exception as e:
             self._raise_openai_error(e)
 
+    def _parse_layout_via_responses(self, part: dict[str, Any]) -> tuple[list[dict[str, Any]], str, dict[str, int]]:
+        """Send one page (a Responses input_file or input_image part) with the layout prompt via the Responses API."""
+        try:
+            resp_kwargs: dict[str, Any] = {
+                "model": self._model,
+                "max_output_tokens": self._max_tokens,
+                "input": [
+                    {"role": "system", "content": self._layout_system_prompt},
+                    {"role": "user", "content": [part, {"type": "input_text", "text": self._layout_user_prompt}]},
+                ],
+            }
+            if self._reasoning_effort is not None:
+                resp_kwargs["reasoning"] = {"effort": self._reasoning_effort}
+            response = self._client.responses.create(**resp_kwargs)
+            text = response.output_text or ""
+            return parse_layout_blocks(text), text, self._extract_responses_usage(response)
+        except Exception as e:
+            self._raise_openai_error(e)
+
     def _parse_image_with_layout(self, image: Image.Image) -> tuple[list[dict[str, Any]], str, dict[str, int]]:
         """Send image to OpenAI with layout prompt and get annotated response.
 
@@ -413,6 +487,13 @@ class OpenAIProvider(Provider):
         :return: Tuple of (parsed layout items, raw content, usage dict)
         """
         img_base64 = self._image_to_base64(image)
+
+        # Image test cases (.png/.jpg) take this path even in parse_with_layout_file
+        # mode, so the Responses-only efforts (max) must be routed here too.
+        if self._api == "responses":
+            return self._parse_layout_via_responses(
+                {"type": "input_image", "image_url": f"data:image/jpeg;base64,{img_base64}"}
+            )
 
         try:
             kwargs: dict[str, Any] = {
@@ -511,6 +592,15 @@ class OpenAIProvider(Provider):
         :return: Tuple of (parsed layout items, raw content, usage dict)
         """
         pdf_base64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
+
+        if self._api == "responses":
+            return self._parse_layout_via_responses(
+                {
+                    "type": "input_file",
+                    "filename": "page.pdf",
+                    "file_data": f"data:application/pdf;base64,{pdf_base64}",
+                }
+            )
 
         try:
             kwargs: dict[str, Any] = {
@@ -702,6 +792,8 @@ class OpenAIProvider(Provider):
             }
             if self._reasoning_effort is not None:
                 config_info["reasoning_effort"] = self._reasoning_effort
+            if self._api != "chat":
+                config_info["api"] = self._api
 
             raw_output = {
                 "pages": pages,

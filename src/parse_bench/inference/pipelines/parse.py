@@ -2015,6 +2015,34 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Gemini - Parse with Layout File - thinking-level sweep. Adds levels for models
+    # whose other layout-file pipelines are registered above; each config matches that
+    # model's sibling except for thinking_level.
+    for _gemini_name, _gemini_model, _gemini_max_tokens, _gemini_levels in (
+        ("gemini_3_flash", "gemini-3-flash-preview", 65536, ("medium",)),
+        ("gemini_3_1_flash_lite", "gemini-3.1-flash-lite-preview", 32768, ("medium",)),
+        ("gemini_3_5_flash", "gemini-3.5-flash", 32768, ("high",)),
+        ("gemini_3_5_flash_lite", "gemini-3.5-flash-lite", 32768, ("medium", "high")),
+        ("gemini_3_6_flash", "gemini-3.6-flash", 32768, ("high",)),
+        ("gemini_3_7_flash", "gemini-3.7-flash", 32768, ("low", "medium")),
+        ("gemini_3_8_flash", "gemini-3.8-flash", 32768, ("medium",)),
+        ("gemini_3_1_pro", "gemini-3.1-pro-preview", 32768, ("low",)),
+    ):
+        for _gemini_level in _gemini_levels:
+            register_fn(
+                PipelineSpec(
+                    pipeline_name=f"google_{_gemini_name}_thinking_{_gemini_level}_parse_with_layout_file",
+                    provider_name="google",
+                    product_type=ProductType.PARSE,
+                    config={
+                        "model": _gemini_model,
+                        "max_tokens": _gemini_max_tokens,
+                        "mode": "parse_with_layout_file",
+                        "thinking_level": _gemini_level,
+                    },
+                )
+            )
+
     # =========================================================================
     # Gemini - Agentic Vision
     # =========================================================================
@@ -2218,31 +2246,55 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
-    # OpenAI GPT-5.6 (sol / terra / luna) - Parse with Layout File - Reasoning None
+    # OpenAI GPT-5.6 (sol / terra / luna) - Parse with Layout File - reasoning sweep
+    # none through max. "max" goes through the Responses API, the others through
+    # Chat Completions. The `med` token in the name is medium reasoning effort.
     for _gpt56_suffix, _gpt56_model in (
         ("sol", "gpt-5.6-sol"),
         ("terra", "gpt-5.6-terra"),
         ("luna", "gpt-5.6-luna"),
     ):
-        register_fn(
-            PipelineSpec(
-                pipeline_name=(f"openai_gpt_5_6_{_gpt56_suffix}_reasoning_none_parse_with_layout_file"),
-                provider_name="openai",
-                product_type=ProductType.PARSE,
-                config={
-                    "model": _gpt56_model,
-                    "max_tokens": 32768,
-                    "mode": "parse_with_layout_file",
-                    "reasoning_effort": "none",
-                },
+        for _gpt56_name_effort, _gpt56_effort in (
+            ("none", "none"),
+            ("low", "low"),
+            ("med", "medium"),
+            ("high", "high"),
+            ("xhigh", "xhigh"),
+            ("max", "max"),
+        ):
+            register_fn(
+                PipelineSpec(
+                    pipeline_name=(
+                        f"openai_gpt_5_6_{_gpt56_suffix}_reasoning_{_gpt56_name_effort}_parse_with_layout_file"
+                    ),
+                    provider_name="openai",
+                    product_type=ProductType.PARSE,
+                    config={
+                        "model": _gpt56_model,
+                        "max_tokens": 32768,
+                        "mode": "parse_with_layout_file",
+                        "reasoning_effort": _gpt56_effort,
+                        # Chat Completions rejects "max"; only the Responses API takes it.
+                        **({"api": "responses"} if _gpt56_effort == "max" else {}),
+                    },
+                )
             )
-        )
 
-    # OpenAI GPT-6 Sol / Luna - Parse with Layout File - Reasoning None / Med
-    # A no-reasoning baseline and the model default, medium, pinned explicitly.
-    # The `med` token in the name is medium reasoning effort.
-    for _gpt6_suffix, _gpt6_model in (("sol", "gpt-6-sol"), ("luna", "gpt-6-luna")):
-        for _gpt6_name_effort, _gpt6_effort in (("none", "none"), ("med", "medium")):
+    # OpenAI GPT-6 Astra / Sol / Luna - Parse with Layout File - reasoning sweep
+    # none through max; "max" goes through the Responses API. Astra rejects
+    # "none" (HTTP 400), so its sweep starts at "low". Medium is the model
+    # default, pinned explicitly. The `med` token in the name is medium effort.
+    for _gpt6_suffix, _gpt6_model in (("astra", "gpt-6-astra"), ("sol", "gpt-6-sol"), ("luna", "gpt-6-luna")):
+        for _gpt6_name_effort, _gpt6_effort in (
+            ("none", "none"),
+            ("low", "low"),
+            ("med", "medium"),
+            ("high", "high"),
+            ("xhigh", "xhigh"),
+            ("max", "max"),
+        ):
+            if _gpt6_suffix == "astra" and _gpt6_effort == "none":
+                continue
             register_fn(
                 PipelineSpec(
                     pipeline_name=(f"openai_gpt_6_{_gpt6_suffix}_reasoning_{_gpt6_name_effort}_parse_with_layout_file"),
@@ -2253,6 +2305,8 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                         "max_tokens": 32768,
                         "mode": "parse_with_layout_file",
                         "reasoning_effort": _gpt6_effort,
+                        # Chat Completions rejects "max"; only the Responses API takes it.
+                        **({"api": "responses"} if _gpt6_effort == "max" else {}),
                     },
                 )
             )
@@ -2376,6 +2430,24 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             },
         )
     )
+
+    # Anthropic Opus 5.5 - Parse with Layout File - Effort Low / High
+    # Thinking cannot be disabled on Opus 5.5, so effort is the only reasoning
+    # knob. Otherwise identical to the default (medium) pipeline above.
+    for _opus55_effort in ("low", "high"):
+        register_fn(
+            PipelineSpec(
+                pipeline_name=f"anthropic_opus_5_5_effort_{_opus55_effort}_parse_with_layout_file",
+                provider_name="anthropic",
+                product_type=ProductType.PARSE,
+                config={
+                    "model": "claude-opus-5-5",
+                    "max_tokens": 32768,
+                    "mode": "parse_with_layout_file",
+                    "effort": _opus55_effort,
+                },
+            )
+        )
 
     # Anthropic Sonnet 5 - Parse with Layout (image mode) - Adaptive Thinking
     register_fn(
