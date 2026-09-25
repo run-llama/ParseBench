@@ -859,6 +859,56 @@ def _strip_latex_delimiters(formula: str) -> str:
     return stripped
 
 
+def _normalize_latex_scripts(body: str) -> str:
+    """Canonicalize script argument braces and order without reordering indices."""
+    tokens = re.findall(r"\\[A-Za-z]+|\\[^A-Za-z]|[^\s]", body)
+
+    def group(pos: int, nested: bool = False) -> tuple[str, int]:
+        parts: list[str] = []
+        while pos < len(tokens):
+            token = tokens[pos]
+            if token == "}" and nested:
+                return "".join(parts), pos + 1
+            if token == "{":
+                content, pos = group(pos + 1, True)
+                parts.append("{" + content + "}")
+            elif token in ("_", "^"):
+                start = pos
+                scripts: dict[str, str] = {}
+                duplicate = False
+                while pos < len(tokens) and tokens[pos] in ("_", "^"):
+                    marker = tokens[pos]
+                    pos += 1
+                    if pos == len(tokens) or tokens[pos] in ("_", "^", "}"):
+                        duplicate = True
+                        break
+                    if tokens[pos] == "{":
+                        arg, pos = group(pos + 1, True)
+                    else:
+                        arg = tokens[pos]
+                        pos += 1
+                    duplicate |= marker in scripts
+                    scripts[marker] = arg
+                if duplicate:
+                    parts.append("".join(tokens[start:pos]))
+                else:
+                    parts.extend(marker + "{" + scripts[marker] + "}" for marker in ("_", "^") if marker in scripts)
+            else:
+                parts.append(token)
+                pos += 1
+        return "".join(parts), pos
+
+    # Leave malformed/unbalanced input alone rather than repairing it.
+    depth = 0
+    for token in tokens:
+        depth += (token == "{") - (token == "}")
+        if depth < 0:
+            return body
+    if depth:
+        return body
+    return group(0)[0]
+
+
 def _normalize_latex_formula(formula: str) -> str:
     body = _strip_latex_delimiters(formula)
     body = _unescape_html_entities(body)
@@ -883,6 +933,7 @@ def _normalize_latex_formula(formula: str) -> str:
         ("≥", r"\ge"),
     ):
         body = body.replace(unicode_operator, latex_operator)
+    body = _normalize_latex_scripts(body)
     body = re.sub(r"\s+", "", body)
     return body
 
