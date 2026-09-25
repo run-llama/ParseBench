@@ -919,6 +919,21 @@ def _normalize_latex_formula(formula: str) -> str:
     body = re.sub(r"\\[dt]frac\b", r"\\frac", body)
     body = re.sub(r"\\(?:leq|le)\b", r"\\le", body)
     body = re.sub(r"\\(?:geq|ge)\b", r"\\ge", body)
+    # Arrow length is presentation, like the sizing and spacing commands above.
+    # ``\longrightarrow`` and ``\rightarrow`` render as arrows of different
+    # lengths and chemistry uses them interchangeably for the same reaction, so
+    # a transcription that picks the shorter arrow is not a different formula.
+    # ``\to`` is the same arrow again under a different name.
+    # Single arrows stay single and double arrows stay double: ``\Longrightarrow``
+    # is the long form of ``\Rightarrow`` (implication), NOT of ``\rightarrow``,
+    # so the capital prefix has to survive the fold.
+    body = re.sub(r"\\long(right|left|leftright)arrow\b", r"\\\1arrow", body)
+    body = re.sub(
+        r"\\Long(right|left|leftright)arrow\b",
+        lambda m: "\\" + m.group(1).capitalize() + "arrow",
+        body,
+    )
+    body = re.sub(r"\\to\b", r"\\rightarrow", body)
     body = re.sub(r"\\text\s*\{([^{}]*)\}", r"\1", body)
     body = re.sub(r"\\(?:display|text|script|scriptscript)style\b", "", body)
     body = re.sub(r"\\(?:quad|qquad|,|;|:|!|>|enspace|hspace\*?\{[^{}]*\})", "", body)
