@@ -723,6 +723,38 @@ class ChartDataPointRule(ParseTestRule):
 
         return False
 
+    def _is_label_in_plain_text(self, context: str, label: str) -> bool:
+        """Check if label appears as an unformatted line of context text.
+
+        ``context`` is already scoped to the text immediately preceding the
+        table (context_before is capped to a handful of lines / 300 chars),
+        so a chart title that a pipeline rendered without bold/heading
+        markup is just as strong an identity signal as a formatted one;
+        the presence of markdown/HTML emphasis is a FORMATTING-dimension
+        detail, not evidence of which text is the chart's title. Same
+        full-string ratio matching as _is_label_in_formatted_context,
+        applied to each plain line instead of only extracted bold/heading
+        spans.
+        """
+        normalized_label = normalize_text(label)
+        stripped_label = self._strip_for_label_compare(normalized_label)
+        threshold = 0.60
+
+        for line in context.splitlines():
+            plain_line = normalize_text(line.strip())
+            if not plain_line:
+                continue
+            if self._label_matches(normalized_label, plain_line, allow_partial=False):
+                return True
+            similarity = fuzz.ratio(normalized_label, plain_line) / 100.0
+            if (
+                min(len(stripped_label), len(self._strip_for_label_compare(plain_line))) >= 3
+                and similarity >= threshold
+            ):
+                return True
+
+        return False
+
     def _is_label_in_heading_or_caption(self, context: str, label: str) -> bool:
         """Check if label appears in a heading or <caption> element in context.
 
@@ -834,9 +866,11 @@ class ChartDataPointRule(ParseTestRule):
                                 title_labels.append(label)
                             else:
                                 missing_labels.append(label)
-                        elif self._is_label_in_formatted_context(
-                            context, label
-                        ) or self._is_label_in_heading_or_caption(context, label):
+                        elif (
+                            self._is_label_in_formatted_context(context, label)
+                            or self._is_label_in_heading_or_caption(context, label)
+                            or self._is_label_in_plain_text(context, label)
+                        ):
                             title_labels.append(label)
                         else:
                             missing_labels.append(label)
