@@ -677,6 +677,34 @@ class TestChartDataPointRuleCandidateScope:
         assert passed, message
         assert "title labels ['eu27 outcomes'] in context" in message
 
+    def test_plain_text_title_before_table_is_accepted_as_context(self) -> None:
+        table = """\
+Unrelated preface line
+
+Chart identity: EU27 outcomes
+
+| Country | Value |
+| --- | --- |
+| Greece | 17 |
+"""
+        passed, message, _ = _chart_rule("17", ["Greece", "EU27 outcomes"]).run(table)
+
+        assert passed, message
+        assert "title labels ['eu27 outcomes'] in context" in message
+
+    def test_plain_text_title_exact_case_difference_still_matches(self) -> None:
+        table = """\
+EU27 OUTCOMES
+
+| Country | Value |
+| --- | --- |
+| Greece | 17 |
+"""
+        passed, message, _ = _chart_rule("17", ["Greece", "EU27 outcomes"]).run(table)
+
+        assert passed, message
+        assert "title labels ['eu27 outcomes'] in context" in message
+
     def test_generic_formatted_context_cannot_repair_data_labels_from_different_rows(self) -> None:
         table = """\
 **EU27 in 2022**
