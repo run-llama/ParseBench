@@ -117,3 +117,31 @@ def test_pickle_roundtrip() -> None:
     restored = pickle.loads(blob)
     assert restored.raw_html == et.raw_html
     assert restored.table_data.data.shape == et.table_data.data.shape
+
+
+def test_truncated_cell_attribute_does_not_swallow_following_tables() -> None:
+    """Reducto complex_header_018 ended a block at colspan= before four valid tables."""
+    fragment = "<table>\n<thead>\n<tr>\n<th></th> <th colspan=\n\n"
+    actual_md = fragment + TWO_TABLES.lstrip()
+    assert extract_html_tables(actual_md) == [fragment, *extract_html_tables(TWO_TABLES)]
+    expected, actual, counts = extract_table_pairs(TWO_TABLES, actual_md)
+    assert [table.raw_html for table in actual] == [table.raw_html for table in expected]
+    assert counts.actual == 2
+    assert counts.unparseable_pred == 1
+    with pytest.raises(GroundTruthTableParseError):
+        extract_table_pairs(actual_md, TWO_TABLES)
+
+
+@pytest.mark.parametrize("attribute", ["colspan", "rowspan"])
+def test_invalid_prediction_span_is_counted_instead_of_crashing_document(attribute: str) -> None:
+    bad = f'<table><tr><td {attribute}="broken">lost</td></tr></table>'
+    _, actual, counts = extract_table_pairs(TWO_TABLES, bad + ONE_TABLE)
+    assert len(actual) == 1
+    assert counts.unparseable_pred == 1
+    with pytest.raises(GroundTruthTableParseError, match="bad-span"):
+        extract_table_pairs(bad, ONE_TABLE, doc_id="bad-span")
+
+
+def test_complete_cell_before_nested_table_keeps_outer_table_intact() -> None:
+    nested = '<table><tr><td title="nested">' + ONE_TABLE + "</td></tr></table>"
+    assert extract_html_tables(nested + ONE_TABLE) == [nested, ONE_TABLE.strip()]
