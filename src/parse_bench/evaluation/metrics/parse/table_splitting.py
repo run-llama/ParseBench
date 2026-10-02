@@ -22,7 +22,7 @@ circular import with ``table_record_match_metric``.
 from __future__ import annotations
 
 import itertools
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from rapidfuzz import fuzz
@@ -99,50 +99,50 @@ def _detect_period_candidates(
     return candidates
 
 
+def _trim_trailing_padding(table: TableData) -> TableData:
+    """Remove only empty tail rows, preserving metadata for retained rows."""
+    end = table.data.shape[0]
+    # Metadata can carry header text even when the grid cell is empty.
+    header_text_rows = {r for entries in table.col_headers.values() for r, text in entries if str(text).strip()}
+    header_text_rows.update(
+        r for r, entries in table.row_headers.items() if any(str(text).strip() for _, text in entries)
+    )
+    while end and end - 1 not in header_text_rows and not any(str(v).strip() for v in table.data[end - 1]):
+        end -= 1
+    if end == table.data.shape[0]:
+        return table
+    row_sets = ("header_rows", "thead_rows", "tbody_rows", "tfoot_rows", "column_scope_rows", "row_scope_rows")
+    return replace(
+        table,
+        data=table.data[:end],
+        **{name: {r for r in getattr(table, name) if r < end} for name in row_sets},
+        col_headers={c: [(r, text) for r, text in entries if r < end] for c, entries in table.col_headers.items()},
+        row_headers={r: entries for r, entries in table.row_headers.items() if r < end},
+        header_cells={(r, c) for r, c in table.header_cells if r < end},
+        spanned_cells={(r, c) for r, c in table.spanned_cells if r < end},
+    )
+
+
 def build_sub_table(
     pred_table: TableData,
     start: int,
     end: int,
 ) -> TableData:
-    """Build a sub-table from a column range of the pred table."""
-    sub_data = pred_table.data[:, start:end]
-
-    n_rows = sub_data.shape[0]
-    last_nonempty = n_rows
-    for r in range(n_rows - 1, -1, -1):
-        if any(str(sub_data[r, c]).strip() for c in range(sub_data.shape[1])):
-            last_nonempty = r + 1
-            break
-    else:
-        last_nonempty = 0
-    if last_nonempty < n_rows:
-        sub_data = sub_data[:last_nonempty, :]
-
-    sub_col_headers: dict[int, list[tuple[int, str]]] = {}
-    sub_header_cols: set[int] = set()
-    for new_c, old_c in enumerate(range(start, end)):
-        if old_c in pred_table.col_headers:
-            sub_col_headers[new_c] = pred_table.col_headers[old_c]
-        if old_c in pred_table.header_cols:
-            sub_header_cols.add(new_c)
-
-    sub_header_cells: set[tuple[int, int]] = set()
-    for r, c in pred_table.header_cells:
-        if start <= c < end and r < last_nonempty:
-            sub_header_cells.add((r, c - start))
-
-    return TableData(
-        data=sub_data,
-        header_rows=pred_table.header_rows.copy(),
-        header_cols=sub_header_cols,
-        col_headers=sub_col_headers,
-        row_headers={},
-        header_cells=sub_header_cells,
-        thead_rows=set(pred_table.thead_rows),
-        tbody_rows={r for r in pred_table.tbody_rows if r < last_nonempty},
-        tfoot_rows={r for r in pred_table.tfoot_rows if r < last_nonempty},
-        column_scope_rows={r for r in pred_table.column_scope_rows if r < last_nonempty},
-        row_scope_rows={r for r in pred_table.row_scope_rows if r < last_nonempty},
+    """Slice columns and trim blank tail rows without losing header relationships."""
+    return _trim_trailing_padding(
+        replace(
+            pred_table,
+            data=pred_table.data[:, start:end],
+            header_cols={c - start for c in pred_table.header_cols if start <= c < end},
+            col_headers={c - start: entries for c, entries in pred_table.col_headers.items() if start <= c < end},
+            row_headers={
+                r: [(c - start, text) for c, text in entries if start <= c < end]
+                for r, entries in pred_table.row_headers.items()
+                if any(start <= c < end for c, _ in entries)
+            },
+            header_cells={(r, c - start) for r, c in pred_table.header_cells if start <= c < end},
+            spanned_cells={(r, c - start) for r, c in pred_table.spanned_cells if start <= c < end},
+        )
     )
 
 
@@ -283,6 +283,11 @@ def split_ambiguous_merged_pred(
     sub-tables emitted from a split have ``raw_html=""`` since they have no
     meaningful HTML to attribute back to the source.
 
+    When a split is applied, normalize trailing blank padding on both sides.
+    The peer ``expected`` list is updated in place with replacement tables;
+    original TableData objects and source HTML remain unchanged. No-split
+    calls leave both inputs untouched.
+
     Returns ``(possibly_rewritten_actual, did_split)``.
     """
     from parse_bench.evaluation.metrics.parse.table_record_match_metric import normalize_table
@@ -309,4 +314,6 @@ def split_ambiguous_merged_pred(
                 )
                 for i in range(opt.n_segments)
             )
+    expected[:] = [replace(t, table_data=_trim_trailing_padding(t.table_data)) for t in expected]
+    new_actual = [replace(t, table_data=_trim_trailing_padding(t.table_data)) for t in new_actual]
     return new_actual, True
