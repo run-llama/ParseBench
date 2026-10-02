@@ -282,3 +282,15 @@ def test_llamaparse_layout_extraction_html_less_table_uses_per_segment_text_slic
     assert output.predictions[1].content is not None
     assert output.predictions[0].content.text == "row one"
     assert output.predictions[1].content.text == "row two"
+
+
+@pytest.mark.parametrize("labels", [["Page-header", "Table"], ["Page-header", "text"]])
+def test_normalized_canonical_labels_do_not_abort_stored_prediction_evaluation(labels: list[str]) -> None:
+    """DocAI/Paddle normalized layouts can reach extraction alongside raw labels."""
+    output = extract_all_layouts_from_llamaparse_output(
+        _make_raw_output(labels), example_id="historical-result", pipeline_name="docai_default"
+    )
+    assert [prediction.label for prediction in output.predictions] == labels
+    expected_types = ["Page-header", "Table" if labels[1] == "Table" else "Text"]
+    assert [item.type for item in output.layout_pages[0].items] == expected_types
+    assert output.predictions[0].bbox == [100, 100, 300, 220]
