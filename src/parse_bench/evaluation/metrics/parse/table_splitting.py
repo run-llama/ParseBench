@@ -285,6 +285,8 @@ def split_ambiguous_merged_pred(
 
     Returns ``(possibly_rewritten_actual, did_split)``.
     """
+    from parse_bench.evaluation.metrics.parse.table_record_match_metric import normalize_table
+
     if len(expected) <= len(actual):
         return actual, False
 
@@ -297,12 +299,13 @@ def split_ambiguous_merged_pred(
         if opt.sub_tables is None:
             new_actual.append(original)
         else:
-            # Normalized candidates select boundaries only. Applying their cells
-            # would silently lowercase text and discard source markup.
+            # Keep the candidate geometry: normalization may remove spacer
+            # columns, so its offsets cannot slice the original grid directly.
+            source = normalize_table(original.table_data, preserve_text=True)
             new_actual.extend(
                 ExtractedTable(
                     raw_html="",
-                    table_data=build_sub_table(original.table_data, i * opt.period, (i + 1) * opt.period),
+                    table_data=build_sub_table(source, i * opt.period, (i + 1) * opt.period),
                 )
                 for i in range(opt.n_segments)
             )

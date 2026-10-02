@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from parse_bench.evaluation.metrics.parse.table_extraction import (
     ExtractedTable,
     extract_table_pairs,
@@ -295,3 +297,56 @@ def test_split_keeps_original_cell_case_and_markup() -> None:
     assert did_split
     for source, split in zip(expected, result, strict=True):
         assert_array_equal(split.table_data.data, source.table_data.data)
+
+
+@pytest.mark.parametrize("spacer_index", [0, 2, 4])
+def test_split_spacer_columns_do_not_shift_or_drop_real_cells(spacer_index: int) -> None:
+    """Normalized split offsets must address the same columns in original text."""
+    from numpy.testing import assert_array_equal
+
+    headers = ["Code", "Rate", "Code", "Rate"]
+    values = ["<b>CA</b>", "1.000", "<i>TX</i>", "2.000"]
+    headers.insert(spacer_index, "")
+    values.insert(spacer_index, " ")
+    wide = _wrap(
+        "<tr>" + "".join(f"<th>{v}</th>" for v in headers) + "</tr>"
+        "<tr>" + "".join(f"<td>{v}</td>" for v in values) + "</tr>"
+        "<tr>" + "<td> </td>" * len(values) + "</tr>"
+    )
+    split = _doc_with_tables(
+        [
+            _wrap("<tr><th>Code</th><th>Rate</th></tr><tr><td><b>CA</b></td><td>1.000</td></tr>"),
+            _wrap("<tr><th>Code</th><th>Rate</th></tr><tr><td><i>TX</i></td><td>2.000</td></tr>"),
+        ]
+    )
+    expected, actual, _ = extract_table_pairs(split, wide)
+    result, did_split = split_ambiguous_merged_pred(expected, actual)
+    assert did_split
+    for source, output in zip(expected, result, strict=True):
+        assert_array_equal(output.table_data.data, source.table_data.data)
+
+
+@pytest.mark.parametrize("last_rate", ["", "99"])
+def test_split_ground_truth_spacer_keeps_missing_or_changed_rate_penalized(last_rate: str) -> None:
+    """A spacer before the second block must not erase its rate from GT."""
+    from parse_bench.evaluation.metrics.parse.grits_metric import GriTSMetric
+
+    wide = _wrap(
+        "<tr><th>Code</th><th>Rate</th><th></th><th>Code</th><th>Rate</th></tr>"
+        "<tr><td>A</td><td>1</td><td></td><td>C</td><td>3</td></tr>"
+    )
+    actual = _doc_with_tables(
+        [
+            _wrap("<tr><th>Code</th><th>Rate</th></tr><tr><td>A</td><td>1</td></tr>"),
+            _wrap(
+                f"<tr><th></th><th>Code</th><th>Rate</th></tr><tr><td></td><td>C</td><td>{last_rate}</td></tr>"
+                if last_rate
+                else "<tr><th></th><th>Code</th></tr><tr><td></td><td>C</td></tr>"
+            ),
+        ]
+    )
+    expected, predicted, _ = extract_table_pairs(wide, actual)
+    expected, did_split = split_ambiguous_merged_pred(predicted, expected)
+    assert did_split
+    values = {m.metric_name: m.value for m in GriTSMetric().compute(expected, predicted)}
+    assert values["grits_con"] < 1.0
