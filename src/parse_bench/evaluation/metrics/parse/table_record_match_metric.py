@@ -132,14 +132,15 @@ def _normalize_trm_table_text(text: str) -> str:
     return _normalize_trm_cell_text(text)
 
 
-def normalize_table(table: TableData) -> TableData:
+def normalize_table(table: TableData, *, preserve_text: bool = False) -> TableData:
     """Normalize all cell text in a table for comparison.
 
     Applies normalize_text() + _normalize_trm_cell_text() to every cell in
     table.data and to col_headers text, producing a new TableData with
     normalized values throughout. Columns whose data cells AND header
     entries are all empty strings after normalization are dropped, and
-    remaining column indices are renumbered to stay contiguous.
+    remaining column indices are renumbered to stay contiguous. With
+    ``preserve_text=True``, use the same retained columns but keep source text.
     """
     if table.data.size == 0:
         return table
@@ -154,7 +155,9 @@ def normalize_table(table: TableData) -> TableData:
         normalized_col_headers[col_idx] = [(row_idx, _normalize_trm_table_text(text)) for row_idx, text in entries]
     normalized_row_headers: dict[int, list[tuple[int, str]]] = {}
     for row_idx, entries in table.row_headers.items():
-        normalized_row_headers[row_idx] = [(col_idx, _normalize_trm_table_text(text)) for col_idx, text in entries]
+        normalized_row_headers[row_idx] = [
+            (col_idx, text if preserve_text else _normalize_trm_table_text(text)) for col_idx, text in entries
+        ]
 
     # Drop columns whose data cells AND header entries are all literally
     # empty strings after normalization. Such columns add noise to header
@@ -196,10 +199,14 @@ def normalize_table(table: TableData) -> TableData:
         header_cells = table.header_cells
 
     return TableData(
-        data=normalized,
+        data=table.data[:, keep_cols] if preserve_text else normalized,
         header_rows=table.header_rows,
         header_cols=header_cols,
-        col_headers=normalized_col_headers,
+        col_headers=(
+            {new: table.col_headers[old] for new, old in enumerate(keep_cols) if old in table.col_headers}
+            if preserve_text
+            else normalized_col_headers
+        ),
         row_headers=normalized_row_headers,
         header_cells=header_cells,
         thead_rows=table.thead_rows,
