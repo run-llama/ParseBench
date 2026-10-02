@@ -297,5 +297,13 @@ def split_ambiguous_merged_pred(
         if opt.sub_tables is None:
             new_actual.append(original)
         else:
-            new_actual.extend(ExtractedTable(raw_html="", table_data=sub) for sub in opt.sub_tables)
+            # Normalized candidates select boundaries only. Applying their cells
+            # would silently lowercase text and discard source markup.
+            new_actual.extend(
+                ExtractedTable(
+                    raw_html="",
+                    table_data=build_sub_table(original.table_data, i * opt.period, (i + 1) * opt.period),
+                )
+                for i in range(opt.n_segments)
+            )
     return new_actual, True

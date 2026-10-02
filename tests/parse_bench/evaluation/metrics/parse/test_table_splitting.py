@@ -274,3 +274,24 @@ def test_all_fixed_page_no_op() -> None:
     result, did_split = split_ambiguous_merged_pred(expected, actual)
     assert did_split is False
     assert result is actual
+
+
+def test_split_keeps_original_cell_case_and_markup() -> None:
+    """Candidate matching normalization must not lower-case the applied cells."""
+    from numpy.testing import assert_array_equal
+
+    expected_md = _doc_with_tables(
+        [
+            _wrap("<tr><th>Code</th><th>Rate</th></tr><tr><td><b>CA</b></td><td>1.000</td></tr>"),
+            _wrap("<tr><th>Code</th><th>Rate</th></tr><tr><td><i>TX</i></td><td>2.000</td></tr>"),
+        ]
+    )
+    actual_md = _wrap(
+        "<tr><th>Code</th><th>Rate</th><th>Code</th><th>Rate</th></tr>"
+        "<tr><td><b>CA</b></td><td>1.000</td><td><i>TX</i></td><td>2.000</td></tr>"
+    )
+    expected, actual, _ = extract_table_pairs(expected_md, actual_md)
+    result, did_split = split_ambiguous_merged_pred(expected, actual)
+    assert did_split
+    for source, split in zip(expected, result, strict=True):
+        assert_array_equal(split.table_data.data, source.table_data.data)
