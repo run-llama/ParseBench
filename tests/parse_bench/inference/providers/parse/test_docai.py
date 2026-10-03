@@ -226,3 +226,39 @@ def p_spec():
     from parse_bench.schemas.product import ProductType
 
     return PipelineSpec(pipeline_name="docai_default", provider_name="docai", product_type=ProductType.PARSE)
+
+
+_GROUNDING_CHART = {"pages": [{"elements": [{"label": "chart"}, *_GROUNDING["pages"][0]["elements"]]}]}
+_CHART = "![Chart p1](imgs/c.jpg)\n\n### Sales\n\n| Year | EU |\n| --- | --- |\n| 2023 | 4 |\n\n"
+
+
+def test_chart_table_is_not_overwritten_when_the_real_table_is_already_html():
+    out = tables_to_html(_CHART + "<table><tr><td>Item</td></tr></table>\n", _GROUNDING_CHART)
+    assert "<td>2023</td>" in out  # today: replaced by the Item/Qty table
+
+
+def test_real_pipe_table_still_swapped_next_to_a_chart():
+    out = tables_to_html(_CHART + _MARKDOWN, _GROUNDING_CHART)
+    assert "<td>2023</td>" in out and '<th colspan="2">Qty</th>' in out
+
+
+def test_table_under_a_logo_keeps_its_grounding_html_without_a_chart_element():
+    md = "![Logo](imgs/logo.jpg)\n\n" + _MARKDOWN
+    out = tables_to_html(md, _GROUNDING)
+    assert '<td colspan="2">Qty</td>' in out or '<th colspan="2">Qty</th>' in out
+
+
+def test_page_number_at_top_is_a_header():
+    g = {
+        "pages": [
+            {
+                "page_number": 1,
+                "elements": [
+                    {"label": "number", "bbox": {"x1": 0.9, "y1": 0.02, "x2": 0.95, "y2": 0.04}, "content": "7"},
+                    {"label": "number", "bbox": {"x1": 0.5, "y1": 0.95, "x2": 0.52, "y2": 0.98}, "content": "8"},
+                ],
+            }
+        ]
+    }
+    labels = [i.bbox.label for i in layout_pages_from_grounding(g)[0].items]
+    assert labels == ["Page-header", "Page-footer"]

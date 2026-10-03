@@ -2167,6 +2167,23 @@ class DocAILayoutAdapter(LandingAILayoutAdapter):
 
     def to_layout_output(self, inference_result: InferenceResult, *, page_filter: int | None = None) -> LayoutOutput:
         out = super().to_layout_output(inference_result, page_filter=page_filter)
+        if isinstance(inference_result.output, ParseOutput):
+            # Pictures keep the text read from them (chart tables, OCR'd figure text); the shared
+            # vendor helper drops Picture content. One segment per item, in the parent's order.
+            values = [
+                item.value
+                for lp in inference_result.output.layout_pages
+                if page_filter is None or lp.page_number == page_filter
+                for item in lp.items
+                for _ in item.layout_segments
+            ]
+            preds = [
+                p.model_copy(update={"content": LayoutTextContent(text=v)})
+                if p.content is None and v and str(p.label).lower() == "picture"
+                else p
+                for p, v in zip(out.predictions, values, strict=True)
+            ]
+            out = out.model_copy(update={"predictions": preds})
         return out.model_copy(update={"model": LayoutDetectionModel.DOCAI_LAYOUT})
 
 
