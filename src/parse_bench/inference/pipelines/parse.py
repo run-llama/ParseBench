@@ -2973,3 +2973,23 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             },
         )
     )
+
+    # =========================================================================
+    # X2Knowledge (hosted agentic parse API, one request per page)
+    # =========================================================================
+    register_fn(
+        PipelineSpec(
+            pipeline_name="x2knowledge_v1",
+            provider_name="x2knowledge",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "x2knowledge-parse-v1",
+                "timeout_s": 1860,
+                "page_workers": 4,
+                # Free during the preview: every page costs 0 (X2KNOWLEDGE_PRICE_PER_PAGE_USD overrides it).
+                "price_per_page_usd": 0.0,
+            },
+            # 1800 s service cap < 1860 s timeout_s < this: no runner timeout leaves a request running server-side.
+            per_file_timeout=3600.0,
+        )
+    )

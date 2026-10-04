@@ -398,3 +398,8 @@ class LiteParseLabelMapper(LayoutLabelMapper):
         if canonical is None:
             raise UnknownRawLayoutLabelError(f"Unknown canonical layout label '{label}'")
         return canonical
+
+
+@register_layout_label_mapper("x2knowledge", "model:x2knowledge_layout", priority=90)
+class X2KnowledgeLabelMapper(CanonicalPassthroughMapper):
+    """Pass through the Canonical17 labels the X2Knowledge API emits (the provider rejects any other label)."""

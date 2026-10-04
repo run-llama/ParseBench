@@ -65,6 +65,7 @@ _PROVIDER_MODULES = [
     "unstructured",
     "warp_ingest",
     "wevisdoc",
+    "x2knowledge",
     "oi_parser",
 ]
 
