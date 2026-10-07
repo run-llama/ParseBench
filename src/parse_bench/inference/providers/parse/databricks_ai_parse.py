@@ -64,6 +64,7 @@ from typing import Any
 
 import requests
 
+from parse_bench.evaluation.metrics.parse.chart_json_to_html import chart_description_to_html
 from parse_bench.inference.providers.base import (
     Provider,
     ProviderConfigError,
@@ -578,15 +579,18 @@ def _render_markdown(elements: list[dict[str, Any]]) -> str:
     for page_id in sorted(by_page.keys()):
         for el in sorted(by_page[page_id], key=lambda e: e.get("id", 0)):
             content = (el.get("content") or "").strip()
-            if not content:
-                continue
             el_type = (el.get("type") or "").lower()
-            if el_type == "title":
-                parts.append(f"# {content}")
-            elif el_type == "section_header":
-                parts.append(f"## {content}")
-            else:
-                parts.append(content)
+            if content:
+                if el_type == "title":
+                    parts.append(f"# {content}")
+                elif el_type == "section_header":
+                    parts.append(f"## {content}")
+                else:
+                    parts.append(content)
+            if el_type == "figure":
+                chart_tables = chart_description_to_html(el.get("description") or "")
+                if chart_tables:
+                    parts.append(chart_tables)
     return "\n\n".join(parts)
 
 

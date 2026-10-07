@@ -988,7 +988,7 @@ class LayoutDetectionEvaluator(BaseEvaluator):
                     else:
                         matched_pred_order_index = best_pred_idx
 
-                localization_pass = (
+                localization_pass = bool(
                     (
                         bool(furniture_group.pred_indices)
                         and furniture_group.x_span_coverage >= _PAGE_FURNITURE_X_SPAN_COVERAGE_THRESHOLD

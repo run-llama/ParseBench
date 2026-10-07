@@ -16,6 +16,7 @@ spatial matching, which provides both merge and split tolerance.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from math import isfinite
@@ -35,6 +36,8 @@ from parse_bench.evaluation.metrics.attribution.text_utils import (
     tokenize,
 )
 from parse_bench.schemas.layout_ontology import BasicLabel, CanonicalLabel
+
+_HTML_TABLE_MARKUP = re.compile(r"</?(?:table|thead|tbody|tr|th|td)\b", re.IGNORECASE)
 
 IMAGE_LABELS = frozenset(
     {
@@ -587,6 +590,11 @@ def parse_pred_blocks(
                     raw_text = item_text[start : end + 1]
                 else:
                     raw_text = item_text
+
+                # HTML tables in md (merged cells pipe tables can't express) reduce to
+                # their cell text, as GT table content and the other adapters do.
+                if _HTML_TABLE_MARKUP.search(raw_text):
+                    raw_text = extract_text_from_html(raw_text)
 
                 # For non-image text items, strip a leading inline image reference
                 # (e.g. "![icon](image.jpg) text") so attribution compares only the
