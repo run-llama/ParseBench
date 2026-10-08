@@ -48,6 +48,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+upstage = ["httpx>=0.28.0", "pillow>=10.0.0"]
 runners = [
     "anthropic>=0.77.1",
     "azure-ai-documentintelligence>=1.0.0",

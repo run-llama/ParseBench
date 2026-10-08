@@ -319,6 +319,7 @@ class LayoutDetectionModel(StrEnum):
     DATABRICKS_LAYOUT = "databricks_layout"
     INFINITY_PARSER2_LAYOUT = "infinity_parser2_layout"
     OI_PARSER_LAYOUT = "oi_parser_layout"
+    UPSTAGE_LAYOUT = "upstage_layout"
     OPENAI_COMPATIBLE_VLM_LAYOUT = "openai_compatible_vlm_layout"
     CHECKBOX_DETECTOR_YOLOV8 = "checkbox_detector_yolov8"
     COHERE_PARSE_LAYOUT = "cohere_parse_layout"
@@ -332,6 +333,10 @@ class LayoutDetectionModel(StrEnum):
 
 
 LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
+    LayoutDetectionModel.UPSTAGE_LAYOUT: {
+        "name": "Upstage Document Parse",
+        "hf_url": "https://www.upstage.ai/products/document-parse",
+    },
     LayoutDetectionModel.PPDOCLAYOUT_PLUS_L: {
         "name": "PP-DocLayout-plus-L",
         "hf_url": "https://huggingface.co/llamaindex/paddleOCRDocLayoutPlusL",

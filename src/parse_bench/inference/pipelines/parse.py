@@ -19,6 +19,24 @@ from parse_bench.schemas.product import ProductType
 def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-def]
     """Register all parse-related pipelines."""
 
+    register_fn(
+        PipelineSpec(
+            pipeline_name="upstage_dpe_v2",
+            provider_name="upstage",
+            product_type=ProductType.PARSE,
+            config={
+                # Upload original PDFs; API internal default rendering applies.
+                "model": "document-parse-260930",
+                "min_image_short_side": 2000,
+                "mode": "enhanced",
+                "ocr": "force",
+                "chart_recognition": True,
+                "cost_per_page_usd": 0.03,
+                "timeout": 600,
+            },
+        )
+    )
+
     # =========================================================================
     # LlamaParse Production Pipelines (V2 SDK)
     # =========================================================================
