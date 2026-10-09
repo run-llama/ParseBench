@@ -1854,7 +1854,9 @@ class DatabricksAiParseLayoutAdapter(LayoutAdapter):
                     x2 = (seg.x + seg.w) * page_w
                     y2 = (seg.y + seg.h) * page_h
 
-                    content = _build_vendor_content(label, item.value)
+                    content = (
+                        LayoutTableContent(html=item.html) if item.html else _build_vendor_content(label, item.value)
+                    )
 
                     predictions.append(
                         LayoutPrediction(

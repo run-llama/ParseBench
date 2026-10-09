@@ -104,6 +104,8 @@ def chart_json_to_html(chart: dict) -> str:
     if not isinstance(chart, dict):
         return ""
     figure_title = _title(chart.get("title"))
+    additional_info = _title(chart.get("additional_info"))
+    figure_context = [figure_title, additional_info]
     tables: list[str] = []
     panels = chart.get("panels")
     if isinstance(panels, dict) and panels:
@@ -112,8 +114,8 @@ def chart_json_to_html(chart: dict) -> str:
                 continue
             values = panel.get("values") or panel.get("series")
             if isinstance(values, dict):
-                # Each panel retains the figure title in its caption.
-                tables.append(_panel_to_table([figure_title, _title(name)], values))
+                # Each panel retains the figure context in its caption.
+                tables.append(_panel_to_table([*figure_context, _title(name)], values))
     else:
         values = chart.get("values")
         if isinstance(values, dict) and values:
@@ -123,9 +125,9 @@ def chart_json_to_html(chart: dict) -> str:
             )
             if nested_panels:
                 for name, panel in values.items():
-                    tables.append(_panel_to_table([figure_title, _title(name)], panel))
+                    tables.append(_panel_to_table([*figure_context, _title(name)], panel))
             else:
-                tables.append(_panel_to_table([figure_title], values))
+                tables.append(_panel_to_table(figure_context, values))
     return "\n\n".join(table for table in tables if table)
 
 
