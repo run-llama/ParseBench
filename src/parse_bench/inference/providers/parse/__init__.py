@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 _PROVIDER_MODULES = [
+    "aeddix_alpine_ocr_kdl",
     "amazon_nova",
     "anthropic",
     "anyformat",

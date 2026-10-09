@@ -2324,6 +2324,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                 )
             )
 
+    # OpenAI GPT-6.1 Sol - Parse with Layout File - Low Reasoning
+    register_fn(
+        PipelineSpec(
+            pipeline_name="openai_gpt_6_1_sol_reasoning_low_parse_with_layout_file",
+            provider_name="openai",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gpt-6.1-sol",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+                "reasoning_effort": "low",
+            },
+        )
+    )
+
     # OpenAI GPT-5.4 Nano - Parse with Layout
     register_fn(
         PipelineSpec(
@@ -2382,6 +2397,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                 "model": "claude-haiku-4-5-20251001",
                 "max_tokens": 32768,
                 "mode": "parse_with_layout_file",
+            },
+        )
+    )
+
+    # Anthropic Haiku 5.5 - Parse with Layout File - Adaptive Thinking
+    register_fn(
+        PipelineSpec(
+            pipeline_name="anthropic_haiku_5_5_parse_with_layout_file",
+            provider_name="anthropic",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "claude-haiku-5-5",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+                "thinking": {"type": "adaptive"},
             },
         )
     )
@@ -2668,6 +2698,26 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # =========================================================================
+    # aeddix-alpine-ocr (aeddix-labs/aeddix-alpine-ocr, fine-tune of
+    # opendatalab/MinerU2.5-Pro-2605-1.2B) through the kdl_frontier_nano
+    # pipeline; same serving requirements as KDL-Frontier-Parser-nano
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="aeddix_alpine_ocr_kdl",
+            provider_name="aeddix_alpine_ocr_kdl",
+            product_type=ProductType.PARSE,
+            config={
+                "endpoint_url": "",  # via AEDDIX_ALPINE_OCR_KDL_ENDPOINT_URL
+                "model": "",  # via AEDDIX_ALPINE_OCR_KDL_MODEL (default aeddix-alpine-ocr)
+                "dpi": 144,
+                "timeout": 900,
+            },
+        )
+    )
+
     register_fn(
         PipelineSpec(
             pipeline_name="mineru25_vllm",
@@ -2783,26 +2833,6 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             product_type=ProductType.PARSE,
             config={
                 "version": "2.0",
-            },
-        )
-    )
-
-    # Batched variant: Databricks' recommended operating mode — submit the
-    # whole dataset as ONE SQL statement so warehouse spin-up/idle is paid
-    # once instead of per micro-batch. Model DBUs are unchanged (per-page
-    # billing). Run with max_concurrent >= dataset size so every request is
-    # queued before the debounce window flushes.
-    register_fn(
-        PipelineSpec(
-            pipeline_name="databricks_ai_parse_batch",
-            provider_name="databricks_ai_parse",
-            product_type=ProductType.PARSE,
-            config={
-                "version": "2.0",
-                "batch_size": 1000,
-                "batch_wait_seconds": 120,
-                "timeout": 7200,
-                "per_request_timeout": 9000,
             },
         )
     )

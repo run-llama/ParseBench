@@ -10,6 +10,7 @@ Google Gemini 3 Flash (Thinking Minimal),VLM - Proprietary,71.04,89.85,64.83,86.
 Google Gemini 3 Flash (Thinking High),VLM - Proprietary,75.05,91.50,64.79,90.87,68.31,59.77,2.41,2.38,2.29,2.25,2.70,
 Google Gemini 3 Flash (Thinking Medium),VLM - Proprietary,75.00,91.01,61.56,88.67,67.95,65.79,1.98,2.23,2.01,1.74,1.97,
 GLM-5.3 Flash,VLM - Proprietary,70.75,89.18,54.96,88.34,79.49,41.78,0.44,0.39,0.49,0.42,0.47,
+OpenAI GPT-6.1 Sol (Reasoning Low),VLM - Proprietary,70.48,92.44,37.16,89.25,74.78,58.76,1.95,1.43,2.58,1.63,2.16,
 Google Gemini 3.5 Flash (Thinking Medium),VLM - Proprietary,69.92,91.12,44.01,90.19,59.14,65.14,4.28,3.50,5.12,3.57,4.94,
 Google Gemini 3.5 Flash (Thinking Minimal),VLM - Proprietary,63.09,86.24,18.74,88.22,68.09,54.18,1.82,1.13,2.53,1.47,2.15,
 Google Gemini 3.5 Flash (Thinking High),VLM - Proprietary,74.02,90.44,45.27,88.92,77.85,67.6,4.95,4.02,5.91,4.10,5.78,
@@ -36,6 +37,7 @@ Google Gemini 3.1 Pro,VLM - Proprietary,69.14,91.00,41.13,90.16,52.43,70.99,8.49
 Google Gemini 3.1 Pro (Thinking Low),VLM - Proprietary,60.82,90.29,11.43,87.11,45.56,69.7,2.50,1.56,3.22,2.15,3.07,
 Google Gemini 3.1 Flash Lite,VLM - Proprietary,58.32,85.48,9.92,89.46,58.38,48.38,0.29,0.19,0.37,0.27,0.31,
 Google Gemini 3.1 Flash Lite (Thinking Medium),VLM - Proprietary,58.13,83.43,14.35,87.67,56.17,49.05,0.32,0.21,0.40,0.30,0.37,
+Anthropic Haiku 5.5,VLM - Proprietary,57.40,86.85,10.13,90.24,65.64,34.14,0.14,0.11,0.19,0.13,0.15,
 Google Gemini 3.1 Flash Lite (Thinking High),VLM - Proprietary,57.29,76.76,30.89,83.28,56.61,38.93,1.04,0.86,1.18,0.97,1.12,
 Google Gemini 3.5 Flash Lite,VLM - Proprietary,57.15,73.48,6.26,82.22,57.74,66.03,0.56,0.34,0.74,0.40,0.74,
 Google Gemini 3.5 Flash Lite (Thinking High),VLM - Proprietary,60.64,83.31,19.27,86.85,54.03,59.75,1.18,0.91,1.47,0.96,1.37,
@@ -86,9 +88,8 @@ oi-parser,Commercial - Startup APIs,78.30,92.62,78.28,86.17,66.88,67.53,,,,,,
 DocAI,Commercial - Startup APIs,60.74,51.39,60.45,80.42,42.12,69.32,1.00,,,,,
 Mistral OCR 4 (Annotation),Commercial - IDP,68.23,73.94,40.11,89.55,66.37,71.17,0.5,,,,,
 Mistral OCR 4,Commercial - IDP,60.68,73.94,2.35,89.55,66.37,71.17,0.4,,,,,
+Databricks AI Parse,Commercial - IDP,74.71,83.67,70.17,88.25,55.25,76.23,0.35,0.38,0.30,0.30,0.41,
 Nutrient DWS (Agentic),Commercial - IDP,79.79,80.67,83.72,85.22,69.47,79.89,1.80,,,,,
-Databricks AI Parse,Commercial - IDP,74.71,83.67,70.17,88.25,55.25,76.23,6.06,,,,,
-Databricks AI Parse (batch),Commercial - IDP,74.72,83.93,70.17,88.3,55.04,76.14,0.24,,,,,
 Infinity-Parser2-Pro,VLM - Open Weight,74.28,86.4,61.3,89.7,59.1,74.9,,,,,,infly/Infinity-Parser2-Pro
 Infinity-Parser2-Flash,VLM - Open Weight,73.25,82.88,55.56,89.52,57.7,80.61,,,,,,infly/Infinity-Parser2-Flash
 Qwen3-VL-8B-Instruct,VLM - Open Weight,61.97,74.61,28.18,87.63,64.23,55.18,,,,,,Qwen/Qwen3-VL-8B-Instruct
@@ -130,6 +131,7 @@ GLM-OCR,VLM - Open Weight,29.6,66.1,1.7,78,2.3,0,,,,,,zai-org/GLM-OCR
 KDL-Frontier-Parser-nano,VLM - Open Weight,76.36,85.56,63.41,87.19,66.81,78.84,,,,,,KDLAI/KDL-Frontier-Parser-nano
 florin-parser-nano,VLM - Open Weight,76.69,86.10,65.19,87.37,70.64,74.14,,,,,,florin-inc/florin-parser-nano
 rakedoc-nano,VLM - Open Weight,77.23,86.44,64.89,88.84,71.68,74.28,,,,,,cloudraker/rakedoc-nano
+aeddix-alpine-ocr (KDL pipeline),VLM - Open Weight,76.77,85.89,68.78,87.90,66.05,75.21,,,,,,aeddix-labs/aeddix-alpine-ocr
 DeepSeek V4.1 Flash (Thinking High),VLM - Open Weight,65.72,82.82,51.11,87.33,73.48,33.87,,,,,,deepseek-ai/DeepSeek-V4.1-Flash
 DeepSeek V4.1 Flash (No Thinking),VLM - Open Weight,56.57,79.65,20.46,88.09,66.05,28.61,,,,,,deepseek-ai/DeepSeek-V4.1-Flash
 MarkItDown,Open Source - Local,18.63,15.77,2.02,64.54,0.91,9.90,,,,,,

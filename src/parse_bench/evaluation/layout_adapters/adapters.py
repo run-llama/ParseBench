@@ -71,7 +71,7 @@ def _raw_output_page_field_is_list(raw_output: Any, field: str) -> bool:
     representation, so once create_layout_adapter_for_result's shape-matcher
     fallback is running (registry.py), the type alone cannot tell them apart.
     The raw payload still can: kdl_frontier_nano (and its florin_parser_nano /
-    rakedoc_nano forks) emit `{"pages": [{"elements": [...]}]}`, distinct from
+    rakedoc_nano / aeddix_alpine_ocr_kdl forks) emit `{"pages": [{"elements": [...]}]}`, distinct from
     LlamaParse's `{"pages": [{"items": [...]}]}`.
     """
     if not isinstance(raw_output, dict):
@@ -3233,7 +3233,9 @@ _NANO_LAYOUT_LABEL_TO_CANONICAL = {
 }
 
 
-@register_layout_adapter("kdl_frontier_nano", "florin_parser_nano", "rakedoc_nano", priority=90)
+@register_layout_adapter(
+    "kdl_frontier_nano", "florin_parser_nano", "rakedoc_nano", "aeddix_alpine_ocr_kdl", priority=90
+)
 class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
     """Extract LayoutOutput from the kdl_frontier_nano provider's
     ParseOutput.layout_pages.
