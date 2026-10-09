@@ -24,8 +24,8 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
 | 1 | LlamaParse Agentic Plus | LlamaParse | 90.20 | 93.37 | 94.18 | 92.25 | 87.12 | 84.09 | 5.62¢ |
 | 2 | LlamaParse Agentic | LlamaParse | 87.01 | 88.88 | 88.68 | 91.78 | 81.44 | 84.25 | 1.25¢ |
-| 3 | Pulse Ultra 2 | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
-| 4 | Nutrient DWS (Agentic) | Commercial - IDP | 81.49 | 85.76 | 83.02 | 86.91 | 71.73 | 80.02 | 1.80¢ |
+| 3 | Nutrient DWS (Agentic) | Commercial - IDP | 81.67 | 85.76 | 82.65 | 87.51 | 72.62 | 79.81 | 1.80¢ |
+| 4 | Pulse Ultra 2 | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
 | 5 | LlamaParse Cost Effective | LlamaParse | 80.61 | 84.19 | 77.91 | 89.87 | 67.29 | 83.77 | 0.38¢ |
 | 6 | anyformat (Standard) | Commercial - Startup APIs | 80.30 | 86.46 | 85.56 | 87.35 | 79.04 | 63.07 | 4.30¢ |
 | 7 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 79.85 | 94.25 | 70.89 | 91.72 | 77.04 | 65.33 | 6.13¢ |
