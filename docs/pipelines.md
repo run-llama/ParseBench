@@ -253,6 +253,31 @@ parse workflow), `effort`, `prompt_hint`, `figure_enhancement`, `credit_rate_usd
 | `nutrient_dws_understand` | `understand` mode, adds semantic enrichment | `NUTRIENT_DWS_API_KEY` |
 | **`nutrient_dws_agentic`** | `agentic` mode, visual reasoning (In paper: *Nutrient DWS (Agentic)*) | `NUTRIENT_DWS_API_KEY` |
 
+### X2Knowledge
+
+Hosted agentic parse API behind an OpenAI-compatible `POST /v1/chat/completions` endpoint, with one
+configuration for all documents. Each request carries exactly one page (a single-page PDF, PNG or JPEG
+as a base64 data URL, with no options or category hints) and returns that page's Markdown plus one
+layout element per detection (Canonical17 label, normalized box, text, detector score), which feeds the
+layout vertical through the `x2knowledge` layout adapter. Multi-page PDFs are split locally with `pypdf`
+and their pages sent concurrently (`page_workers`, default 4); if any page fails, the file fails.
+The provider makes one HTTP attempt per page and never retries: 429 raises a rate-limit error and
+5xx or timeouts raise transient errors, so retries are left to the runner. Connections use TCP keepalive (a probe after 60 s without traffic, then
+every 15 s, 5 probes), so a connection that dies on the network fails within about 2.5 minutes rather than at the
+client timeout; proxies set in `HTTPS_PROXY` / `ALL_PROXY` (minus `NO_PROXY`) still apply. Behind the endpoint the
+service falls back between OpenAI-compatible upstream model endpoints over multiple routes, and it
+answers every request within an 1800 s hard cap; the client waits up to 1860 s (`timeout_s`) and the
+pipeline allows 60 minutes per file (`per_file_timeout` 3600 s). Cost is pages × `price_per_page_usd`,
+which is 0 while the API is free during its preview (`X2KNOWLEDGE_PRICE_PER_PAGE_USD` overrides it). Sign up at
+https://103.118.252.103/register to get an API key; the API root is `https://103.118.252.103/v1`
+(override it with `X2KNOWLEDGE_BASE_URL`). Needs `httpx` and `pypdf` (`uv sync --extra runners`, or
+`--extra local --extra anyformat`).
+Recommended `--max_concurrent 30`.
+
+| Pipeline | Description | Env Vars |
+|---|---|---|
+| `x2knowledge_v1` | X2Knowledge v1 via the hosted API | `X2KNOWLEDGE_API_KEY` (`X2KNOWLEDGE_BASE_URL` optional) |
+
 ## Self-hosted Model Pipelines
 
 These pipelines require you to deploy the model on your own infrastructure (e.g., via vLLM, Modal, etc.) and set the endpoint URL in `.env`.

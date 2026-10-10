@@ -34,7 +34,7 @@ from parse_bench.schemas.layout_detection_output import (
     LayoutTableContent,
     LayoutTextContent,
 )
-from parse_bench.schemas.parse_output import ParseLayoutPageIR, ParseOutput
+from parse_bench.schemas.parse_output import LayoutItemIR, ParseLayoutPageIR, ParseOutput
 from parse_bench.schemas.pipeline_io import InferenceResult
 from parse_bench.test_cases.schema import TestCase
 
@@ -3857,4 +3857,88 @@ class NutrientDwsLayoutAdapter(LayoutAdapter):
             image_height=out_h,
             predictions=predictions,
             markdown="\n\n".join(markdown_parts),
+        )
+
+
+@register_layout_adapter("x2knowledge", priority=101)
+class X2KnowledgeLayoutAdapter(LayoutAdapter):
+    """Extract LayoutOutput from the X2Knowledge API's ``ParseOutput.layout_pages``.
+
+    The API returns one element per detection with a Canonical17 label and a box normalized to
+    its page, so every layout item becomes exactly one prediction in page pixels; there is no
+    second, merged-block granularity to drop. The element text is the prediction content for
+    every label and tables use their HTML when the API returns it, the rule the Nutrient DWS
+    adapter applies. ``matches()`` only accepts X2Knowledge payloads, and priority 101 lets it win
+    over the generic LlamaParse matcher (100) when the registry cannot resolve the pipeline name.
+    """
+
+    # Picture regions contribute the text read inside them, as in the Nutrient DWS adapter.
+    include_picture_text = True
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        raw = inference_result.raw_output
+        return (
+            isinstance(inference_result.output, ParseOutput)
+            and isinstance(raw, dict)
+            and raw.get("object") == "x2knowledge.document"
+        )
+
+    @classmethod
+    def _content(cls, item: LayoutItemIR) -> LayoutTextContent | LayoutTableContent | None:
+        if item.type == "Table" and item.html:
+            return LayoutTableContent(html=item.html)
+        if item.type == "Picture":
+            return LayoutTextContent(text=item.value) if cls.include_picture_text and item.value else None
+        return LayoutTextContent(text=item.value) if item.value else None
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        out = inference_result.output
+        if isinstance(out, LayoutOutput):
+            return filter_layout_output(out, page_filter)
+        if not isinstance(out, ParseOutput):
+            raise ValueError("X2KnowledgeLayoutAdapter requires ParseOutput or LayoutOutput")
+
+        selected = [lp for lp in out.layout_pages if page_filter is None or lp.page_number == page_filter]
+        predictions: list[LayoutPrediction] = []
+        markdown_parts: list[str] = []
+        for lp in selected:
+            page_w = float(lp.width or 1.0)
+            page_h = float(lp.height or 1.0)
+            if lp.md:
+                markdown_parts.append(lp.md)
+            for item_idx, item in enumerate(lp.items):
+                # Exactly one prediction per API element: the element's own box.
+                seg = item.layout_segments[0] if item.layout_segments else item.bbox
+                if seg is None:
+                    continue
+                predictions.append(
+                    LayoutPrediction(
+                        bbox=[seg.x * page_w, seg.y * page_h, (seg.x + seg.w) * page_w, (seg.y + seg.h) * page_h],
+                        score=float(seg.confidence) if seg.confidence is not None else 1.0,
+                        label=seg.label or item.type,
+                        page=lp.page_number,
+                        content=self._content(item),
+                        provider_metadata={"order_index": len(predictions), "item_index": item_idx},
+                    )
+                )
+
+        # An empty selection still yields a LayoutOutput (no predictions) instead of raising.
+        reference = selected[0] if selected else None
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.X2KNOWLEDGE_LAYOUT,
+            image_width=max(int(reference.width or 1), 1) if reference else 1,
+            image_height=max(int(reference.height or 1), 1) if reference else 1,
+            predictions=predictions,
+            markdown="\n\n".join(markdown_parts),
+            # Page geometry without items, so each page's boxes are normalized by its own size.
+            layout_pages=[lp.model_copy(update={"items": []}) for lp in selected],
         )
