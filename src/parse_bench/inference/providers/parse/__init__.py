@@ -11,6 +11,7 @@ _PROVIDER_MODULES = [
     "anthropic",
     "anyformat",
     "azure_document_intelligence",
+    "byteverity",
     "chandra2",
     "chunkr",
     "cohere_parse",

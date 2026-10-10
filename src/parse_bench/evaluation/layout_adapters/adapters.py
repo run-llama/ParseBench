@@ -3858,3 +3858,28 @@ class NutrientDwsLayoutAdapter(LayoutAdapter):
             predictions=predictions,
             markdown="\n\n".join(markdown_parts),
         )
+
+
+@register_layout_adapter("byteverity", priority=90)
+class ByteVerityLayoutAdapter(LayoutAdapter):
+    """Adapter for ByteVerity ParseOutput.layout_pages (div-layout items on the 0-1000 grid)."""
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        return (
+            isinstance(inference_result.output, ParseOutput)
+            and bool(inference_result.output.layout_pages)
+            and inference_result.pipeline_name.startswith("byteverity")
+        )
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        return _parse_with_layout_to_layout_output(
+            inference_result,
+            model=LayoutDetectionModel.ANTHROPIC_LAYOUT,
+            page_filter=page_filter,
+        )

@@ -20,6 +20,30 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     """Register all parse-related pipelines."""
 
     # =========================================================================
+    # ByteVerity Parse — VLM proposer + PDF facts + open-source layout detector + 17 sealed decision oracles
+    # (complete decision tables). Proposer: GPT-6 Luna via the OpenAI API (OPENAI_API_KEY).
+    # Every model call's tokens and cost are logged in raw_output (usage_calls / cost_usd).
+    # =========================================================================
+    _bv_base = {"effort": "low", "stage": "full", "timeout": 240, "zoom_effort": "high", "transport": "openai"}
+    for _bv_name, _bv_cfg in {
+        "byteverity_parse": {**_bv_base, "model": "gpt-6-luna", "escalate_model": "gpt-6-luna"},
+        "byteverity_parse_hybrid": {
+            **_bv_base,
+            "model": "gpt-6-luna",
+            "escalate_model": "gpt-6-sol",
+            "chart_repair": True,
+        },
+    }.items():
+        register_fn(
+            PipelineSpec(
+                pipeline_name=_bv_name,
+                provider_name="byteverity",
+                product_type=ProductType.PARSE,
+                config=_bv_cfg,
+            )
+        )
+
+    # =========================================================================
     # LlamaParse Production Pipelines (V2 SDK)
     # =========================================================================
 
