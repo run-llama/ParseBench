@@ -514,6 +514,9 @@ class MarkColorRule(ParseTestRule):
     2. The ``<mark>`` tag contains the expected color string in any of its attributes
        (e.g. ``style="background-color: yellow"``, ``background="yellow"``,
        ``backgroundColor="yellow"``).
+       When the expected color is a hue family name (``yellow``, ``green``, ...),
+       a hex, ``rgb()`` or named value in that family also passes
+       (``background-color:#ffff00``).
     """
 
     def __init__(self, rule_data: ParseMarkColorRule | dict):
@@ -533,6 +536,14 @@ class MarkColorRule(ParseTestRule):
             raise ValueError("Color field cannot be empty")
         self.color = raw_color.strip().lower()
 
+    def _attrs_carry_color(self, attrs_str: str) -> bool:
+        """True when the attributes name the expected color, or carry a hex,
+        ``rgb()`` or named value in its hue family (adjacent families accepted,
+        as in ``TextColorRule``). Non-family expected values match by substring."""
+        if self.color in attrs_str.lower():
+            return True
+        return any(_families_match(self.color, f) for f in _extract_color_families(attrs_str))
+
     def run(self, md_content: str, normalized_content: str | None = None) -> tuple[bool, str]:
         """Check if text is inside a <mark> tag that contains the expected color."""
         escaped_query = re.escape(self.text)
@@ -549,8 +560,7 @@ class MarkColorRule(ParseTestRule):
             if not text_pattern.search(inner_text):
                 continue
 
-            # Check if the color string appears in the tag attributes
-            if self.color in attrs_str.lower():
+            if self._attrs_carry_color(attrs_str):
                 return True, ""
 
         # Fallback: strip other formatting and retry
@@ -562,7 +572,7 @@ class MarkColorRule(ParseTestRule):
             if not text_pattern.search(inner_text):
                 continue
 
-            if self.color in attrs_str.lower():
+            if self._attrs_carry_color(attrs_str):
                 return True, ""
 
         return (
