@@ -2693,6 +2693,10 @@ runners = [
 unstructured = [
     { name = "unstructured-client" },
 ]
+upstage = [
+    { name = "httpx" },
+    { name = "pillow" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -2727,6 +2731,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'docling'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'llamaparse'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'runners'", specifier = ">=0.28.0" },
+    { name = "httpx", marker = "extra == 'upstage'", specifier = ">=0.28.0" },
     { name = "huggingface-hub", specifier = ">=0.20.0" },
     { name = "infinity-parser2", marker = "extra == 'runners'", specifier = ">=0.3.0" },
     { name = "landingai-ade", marker = "extra == 'landingai'", specifier = ">=1.4.0" },
@@ -2755,6 +2760,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'local'", specifier = ">=10.0.0" },
     { name = "pillow", marker = "extra == 'openai'", specifier = ">=10.0.0" },
     { name = "pillow", marker = "extra == 'runners'", specifier = ">=10.0.0" },
+    { name = "pillow", marker = "extra == 'upstage'", specifier = ">=10.0.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pymupdf", marker = "extra == 'anthropic'", specifier = ">=1.24.0" },
     { name = "pymupdf", marker = "extra == 'google'", specifier = ">=1.24.0" },
@@ -2782,7 +2788,7 @@ requires-dist = [
     { name = "unstructured-client", marker = "extra == 'unstructured'", specifier = ">=0.26.0" },
     { name = "warp-ingest", extras = ["ocr"], marker = "extra == 'runners'", specifier = ">=2.0.1" },
 ]
-provides-extras = ["anthropic", "anyformat", "aws", "azure", "chunkr", "datalab", "dev", "docling", "extend", "fast", "google", "landingai", "liteparse", "llamaparse", "local", "openai", "pymupdf4llm", "reducto", "runners", "unstructured"]
+provides-extras = ["anthropic", "anyformat", "aws", "azure", "chunkr", "datalab", "dev", "docling", "extend", "fast", "google", "landingai", "liteparse", "llamaparse", "local", "openai", "pymupdf4llm", "reducto", "runners", "unstructured", "upstage"]
 
 [[package]]
 name = "partial-json-parser"

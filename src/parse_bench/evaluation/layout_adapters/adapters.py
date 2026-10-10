@@ -3858,3 +3858,67 @@ class NutrientDwsLayoutAdapter(LayoutAdapter):
             predictions=predictions,
             markdown="\n\n".join(markdown_parts),
         )
+
+
+@register_layout_adapter("upstage", priority=90)
+class UpstageLayoutAdapter(LayoutAdapter):
+    """Convert Upstage's normalized element coordinates to layout predictions."""
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        return isinstance(inference_result.output, ParseOutput) and inference_result.pipeline_name.startswith(
+            "upstage_"
+        )
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            predictions = [p for p in inference_result.output.predictions if p.page == page_filter]
+            return inference_result.output.model_copy(update={"predictions": predictions})
+
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("UpstageLayoutAdapter requires ParseOutput or LayoutOutput")
+
+        predictions: list[LayoutPrediction] = []
+        for page in inference_result.output.layout_pages:
+            if page_filter is not None and page.page_number != page_filter:
+                continue
+            for item in page.items:
+                for segment in item.layout_segments:
+                    content = (
+                        LayoutTableContent(html=item.html)
+                        if item.type == "table"
+                        else LayoutTextContent(text=item.value)
+                    )
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[
+                                segment.x * page.width,
+                                segment.y * page.height,
+                                (segment.x + segment.w) * page.width,
+                                (segment.y + segment.h) * page.height,
+                            ],
+                            score=float(segment.confidence or 1.0),
+                            label=segment.label or item.type,
+                            page=page.page_number,
+                            content=content,
+                            provider_metadata={"order_index": len(predictions)},
+                        )
+                    )
+
+        first_page = inference_result.output.layout_pages[0] if inference_result.output.layout_pages else None
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.UPSTAGE_LAYOUT,
+            image_width=max(int(first_page.width if first_page else 1), 1),
+            image_height=max(int(first_page.height if first_page else 1), 1),
+            predictions=predictions,
+        )
