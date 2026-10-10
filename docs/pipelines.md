@@ -378,6 +378,23 @@ Fine-tune of MinerU2.5-Pro-2605-1.2B ([aeddix-labs/aeddix-alpine-ocr](https://hu
 |---|---|---|
 | `aeddix_alpine_ocr_kdl` | vLLM OpenAI-compatible endpoint (layout + per-region recognition) | `AEDDIX_ALPINE_OCR_KDL_ENDPOINT_URL` |
 
+### LM-Kit
+
+The document parser of [LM-Kit](https://lm-kit.com), served over HTTP by LM-Kit One, the LM-Kit server you host yourself. Start the public image on a machine with an NVIDIA GPU, then run a pipeline; the server downloads its model on the first request (2.3 GB, once) and needs no key or license:
+
+```bash
+docker run -d --name lmkit --gpus all --network host -e Security__NetworkAccess=LocalOnly lmkitone/lm-kit-one:latest
+uv run parse-bench run lmkit_high --max_concurrent 4
+```
+
+Each document is one `POST /lmkit/v1/document-parsing` (JSON with `include_markdown`); layout is one box per parsed element. Recommended `--max_concurrent 4`, the number of documents the server decodes together.
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `lmkit_high` | LM-Kit document parser, High effort | `LMKIT_ONE_URL` (optional, default `http://localhost:5189`) |
+| `lmkit_medium` | LM-Kit document parser, Medium effort | `LMKIT_ONE_URL` (optional) |
+| `lmkit_low` | LM-Kit document parser, Low effort | `LMKIT_ONE_URL` (optional) |
+
 ---
 
 ## Local Pipelines (No API key needed)

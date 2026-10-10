@@ -329,6 +329,7 @@ class LayoutDetectionModel(StrEnum):
     FIRECRAWL_LAYOUT = "firecrawl_layout"
     ANYFORMAT_LAYOUT = "anyformat_layout"
     DOCAI_LAYOUT = "docai_layout"
+    LMKIT_LAYOUT = "lmkit_layout"
 
 
 LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
@@ -391,6 +392,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.DOCAI_LAYOUT: {
         "name": "DocAI (ProvidusAI)",
         "hf_url": "https://providus.ai/",
+    },
+    LayoutDetectionModel.LMKIT_LAYOUT: {
+        "name": "LM-Kit",
+        "hf_url": "https://lm-kit.com/",
     },
     LayoutDetectionModel.CHECKBOX_DETECTOR_YOLOV8: {
         "name": "YOLOv8 Checkbox Detector (mark-scope)",
