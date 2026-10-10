@@ -94,10 +94,113 @@ class TestInlineStyleMarkdown(unittest.TestCase):
         self.assertEqual(self.provider._graph_body_md(element, {}), "no word data")
 
 
-def _word(text: str, x: float, width: float = 20, **styles: bool) -> dict:
+class TestWrapHyphenMarkdown(unittest.TestCase):
+    def setUp(self) -> None:
+        self.provider = NutrientDwsProvider("nutrient_dws", {"mode": "agentic", "api_key": "test"})
+
+    def test_word_broken_at_a_line_end_is_rejoined(self) -> None:
+        element = {"type": "paragraph", "text": "die aufge-\nführten Daten\nsind da"}
+
+        self.assertEqual(self.provider._graph_body_md(element, {}), "die aufgeführten\nDaten\nsind da")
+
+    def test_continuation_that_is_the_whole_line_leaves_no_empty_line(self) -> None:
+        element = {"type": "paragraph", "text": "a regula-\ntory\nbody"}
+
+        self.assertEqual(self.provider._graph_body_md(element, {}), "a regulatory\nbody")
+
+    def test_hyphen_before_a_capitalised_line_is_kept(self) -> None:
+        element = {"type": "paragraph", "text": "Inter-\nProvincial Committee"}
+
+        self.assertEqual(self.provider._graph_body_md(element, {}), "Inter-\nProvincial Committee")
+
+    def test_dash_after_a_space_is_kept(self) -> None:
+        element = {"type": "paragraph", "text": "Steve Morrow -\nOffice"}
+
+        self.assertEqual(self.provider._graph_body_md(element, {}), "Steve Morrow -\nOffice")
+
+    def test_url_wrapped_at_its_own_hyphen_is_kept(self) -> None:
+        element = {
+            "type": "paragraph",
+            "text": (
+                "see https://example.org/defesa-civil-\ncontabiliza-estragos and https://a.org/inline-\nfiles/x.pdf"
+            ),
+        }
+
+        self.assertEqual(
+            self.provider._graph_body_md(element, {}),
+            "see https://example.org/defesa-civil-\ncontabiliza-estragos and https://a.org/inline-\nfiles/x.pdf",
+        )
+
+    def test_wrapped_heading_joins_before_it_collapses(self) -> None:
+        element = {
+            "type": "paragraph",
+            "role": "SectionHeader",
+            "headingLevel": 3,
+            "text": "National Association of Pharmacy Regula-\ntory Authorities (NAPRA)",
+        }
+
+        self.assertEqual(
+            self.provider._graph_body_md(element, {}),
+            "### National Association of Pharmacy Regulatory Authorities (NAPRA)",
+        )
+
+    def test_styled_words_join_across_lines(self) -> None:
+        element = {
+            "type": "paragraph",
+            "text": "of Pharmacy Regula-\ntory Authorities",
+            "words": [
+                _word("of", 0, bold=True),
+                _word("Pharmacy", 25, bold=True),
+                _word("Regula-", 90, bold=True),
+                _word("tory", 0, y=30, bold=True),
+                _word("Authorities", 40, y=30, bold=True),
+            ],
+        }
+
+        self.assertEqual(
+            self.provider._graph_body_md(element, {}),
+            "**of Pharmacy Regulatory**\n**Authorities**",
+        )
+
+    def test_code_keeps_its_hyphens(self) -> None:
+        element = {"type": "paragraph", "role": "Code", "text": "run --no-\nverify"}
+
+        self.assertEqual(self.provider._graph_body_md(element, {}), "```\nrun --no-\nverify\n```")
+
+    def test_code_fence_carries_the_element_language(self) -> None:
+        element = {"type": "paragraph", "role": "Code", "text": "if x:\n    print(x)", "codeLanguage": "python"}
+
+        self.assertEqual(self.provider._graph_body_md(element, {}), "```python\nif x:\n    print(x)\n```")
+
+    def test_cjk_line_break_joins_without_a_space(self) -> None:
+        element = {"type": "paragraph", "role": "Text", "text": "健康保险的基\n本信息"}
+
+        self.assertEqual(self.provider._graph_body_md(element, {}), "健康保险的基本信息")
+
+    def test_hangul_line_break_stays_a_word_break(self) -> None:
+        element = {"type": "paragraph", "role": "Text", "text": "한국어\n문장"}
+
+        self.assertEqual(self.provider._graph_body_md(element, {}), "한국어\n문장")
+
+    def test_styled_cjk_words_join_across_lines(self) -> None:
+        element = {
+            "type": "paragraph",
+            "role": "SectionHeader",
+            "headingLevel": 2,
+            "text": "健康保险的基\n本信息",
+            "words": [
+                _word("健康保险的基", 0, width=60, bold=True),
+                _word("本信息", 0, width=30, y=30, bold=True),
+            ],
+        }
+
+        self.assertEqual(self.provider._graph_body_md(element, {}), "## **健康保险的基本信息**")
+
+
+def _word(text: str, x: float, width: float = 20, y: float = 10, **styles: bool) -> dict:
     return {
         "text": text,
-        "bounds": {"x": x, "y": 10, "width": width, "height": 10},
+        "bounds": {"x": x, "y": y, "width": width, "height": 10},
         **styles,
     }
 
