@@ -213,7 +213,7 @@ def _normalize_quotes(text: str) -> str:
 
 # HTML formatting tags to strip (same set as header_accuracy_metric._FORMATTING_RE)
 _HTML_FORMATTING_RE = re.compile(
-    r"</?(?:b|i|u|s|em|strong|del|strike|mark|ins)>",
+    r"</?(?:b|i|u|s|em|strong|del|strike|mark|ins)\b[^>]*>",
     re.IGNORECASE,
 )
 
@@ -700,8 +700,8 @@ def normalize_text(md_content: str | None) -> str:
     # Remove markdown bold formatting (** or __ for bold)
     md_content = re.sub(r"\*\*(.*?)\*\*", r"\1", md_content)
     md_content = re.sub(r"__(.*?)__", r"\1", md_content)
-    md_content = re.sub(r"</?b>", "", md_content)  # Remove <b> tags if they exist
-    md_content = re.sub(r"</?i>", "", md_content)  # Remove <i> tags if they exist
+    md_content = re.sub(r"</?b\b[^>]*>", "", md_content)  # Remove <b> tags if they exist
+    md_content = re.sub(r"</?i\b[^>]*>", "", md_content)  # Remove <i> tags if they exist
 
     # Remove markdown italics formatting (* or _ for italics)
     md_content = re.sub(r"\*(.*?)\*", r"\1", md_content)
@@ -741,13 +741,7 @@ def normalize_text(md_content: str | None) -> str:
     replacements = {
         "＿": "_",
         "…": "...",
-        "<ins>": "",
-        "</ins>": "",
-        "<u>": "",
-        "</u>": "",
         "~~": "",
-        "<mark>": "",
-        "</mark>": "",
         "<br/>": " ",
         "<br />": " ",
         "\n": " ",
@@ -762,8 +756,9 @@ def normalize_text(md_content: str | None) -> str:
     # Normalize Unicode symbol variants (bullets, circled-x, etc.)
     md_content = _normalize_unicode_symbols(md_content)
 
-    # Strip <s>, <del>, <strike> tags (keep content) — equivalent to ~~ stripping above
-    md_content = re.sub(r"</?(?:s|del|strike)>", "", md_content, flags=re.IGNORECASE)
+    # Strip <s>/<del>/<strike>/<u>/<ins>/<mark> tags with any attributes (keep content);
+    # parsers emit e.g. <mark style="background-color:#ffff00">.
+    md_content = re.sub(r"</?(?:s|del|strike|u|ins|mark)\b[^>]*>", "", md_content, flags=re.IGNORECASE)
 
     # Strip <span> tags with any attributes (keep content)
     # e.g. <span color="red">text</span> → text
