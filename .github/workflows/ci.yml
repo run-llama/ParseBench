@@ -48,6 +48,7 @@ jobs:
           uv pip install --python /tmp/smoke/bin/python dist/*.whl
           /tmp/smoke/bin/parse-bench version
           /tmp/smoke/bin/parse-bench pipelines > /dev/null
+          /tmp/smoke/bin/python -c 'from importlib.resources import files; assert (files("parse_bench") / "apple_vision_documents.swift").is_file()'
       - uses: actions/upload-artifact@v4
         with:
           name: dist
