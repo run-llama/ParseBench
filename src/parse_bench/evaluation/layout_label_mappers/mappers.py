@@ -398,3 +398,38 @@ class LiteParseLabelMapper(LayoutLabelMapper):
         if canonical is None:
             raise UnknownRawLayoutLabelError(f"Unknown canonical layout label '{label}'")
         return canonical
+
+
+@register_layout_label_mapper("upstage", "model:upstage_layout", priority=90)
+class UpstageLabelMapper(LayoutLabelMapper):
+    """Map Upstage element categories to the benchmark layout ontology."""
+
+    _MAPPING: dict[str, CanonicalLabel] = {
+        **{f"heading{level}": CanonicalLabel.SECTION_HEADER for level in range(1, 7)},
+        "header": CanonicalLabel.PAGE_HEADER,
+        "page_header": CanonicalLabel.PAGE_HEADER,
+        "footer": CanonicalLabel.PAGE_FOOTER,
+        "page_footer": CanonicalLabel.PAGE_FOOTER,
+        "paragraph": CanonicalLabel.TEXT,
+        "list": CanonicalLabel.LIST_ITEM,
+        "index": CanonicalLabel.DOCUMENT_INDEX,
+        "caption": CanonicalLabel.CAPTION,
+        "footnote": CanonicalLabel.FOOTNOTE,
+        "table": CanonicalLabel.TABLE,
+        "figure": CanonicalLabel.PICTURE,
+        "chart": CanonicalLabel.PICTURE,
+        "equation": CanonicalLabel.FORMULA,
+        "code": CanonicalLabel.CODE,
+    }
+
+    def to_canonical(
+        self,
+        label: str,
+        prediction: LayoutPrediction,
+        context: MappingContext,
+    ) -> CanonicalLabel:
+        del prediction, context
+        try:
+            return self._MAPPING[label.lower()]
+        except KeyError as exc:
+            raise UnknownRawLayoutLabelError(f"Unknown Upstage category: {label!r}") from exc

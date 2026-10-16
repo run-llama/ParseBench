@@ -28,6 +28,26 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 
 **Bold** pipelines are baselines evaluated in the [ParseBench paper](https://arxiv.org/abs/2604.08538). The name used in the paper is shown in parentheses.
 
+### Upstage
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `upstage_dpe_v2` | Document Parse 2 (Enhanced), snapshot 260930 | `UPSTAGE_API_KEY` |
+
+Install with `uv sync --extra upstage`. PDFs are uploaded unchanged.
+Native images smaller than a 2000px short edge
+are proportionally upscaled; larger images retain their dimensions. The pipeline
+requests HTML, Markdown, text and coordinates. PDF rendering uses API defaults.
+The provider uses API Markdown for body text, retaining HTML for tables,
+charts, figures and lists. It preserves OCR text and authored table captions,
+removes generated image narration and transport attributes from evaluable
+markup, and converts closed HTML code blocks to fences. Literal code, table
+spans and layout coordinates are preserved.
+
+```bash
+uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
+```
+
 ### LlamaParse
 
 | Pipeline | Description | Env Var |
