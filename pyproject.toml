@@ -75,6 +75,7 @@ runners = [
 ]
 # Per-provider extras for users who only need one runner. `runners` is the union.
 llamaparse = ["llama-cloud>=1.4.1", "httpx>=0.28.0"]
+byteverity = ["openai>=1.0.0", "pymupdf>=1.24.0", "numpy", "pillow>=10.0.0", "torch", "transformers>=4.50"]
 openai = ["openai>=1.0.0", "pdf2image>=1.16.0", "pillow>=10.0.0", "pymupdf>=1.24.0"]
 anthropic = ["anthropic>=0.77.1", "pdf2image>=1.16.0", "pillow>=10.0.0", "pymupdf>=1.24.0"]
 google = ["google-genai>=1.0.0", "google-cloud-documentai>=2.20.0", "pdf2image>=1.16.0", "pillow>=10.0.0", "pymupdf>=1.24.0"]
