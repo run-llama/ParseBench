@@ -586,14 +586,14 @@ class EvaluationRunner:
     def _match_result_with_test_case(
         self,
         inference_result: InferenceResult,
-        test_cases: dict[str, TestCase],
-    ) -> TestCase | None:
+        test_cases: dict[str, list[TestCase]],
+    ) -> list[TestCase]:
         """
-        Match an inference result with a test case by example_id/test_id.
+        Match an inference result with all evaluation cases for its ID.
 
         :param inference_result: The inference result
-        :param test_cases: Dictionary mapping test_id to TestCase
-        :return: Matching TestCase or None
+        :param test_cases: Dictionary mapping inference test_id to evaluation cases
+        :return: Matching evaluation cases
         """
         example_id = inference_result.request.example_id
         # Try direct match first
@@ -604,11 +604,11 @@ class EvaluationRunner:
         # the other (common after a macOS round-trip) still match.
         example_id_nfc = unicodedata.normalize("NFC", example_id)
         example_id_nfc_stem = example_id_nfc.rsplit(".", 1)[0]
-        for test_id, test_case in test_cases.items():
+        for test_id, matching_cases in test_cases.items():
             test_id_nfc = unicodedata.normalize("NFC", test_id)
             if test_id_nfc == example_id_nfc or test_id_nfc == example_id_nfc_stem:
-                return test_case
-        return None
+                return matching_cases
+        return []
 
     def _match_result_with_test_cases_multi(
         self,
@@ -677,6 +677,7 @@ class EvaluationRunner:
         console = Console() if use_rich else None
         # Load test cases if test_cases_dir is provided
         test_cases_dict: dict[str, TestCase] = {}
+        test_cases_by_inference_id: dict[str, list[TestCase]] = {}
         if self.test_cases_dir:
             test_cases = load_test_cases(
                 root_dir=self.test_cases_dir,
@@ -693,7 +694,20 @@ class EvaluationRunner:
                     )
             if self.verified_only:
                 test_cases = [filter_verified_test_rules(tc) for tc in test_cases]
-            test_cases_dict = {tc.test_id: tc for tc in test_cases}
+            # Multiple evaluation groups may reuse one inference result. Keep
+            # their evaluation identities distinct without changing the shared
+            # inference ID used by the result file and matching logic.
+            test_id_counts: dict[str, int] = {}
+            for tc in test_cases:
+                test_id_counts[tc.test_id] = test_id_counts.get(tc.test_id, 0) + 1
+            for tc in test_cases:
+                inference_id = tc.test_id
+                if test_id_counts[inference_id] > 1:
+                    tc = tc.model_copy(update={"test_id": f"{tc.group}/{inference_id.split('/', 1)[-1]}"})
+                if tc.test_id in test_cases_dict:
+                    raise ValueError(f"Duplicate evaluation test ID: {tc.test_id}")
+                test_cases_dict[tc.test_id] = tc
+                test_cases_by_inference_id.setdefault(inference_id, []).append(tc)
             if verbose:
                 print(f"📋 Loaded {len(test_cases_dict)} test cases")
                 if test_cases_dict:
@@ -787,9 +801,9 @@ class EvaluationRunner:
                     non_qa_evaluations.append((inference_result, test_case, evaluator, True))  # True = is_cross_eval
                 continue
 
-            # Regular matching: single test case
-            test_case = self._match_result_with_test_case(inference_result, test_cases_dict)  # type: ignore[assignment]
-            if not test_case:
+            # Regular matching: one inference result may serve several rule groups.
+            matched_test_cases = self._match_result_with_test_case(inference_result, test_cases_by_inference_id)
+            if not matched_test_cases:
                 skipped += 1
                 if verbose:
                     print(
@@ -798,103 +812,110 @@ class EvaluationRunner:
                     )
                 continue
 
-            # Get appropriate evaluator
-            # Expand qa_configs (plural) into per-question QA evaluation tasks
-            has_qa_configs = isinstance(test_case, ParseTestCase) and test_case.qa_configs
-            if has_qa_configs:
-                evaluator = self._evaluators.get("qa")
-                if evaluator:
-                    assert isinstance(test_case, ParseTestCase)
-                    for i, qc in enumerate(test_case.qa_configs, 1):  # type: ignore[arg-type]
-                        per_q_tc = test_case.model_copy(
-                            update={
-                                "test_id": f"{test_case.test_id}#q{i}",
-                                "qa_config": qc,
-                                "qa_configs": None,
-                            }
-                        )
-                        if evaluator.can_evaluate(inference_result, per_q_tc):
-                            qa_evaluation_tasks.append((inference_result, per_q_tc, evaluator))
-                continue
-
-            is_qa_test = isinstance(test_case, ParseTestCase) and test_case.qa_config is not None
-
-            if is_qa_test:
-                evaluator = self._evaluators.get("qa")
-                if not evaluator:
-                    skipped += 1
-                    if verbose:
-                        print(f"⚠️  Skipped {result_file.name}: No QA evaluator registered")
-                    continue
-                if not evaluator.can_evaluate(inference_result, test_case):
-                    skipped += 1
-                    if verbose:
-                        print(
-                            f"⚠️  Skipped {result_file.name}: QA evaluator cannot handle this case "
-                            f"(test_id: {test_case.test_id})"
-                        )
-                    continue
-                qa_evaluation_tasks.append((inference_result, test_case, evaluator))  # type: ignore[arg-type]
-            else:
-                # Check for multi-task evaluation: test case has mixed rule types
-                # Multi-task works with PARSE results, or LAYOUT_DETECTION results
-                # that contain LlamaParse data (pages with markdown)
-                is_llamaparse_output = self._is_llamaparse_output(inference_result)
-                has_mixed = self._has_mixed_rules(test_case)
-                is_multi_task_eval = (
-                    self.multi_task
-                    and (
-                        inference_result.product_type == ProductType.PARSE
-                        or (inference_result.product_type == ProductType.LAYOUT_DETECTION and is_llamaparse_output)
-                    )
-                    and has_mixed
-                )
-
-                if is_multi_task_eval:
-                    # Multi-task evaluation: split rules and run both evaluators
-                    # Use None evaluator as marker; actual evaluators called
-                    # in _evaluate_multi_task
-                    non_qa_evaluations.append((inference_result, test_case, None, "multi_task"))
-                    continue
-
-                # Check for cross-evaluation: PARSE result against LayoutDetectionTestCase
-                is_cross_eval = (
-                    isinstance(test_case, LayoutDetectionTestCase)
-                    and inference_result.product_type == ProductType.PARSE
-                )
-
-                if is_cross_eval:
-                    # Cross-evaluation: extract layout from PARSE result
-                    evaluator = self._evaluators.get("layout_detection")
-                    if not evaluator:
-                        skipped += 1
-                        if verbose:
-                            print(f"⚠️  Skipped {result_file.name}: No layout_detection evaluator for cross-evaluation")
-                        continue
-                    # Mark this as cross-evaluation for special handling later
-                    non_qa_evaluations.append((inference_result, test_case, evaluator, True))  # True = is_cross_eval
-                else:
-                    result_product_type = inference_result.product_type.value
-                    evaluator = self._evaluators.get(result_product_type)
-                    if not evaluator:
-                        skipped += 1
-                        if verbose:
-                            print(
-                                f"⚠️  Skipped {result_file.name}: No evaluator registered for "
-                                f"product type: {result_product_type}"
+            for test_case in matched_test_cases:
+                # Get appropriate evaluator
+                # Expand qa_configs (plural) into per-question QA evaluation tasks
+                has_qa_configs = isinstance(test_case, ParseTestCase) and test_case.qa_configs
+                if has_qa_configs:
+                    evaluator = self._evaluators.get("qa")
+                    if evaluator:
+                        assert isinstance(test_case, ParseTestCase)
+                        for i, qc in enumerate(test_case.qa_configs, 1):  # type: ignore[arg-type]
+                            per_q_tc = test_case.model_copy(
+                                update={
+                                    "test_id": f"{test_case.test_id}#q{i}",
+                                    "qa_config": qc,
+                                    "qa_configs": None,
+                                }
                             )
+                            if evaluator.can_evaluate(inference_result, per_q_tc):
+                                qa_evaluation_tasks.append((inference_result, per_q_tc, evaluator))
+                    continue
+
+                is_qa_test = isinstance(test_case, ParseTestCase) and test_case.qa_config is not None
+
+                if is_qa_test:
+                    evaluator = self._evaluators.get("qa")
+                    if not evaluator:
+                        skipped += 1
+                        if verbose:
+                            print(f"⚠️  Skipped {result_file.name}: No QA evaluator registered")
                         continue
                     if not evaluator.can_evaluate(inference_result, test_case):
                         skipped += 1
                         if verbose:
-                            reason = "Evaluator cannot evaluate this case"
                             print(
-                                f"⚠️  Skipped {result_file.name}: {reason} "
-                                f"(test_id: {test_case.test_id}, "
-                                f"example_id: {inference_result.request.example_id})"
+                                f"⚠️  Skipped {result_file.name}: QA evaluator cannot handle this case "
+                                f"(test_id: {test_case.test_id})"
                             )
                         continue
-                    non_qa_evaluations.append((inference_result, test_case, evaluator, False))  # False = not cross-eval
+                    qa_evaluation_tasks.append((inference_result, test_case, evaluator))  # type: ignore[arg-type]
+                else:
+                    # Check for multi-task evaluation: test case has mixed rule types
+                    # Multi-task works with PARSE results, or LAYOUT_DETECTION results
+                    # that contain LlamaParse data (pages with markdown)
+                    is_llamaparse_output = self._is_llamaparse_output(inference_result)
+                    has_mixed = self._has_mixed_rules(test_case)
+                    is_multi_task_eval = (
+                        self.multi_task
+                        and (
+                            inference_result.product_type == ProductType.PARSE
+                            or (inference_result.product_type == ProductType.LAYOUT_DETECTION and is_llamaparse_output)
+                        )
+                        and has_mixed
+                    )
+
+                    if is_multi_task_eval:
+                        # Multi-task evaluation: split rules and run both evaluators
+                        # Use None evaluator as marker; actual evaluators called
+                        # in _evaluate_multi_task
+                        non_qa_evaluations.append((inference_result, test_case, None, "multi_task"))
+                        continue
+
+                    # Check for cross-evaluation: PARSE result against LayoutDetectionTestCase
+                    is_cross_eval = (
+                        isinstance(test_case, LayoutDetectionTestCase)
+                        and inference_result.product_type == ProductType.PARSE
+                    )
+
+                    if is_cross_eval:
+                        # Cross-evaluation: extract layout from PARSE result
+                        evaluator = self._evaluators.get("layout_detection")
+                        if not evaluator:
+                            skipped += 1
+                            if verbose:
+                                print(
+                                    f"⚠️  Skipped {result_file.name}: No layout_detection evaluator for cross-evaluation"
+                                )
+                            continue
+                        # Mark this as cross-evaluation for special handling later
+                        non_qa_evaluations.append(
+                            (inference_result, test_case, evaluator, True)
+                        )  # True = is_cross_eval
+                    else:
+                        result_product_type = inference_result.product_type.value
+                        evaluator = self._evaluators.get(result_product_type)
+                        if not evaluator:
+                            skipped += 1
+                            if verbose:
+                                print(
+                                    f"⚠️  Skipped {result_file.name}: No evaluator registered for "
+                                    f"product type: {result_product_type}"
+                                )
+                            continue
+                        if not evaluator.can_evaluate(inference_result, test_case):
+                            skipped += 1
+                            if verbose:
+                                reason = "Evaluator cannot evaluate this case"
+                                print(
+                                    f"⚠️  Skipped {result_file.name}: {reason} "
+                                    f"(test_id: {test_case.test_id}, "
+                                    f"example_id: {inference_result.request.example_id})"
+                                )
+                            continue
+                        non_qa_evaluations.append(
+                            (inference_result, test_case, evaluator, False)
+                        )  # False = not cross-eval
 
         # Score test cases with no inference result as blank output (0.0).
         # Without this, tools that fail to parse hard documents have those
