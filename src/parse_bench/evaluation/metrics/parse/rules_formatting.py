@@ -121,28 +121,28 @@ _STRIP_PATTERNS: dict[str, list[tuple[re.Pattern, str]]] = {
     "bold": [
         (re.compile(r"\*\*\*(.+?)\*\*\*", re.DOTALL), r"\1"),
         (re.compile(r"\*\*(.+?)\*\*", re.DOTALL), r"\1"),
-        (re.compile(r"</?(?:b|strong)>", re.IGNORECASE), ""),
+        (re.compile(r"</?(?:b|strong)\b[^>]*>", re.IGNORECASE), ""),
     ],
     "italic": [
         (re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)"), r"\1"),
         (re.compile(r"(?<!_)_(?!_)(.+?)(?<!_)_(?!_)"), r"\1"),
-        (re.compile(r"</?(?:i|em)>", re.IGNORECASE), ""),
+        (re.compile(r"</?(?:i|em)\b[^>]*>", re.IGNORECASE), ""),
     ],
     "underline": [
-        (re.compile(r"</?(?:u|ins)>", re.IGNORECASE), ""),
+        (re.compile(r"</?(?:u|ins)\b[^>]*>", re.IGNORECASE), ""),
     ],
     "strikeout": [
         (re.compile(r"~~"), ""),
-        (re.compile(r"</?(?:s|del|strike)>", re.IGNORECASE), ""),
+        (re.compile(r"</?(?:s|del|strike)\b[^>]*>", re.IGNORECASE), ""),
     ],
     "mark": [
         (re.compile(r"</?mark\b[^>]*>", re.IGNORECASE), ""),
     ],
     "sup": [
-        (re.compile(r"</?sup>", re.IGNORECASE), ""),
+        (re.compile(r"</?sup\b[^>]*>", re.IGNORECASE), ""),
     ],
     "sub": [
-        (re.compile(r"</?sub>", re.IGNORECASE), ""),
+        (re.compile(r"</?sub\b[^>]*>", re.IGNORECASE), ""),
     ],
 }
 
