@@ -223,6 +223,19 @@ https://platform.providus.ai. Recommended `--max_concurrent 30`.
 |---|---|---|
 | **`docai_default`** | DocAI parsing pipeline by ProvidusAI (In paper: *DocAI*) | `DOCAI_API_KEY`, `DOCAI_BASE_URL` (optional) |
 
+### OCR.space
+
+Hosted OCR API with a generous free tier: 25,000 requests/month, no credit card required
+(sign up at https://ocr.space/ocrapi). Files are POSTed to `/parse/image`; the response carries
+page text plus word-level overlays, which become the per-page markdown. The free tier caps uploads
+at 1 MB (guarded by `max_file_size_mb`, raisable for paid keys). Without `OCRSPACE_API_KEY` the
+provider falls back to the public `helloworld` demo key (strictly rate/size limited — fine for
+smoke tests).
+
+| Pipeline | Description | Env Vars |
+|---|---|---|
+| **`ocrspace_default`** | OCR.space hosted OCR API | `OCRSPACE_API_KEY` (optional, defaults to demo key), `OCRSPACE_BASE_URL` (optional) |
+
 ### anyformat
 
 Hosted parse API. Each pipeline creates a one-node parse workflow for its tier (cache off) on first

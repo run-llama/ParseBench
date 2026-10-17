@@ -2947,6 +2947,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # OCR.space hosted OCR API
+    # =========================================================================
+    register_fn(
+        PipelineSpec(
+            pipeline_name="ocrspace_default",
+            provider_name="ocrspace",
+            product_type=ProductType.PARSE,
+            # API key resolves in the provider: OCRSPACE_API_KEY env → the public
+            # "helloworld" demo key. Free tier: 25,000 requests/month, 1 MB uploads.
+            config={},
+        )
+    )
+
+    # =========================================================================
     # anyformat (hosted v3 API, one-node parse workflow per tier)
     # =========================================================================
     for tier in ("standard", "agentic", "lite", "flash"):

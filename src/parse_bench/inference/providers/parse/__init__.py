@@ -51,6 +51,7 @@ _PROVIDER_MODULES = [
     "mistral_ocr",
     "nemotron_omni",
     "nutrient_dws",
+    "ocrspace",
     "openai",
     "ovisocr2",
     "paddleocr",
