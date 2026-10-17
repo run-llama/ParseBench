@@ -40,6 +40,7 @@ def test_amazon_nova_with_layout_pipeline_enables_layout_mode() -> None:
         ("anyformat_agentic", "anyformat"),
         ("anyformat_lite", "anyformat"),
         ("anyformat_flash", "anyformat"),
+        ("x2knowledge_v1", "x2knowledge"),
         ("wevisdoc_2b_vllm", "wevisdoc"),
         ("wevisdoc_4b_vllm", "wevisdoc"),
     ],
@@ -170,3 +171,16 @@ def test_anyformat_pipelines_differ_only_by_tier() -> None:
     configs = {tier: get_pipeline(f"anyformat_{tier}").config for tier in ("standard", "agentic", "lite", "flash")}
     assert configs == {tier: {"mode": tier} for tier in configs}
     assert get_pipeline("anyformat_standard").per_file_timeout == 900.0
+
+
+def test_x2knowledge_pipeline_pins_model_page_workers_and_timeouts() -> None:
+    spec = get_pipeline("x2knowledge_v1")
+    assert spec.provider_name == "x2knowledge"
+    assert spec.config == {
+        "model": "x2knowledge-parse-v1",
+        "timeout_s": 1860,
+        "page_workers": 4,
+        "price_per_page_usd": 0.0,
+    }
+    # The service answers within 1800 s, the client waits a little longer, the runner longer still.
+    assert 1800 < spec.config["timeout_s"] < spec.per_file_timeout == 3600.0
