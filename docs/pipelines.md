@@ -210,7 +210,7 @@ Hosted document-parsing API. Sign up at [oi-parser.ai](https://oi-parser.ai/) to
 |---|---|---|
 | **`oi_parser`** | oi-parser hosted `/v1/extract` API | `OI_PARSER_API_KEY`, `OI_PARSER_BASE_URL` (optional) |
 
-### DocAI (ProvidusAI)
+### Providus AI (formerly DocAI)
 
 Hosted parse API. Documents are uploaded into a knowledge base named `ParseBench` (created on first
 use) with auto-parse on; the job is polled and `result.md` plus `grounding.json` are fetched. Tables
@@ -221,7 +221,7 @@ https://platform.providus.ai. Recommended `--max_concurrent 30`.
 
 | Pipeline | Description | Env Vars |
 |---|---|---|
-| **`docai_default`** | DocAI parsing pipeline by ProvidusAI (In paper: *DocAI*) | `DOCAI_API_KEY`, `DOCAI_BASE_URL` (optional) |
+| **`docai_default`** | Providus AI parsing pipeline, formerly DocAI (In paper: *DocAI*) | `DOCAI_API_KEY`, `DOCAI_BASE_URL` (optional) |
 
 ### anyformat
 
