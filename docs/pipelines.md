@@ -392,6 +392,7 @@ These run entirely locally and do not require API keys.
 | `liteparse_markdown` | LiteParse Markdown (no OCR; layout blocks via `--extract-blocks`; the leaderboard's *LiteParse (no OCR)* row) | `pip install "parse-bench[liteparse]"` (or `LITEPARSE_BIN=/path/to/lit`) |
 | `liteparse_text` | LiteParse plain text (no OCR) | same as above |
 | `pymupdf4llm_markdown` | PyMuPDF4LLM Markdown with native HTML tables and RapidOCR at 150 DPI | Python 3.12, `pymupdf4llm==1.28.2`, and `rapidocr==3.9.2` |
+| `superpdf_reader` | superPDF: rules-based, no language model; Markdown with HTML tables, layout blocks, bundled Tesseract OCR for pages without a text layer | Node.js 22+ and `npm install -g @superpdf/cli@0.1.1` (or `SUPERPDF_BIN=/path/to/superpdf`) |
 | `warp_ingest` | Warp-Ingest local parser | `warp-ingest[ocr]>=2.0.1` installed |
 | `tesseract_eng` | Tesseract OCR (English) | `tesseract` installed |
 | `tesseract_fast` | Tesseract OCR (fast) | `tesseract` installed |

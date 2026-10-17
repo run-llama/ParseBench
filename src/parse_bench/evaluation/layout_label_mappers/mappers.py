@@ -378,8 +378,10 @@ class DotsOcrLabelMapper(LayoutLabelMapper):
 @register_layout_label_mapper(
     "liteparse",
     "hpd_parsing",
+    "superpdf",
     "model:liteparse_layout",
     "model:hpd_parsing_layout",
+    "model:superpdf_layout",
     priority=90,
 )
 class LiteParseLabelMapper(LayoutLabelMapper):

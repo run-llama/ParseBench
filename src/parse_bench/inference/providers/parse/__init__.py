@@ -43,6 +43,7 @@ _PROVIDER_MODULES = [
     "pdf_inspector",
     "pymupdf4llm",
     "rakedoc_nano",
+    "superpdf",
     "llamaparse",
     "llamaparse_v2_normalization",
     "mineru25",

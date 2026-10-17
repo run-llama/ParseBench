@@ -3691,6 +3691,24 @@ class HpdParsingLayoutAdapter(LiteParseLayoutAdapter):
         return layout_output.model_copy(update={"model": LayoutDetectionModel.HPD_PARSING_LAYOUT})
 
 
+@register_layout_adapter("superpdf", priority=90)
+class SuperPdfLayoutAdapter(LiteParseLayoutAdapter):
+    """Convert the superPDF reader's normalized ``layout_pages`` to layout output."""
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        return super().matches(inference_result) and inference_result.raw_output.get("output_format") == "superpdf"
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        layout_output = super().to_layout_output(inference_result, page_filter=page_filter)
+        return layout_output.model_copy(update={"model": LayoutDetectionModel.SUPERPDF_LAYOUT})
+
+
 @register_layout_adapter("teleocr", priority=90)
 class TeleOCRLayoutAdapter(LayoutAdapter):
     """Project normalized segments into each page's physical coordinate frame."""
