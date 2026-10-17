@@ -34,7 +34,7 @@ from parse_bench.schemas.layout_detection_output import (
     LayoutTableContent,
     LayoutTextContent,
 )
-from parse_bench.schemas.parse_output import ParseLayoutPageIR, ParseOutput
+from parse_bench.schemas.parse_output import LayoutItemIR, LayoutSegmentIR, ParseLayoutPageIR, ParseOutput
 from parse_bench.schemas.pipeline_io import InferenceResult
 from parse_bench.test_cases.schema import TestCase
 
@@ -3860,3 +3860,110 @@ class NutrientDwsLayoutAdapter(LayoutAdapter):
             predictions=predictions,
             markdown="\n\n".join(markdown_parts),
         )
+
+
+_PROVIDUS_CANONICAL_LABELS = {
+    "Caption",
+    "Footnote",
+    "Formula",
+    "List-item",
+    "Page-footer",
+    "Page-header",
+    "Picture",
+    "Section-header",
+    "Table",
+    "Text",
+    "Title",
+}
+
+
+def _providus_pixel_box(raw_box: Any, width: float, height: float) -> list[float] | None:
+    """Scale a [x0, y0, x1, y1] box from 0-1 to page pixels. Return None if the box is not usable."""
+    if not isinstance(raw_box, (list, tuple)) or len(raw_box) != 4:
+        return None
+    try:
+        x0, y0, x1, y1 = (min(max(float(v), 0.0), 1.0) for v in raw_box)
+    except (TypeError, ValueError):
+        return None
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return [x0 * width, y0 * height, x1 * width, y1 * height]
+
+
+@register_layout_adapter("providus_vlm_mini", priority=100)
+class ProvidusVlmMiniLayoutAdapter(LayoutAdapter):
+    """Adapter for providus-vl-mini: turns the layout items kept in `raw_output["pages"]` into `LayoutOutput`.
+
+    A "Chart" item becomes a Picture with the attribute picture_type=chart. An unknown category becomes Text.
+    """
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        pages = [p for p in inference_result.raw_output.get("pages", []) if isinstance(p, dict)]
+        sizes = [(p.get("image_width"), p.get("image_height")) for p in pages if p.get("image_width")]
+        image_width, image_height = (int(sizes[0][0]), int(sizes[0][1])) if sizes else (1, 1)
+
+        layout_pages: list[ParseLayoutPageIR] = []
+        predictions: list[LayoutPrediction] = []
+        for page in pages:
+            number = int(page["page_number"])
+            width = float(page.get("image_width") or image_width)
+            height = float(page.get("image_height") or image_height)
+            items: list[LayoutItemIR] = []
+            for raw in page.get("items") or []:
+                box = _providus_pixel_box(raw.get("bbox"), width, height) if isinstance(raw, dict) else None
+                if box is None:
+                    continue
+                category = str(raw.get("category") or "")
+                attributes = {"picture_type": "chart"} if category == "Chart" else {}
+                label = "Picture" if category == "Chart" else category
+                if label not in _PROVIDUS_CANONICAL_LABELS:
+                    label = "Text"
+                text = str(raw.get("text") or "")
+                segment = LayoutSegmentIR(x=box[0], y=box[1], w=box[2] - box[0], h=box[3] - box[1], label=label)
+                items.append(
+                    LayoutItemIR(
+                        type=label,
+                        md=text,
+                        html=text if label == "Table" else "",
+                        bbox=segment,
+                        score=1.0,
+                        attributes=attributes,
+                    )
+                )
+                predictions.append(
+                    LayoutPrediction(
+                        bbox=box,
+                        score=1.0,
+                        label=label,
+                        page=number,
+                        content=LayoutTableContent(html=text) if label == "Table" else LayoutTextContent(text=text),
+                        attributes=attributes,
+                        provider_metadata={"order_index": len(predictions)},
+                    )
+                )
+            layout_pages.append(
+                ParseLayoutPageIR(
+                    page_number=number,
+                    width=width,
+                    height=height,
+                    md=str(page.get("markdown") or ""),
+                    items=items,
+                )
+            )
+
+        output = LayoutOutput(
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.PROVIDUS_VLM_MINI_LAYOUT,
+            image_width=image_width,
+            image_height=image_height,
+            layout_pages=layout_pages,
+            predictions=predictions,
+            markdown=getattr(inference_result.output, "markdown", ""),
+        )
+        return filter_layout_output(output, page_filter)

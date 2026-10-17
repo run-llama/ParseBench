@@ -3025,3 +3025,19 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             },
         )
     )
+
+    # =========================================================================
+    # providus-vl-mini (the providus_parse /predict server; set PROVIDUS_PARSE_URL)
+    # =========================================================================
+    register_fn(
+        PipelineSpec(
+            pipeline_name="providus_vlm_mini",
+            provider_name="providus_vlm_mini",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",
+                "dpi": 144,
+                "timeout": 900,
+            },
+        )
+    )

@@ -329,6 +329,7 @@ class LayoutDetectionModel(StrEnum):
     FIRECRAWL_LAYOUT = "firecrawl_layout"
     ANYFORMAT_LAYOUT = "anyformat_layout"
     DOCAI_LAYOUT = "docai_layout"
+    PROVIDUS_VLM_MINI_LAYOUT = "providus_vlm_mini_layout"
 
 
 LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
