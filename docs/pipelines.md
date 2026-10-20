@@ -36,6 +36,18 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | **`llamaparse_cost_effective`** | Cost-effective tier (In paper: *LlamaParse Cost Effective*) | `LLAMA_CLOUD_API_KEY` |
 | `llamaparse_agentic_plus` | Agentic plus tier | `LLAMA_CLOUD_API_KEY` |
 
+### ByteVerity Parse
+
+A VLM proposer plus deterministic PDF facts, an open-source layout detector (docling-layout-heron, Apache-2.0,
+CPU) and 17 sealed decision oracles shipped as complete decision tables (every cell decided exactly once,
+integrity-pinned). The proposer only proposes; the oracles decide. Install with `--extra byteverity`; every model
+call's tokens and cost are logged in `raw_output.usage_calls`.
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `byteverity_parse` | Proposer GPT-6 Luna only (page pass, table zoom pass, scan-emphasis residual) | `OPENAI_API_KEY` |
+| `byteverity_parse_hybrid` | GPT-6 Luna, plus GPT-6 Sol where the sealed oracles escalate (routing, chart repair) | `OPENAI_API_KEY` |
+
 ### OpenAI
 
 | Pipeline | Description | Env Var |
