@@ -330,6 +330,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
+    # LM-Kit (self-hosted LM-Kit One server, one pipeline per effort level)
+    # =========================================================================
+
+    for effort in ("low", "medium", "high"):
+        register_fn(
+            PipelineSpec(
+                pipeline_name=f"lmkit_{effort}",
+                provider_name="lmkit",
+                product_type=ProductType.PARSE,
+                config={"effort": effort.capitalize()},
+                per_file_timeout=1800.0,  # includes the wait in the server's queue beyond --max_concurrent 4
+            )
+        )
+
+    # =========================================================================
     # Docling Pipelines
     # =========================================================================
 
