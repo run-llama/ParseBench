@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from parse_bench.evaluation.metrics.parse.table_extraction import (
     ExtractedTable,
     extract_table_pairs,
@@ -274,3 +276,144 @@ def test_all_fixed_page_no_op() -> None:
     result, did_split = split_ambiguous_merged_pred(expected, actual)
     assert did_split is False
     assert result is actual
+
+
+def test_split_keeps_original_cell_case_and_markup() -> None:
+    """Candidate matching normalization must not lower-case the applied cells."""
+    from numpy.testing import assert_array_equal
+
+    expected_md = _doc_with_tables(
+        [
+            _wrap("<tr><th>Code</th><th>Rate</th></tr><tr><td><b>CA</b></td><td>1.000</td></tr>"),
+            _wrap("<tr><th>Code</th><th>Rate</th></tr><tr><td><i>TX</i></td><td>2.000</td></tr>"),
+        ]
+    )
+    actual_md = _wrap(
+        "<tr><th>Code</th><th>Rate</th><th>Code</th><th>Rate</th></tr>"
+        "<tr><td><b>CA</b></td><td>1.000</td><td><i>TX</i></td><td>2.000</td></tr>"
+    )
+    expected, actual, _ = extract_table_pairs(expected_md, actual_md)
+    result, did_split = split_ambiguous_merged_pred(expected, actual)
+    assert did_split
+    for source, split in zip(expected, result, strict=True):
+        assert_array_equal(split.table_data.data, source.table_data.data)
+
+
+@pytest.mark.parametrize("spacer_index", [0, 2, 4])
+def test_split_spacer_columns_do_not_shift_or_drop_real_cells(spacer_index: int) -> None:
+    """Normalized split offsets must address the same columns in original text."""
+    from numpy.testing import assert_array_equal
+
+    headers = ["Code", "Rate", "Code", "Rate"]
+    values = ["<b>CA</b>", "1.000", "<i>TX</i>", "2.000"]
+    headers.insert(spacer_index, "")
+    values.insert(spacer_index, " ")
+    wide = _wrap(
+        "<tr>" + "".join(f"<th>{v}</th>" for v in headers) + "</tr>"
+        "<tr>" + "".join(f"<td>{v}</td>" for v in values) + "</tr>"
+        "<tr>" + "<td> </td>" * len(values) + "</tr>"
+    )
+    split = _doc_with_tables(
+        [
+            _wrap("<tr><th>Code</th><th>Rate</th></tr><tr><td><b>CA</b></td><td>1.000</td></tr>"),
+            _wrap("<tr><th>Code</th><th>Rate</th></tr><tr><td><i>TX</i></td><td>2.000</td></tr>"),
+        ]
+    )
+    expected, actual, _ = extract_table_pairs(split, wide)
+    result, did_split = split_ambiguous_merged_pred(expected, actual)
+    assert did_split
+    for source, output in zip(expected, result, strict=True):
+        assert_array_equal(output.table_data.data, source.table_data.data)
+
+
+@pytest.mark.parametrize("last_rate", ["", "99"])
+def test_split_ground_truth_spacer_keeps_missing_or_changed_rate_penalized(last_rate: str) -> None:
+    """A spacer before the second block must not erase its rate from GT."""
+    from parse_bench.evaluation.metrics.parse.grits_metric import GriTSMetric
+
+    wide = _wrap(
+        "<tr><th>Code</th><th>Rate</th><th></th><th>Code</th><th>Rate</th></tr>"
+        "<tr><td>A</td><td>1</td><td></td><td>C</td><td>3</td></tr>"
+    )
+    actual = _doc_with_tables(
+        [
+            _wrap("<tr><th>Code</th><th>Rate</th></tr><tr><td>A</td><td>1</td></tr>"),
+            _wrap(
+                f"<tr><th></th><th>Code</th><th>Rate</th></tr><tr><td></td><td>C</td><td>{last_rate}</td></tr>"
+                if last_rate
+                else "<tr><th></th><th>Code</th></tr><tr><td></td><td>C</td></tr>"
+            ),
+        ]
+    )
+    expected, predicted, _ = extract_table_pairs(wide, actual)
+    expected, did_split = split_ambiguous_merged_pred(predicted, expected)
+    assert did_split
+    values = {m.metric_name: m.value for m in GriTSMetric().compute(expected, predicted)}
+    assert values["grits_con"] < 1.0
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("tail", ["", "99", None])
+def test_split_padding_is_symmetric_without_forgiving_content(reverse: bool, tail: str | None) -> None:
+    """Only blank tails are optional; missing or changed trailing values still lose credit."""
+    from parse_bench.evaluation.metrics.parse.grits_metric import GriTSMetric
+
+    header = "<tr><th>Code</th><th>Rate</th></tr>"
+    left = header + "<tr><td>A</td><td>1</td></tr><tr><td>B</td><td>2</td></tr>"
+    right = header + "<tr><td>C</td><td>3</td></tr><tr><td> </td><td></td></tr>"
+    split = _doc_with_tables([_wrap(left), _wrap(right)])
+    last = "" if tail is None else f"<tr><td>B</td><td>2</td><td></td><td>{tail}</td></tr>"
+    wide = _wrap(
+        "<tr><th>Code</th><th>Rate</th><th>Code</th><th>Rate</th></tr>"
+        "<tr><td>A</td><td>1</td><td>C</td><td>3</td></tr>" + last
+    )
+    expected, actual, _ = extract_table_pairs(wide if reverse else split, split if reverse else wide)
+    if reverse:
+        expected, did_split = split_ambiguous_merged_pred(actual, expected)
+    else:
+        actual, did_split = split_ambiguous_merged_pred(expected, actual)
+    assert did_split
+    score = {m.metric_name: m.value for m in GriTSMetric().compute(expected, actual)}["grits_con"]
+    assert score == 1.0 if tail == "" else score < 1.0
+
+
+def test_padding_trim_preserves_header_relationships_and_source_metadata() -> None:
+    """Trimming must not clear row headers, spans, captions, or header-only content."""
+    import numpy as np
+
+    from parse_bench.evaluation.metrics.parse.table_parsing import TableData
+    from parse_bench.evaluation.metrics.parse.table_splitting import _trim_trailing_padding, build_sub_table
+
+    table = TableData(
+        data=np.array([["L", "R"], ["", "value"], ["", " "]], dtype=object),
+        header_rows={0, 2},
+        header_cols={1},
+        col_headers={1: [(0, "R"), (2, "")]},
+        row_headers={1: [(1, "value")]},
+        header_cells={(0, 1), (2, 1)},
+        spanned_cells={(1, 1), (2, 1)},
+        thead_rows={0},
+        tbody_rows={1, 2},
+        tfoot_rows={2},
+        column_scope_rows={0},
+        row_scope_rows={1, 2},
+        caption="Caption",
+        context_before="Before",
+        context_after="After",
+    )
+    trimmed = _trim_trailing_padding(table)
+    assert trimmed.data.shape == (2, 2)
+    assert trimmed.row_headers == {1: [(1, "value")]}
+    assert trimmed.col_headers == {1: [(0, "R")]}
+    assert trimmed.header_rows == {0} and trimmed.tbody_rows == {1}
+    assert trimmed.tfoot_rows == set() and trimmed.row_scope_rows == {1}
+    assert trimmed.header_cells == {(0, 1)} and trimmed.spanned_cells == {(1, 1)}
+    sub = build_sub_table(table, 1, 2)
+    assert sub.row_headers == {1: [(0, "value")]}
+    assert sub.col_headers == {0: [(0, "R")]}
+    assert sub.header_cols == {0} and sub.spanned_cells == {(1, 0)}
+    assert (sub.caption, sub.context_before, sub.context_after) == ("Caption", "Before", "After")
+    assert sub.thead_rows == {0} and sub.column_scope_rows == {0}
+    assert table.data.shape == (3, 2) and table.tbody_rows == {1, 2}
+    table.row_headers[2] = [(1, "Header-only content")]
+    assert _trim_trailing_padding(table) is table
