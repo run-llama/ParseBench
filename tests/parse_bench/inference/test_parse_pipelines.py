@@ -31,6 +31,7 @@ def test_amazon_nova_with_layout_pipeline_enables_layout_mode() -> None:
         ("mistral_ocr_4_1", "mistral_ocr"),
         ("mistral_ocr_4_1_annotation", "mistral_ocr"),
         ("hpd_parsing_vllm_parse", "hpd_parsing"),
+        ("superpdf_reader", "superpdf"),
         ("nemotron_omni_30b_vllm", "nemotron_omni"),
         ("hunyuanocr_1_5", "hunyuanocr"),
         ("ovisocr2_vllm", "ovisocr2"),

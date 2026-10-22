@@ -565,6 +565,15 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
+            pipeline_name="superpdf_reader",
+            provider_name="superpdf",
+            product_type=ProductType.PARSE,
+            config={"ocr_enabled": True},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
             pipeline_name="warp_ingest",
             provider_name="warp_ingest",
             product_type=ProductType.PARSE,
