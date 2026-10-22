@@ -307,6 +307,7 @@ class NutrientDwsProvider(Provider):
                 lines[-1].append(w)
             else:
                 lines.append([w])
+        lines = _join_cjk_line_words(_join_wrapped_words(lines))
 
         def _key(w: dict) -> tuple:
             return (
@@ -322,6 +323,8 @@ class NutrientDwsProvider(Provider):
         def _glued(prev: dict | None, curr: dict) -> bool:
             # A script marker split from its base word sits flush against it — attach
             # without a space so markup-stripping reproduces the original text exactly.
+            if curr.get("_cjk_glue"):
+                return True
             if prev is None or not (
                 curr.get("superscript") or curr.get("subscript") or prev.get("superscript") or prev.get("subscript")
             ):
@@ -342,7 +345,10 @@ class NutrientDwsProvider(Provider):
                 while j + 1 < len(line) and key == _key(line[j + 1]):
                     j += 1
                 run_words = line[i : j + 1]
-                run = " ".join((w.get("text") or "") for w in run_words).strip()
+                run = "".join(
+                    ("" if k == 0 or w.get("_cjk_glue") else " ") + (w.get("text") or "")
+                    for k, w in enumerate(run_words)
+                ).strip()
                 first_word = run_words[0]
                 i = j + 1
                 if not run:
@@ -391,7 +397,9 @@ class NutrientDwsProvider(Provider):
         if not text:
             return ""
         if role == "Code":
-            return "```\n" + text + "\n```"
+            lang = el.get("codeLanguage") or ""
+            return "```" + lang + "\n" + (el.get("text") or "").rstrip() + "\n```"
+        text = _join_cjk_lines(_join_wrapped_hyphens(text))
         if role in ("Title", "SectionHeader"):
             level = el.get("headingLevel") or (1 if role == "Title" else 2)
             # A markdown heading ends at the newline, so a heading that wrapped in
@@ -662,3 +670,114 @@ def _first_env(*names: str) -> str | None:
         if value and value.strip():
             return value.strip()
     return None
+
+
+_ADDRESS_CHARS = frozenset("/@_%=")
+
+
+def _looks_like_address(word: str) -> bool:
+    # A URL or path keeps its own hyphens: "…/defesa-civil-" wraps before "contabiliza-…".
+    return any(c in _ADDRESS_CHARS for c in word)
+
+
+def _ends_with_wrap_hyphen(word: str) -> bool:
+    return len(word) > 1 and word.endswith("-") and word[-2].isalpha() and not _looks_like_address(word)
+
+
+def _is_wrap_continuation(word: str) -> bool:
+    # A continuation opens in lower case, so "Inter-" before "Provincial" keeps its hyphen.
+    return bool(word) and word[0].isalpha() and word[0].islower() and not _looks_like_address(word)
+
+
+def _join_wrapped_hyphens(text: str) -> str:
+    """Rejoin words the source broke across lines with a hyphen.
+
+    The graph keeps the page's visual lines, so "aufge-" and "führt den" arrive as two
+    lines. The hosted Markdown output already joins such words; this does the same for
+    the graph body: "aufgeführt" ends the first line and "den" starts the next.
+    """
+    out: list[str] = []
+    for line in text.split("\n"):
+        if out and _ends_with_wrap_hyphen(out[-1].rstrip()):
+            first, _, rest = line.lstrip().partition(" ")
+            if _is_wrap_continuation(first):
+                out[-1] = out[-1].rstrip()[:-1] + first
+                if rest.strip():
+                    out.append(rest.lstrip())
+                continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _join_wrapped_words(lines: list[list[dict]]) -> list[list[dict]]:
+    """Word-level form of :func:`_join_wrapped_hyphens` for the styled render.
+
+    The joined word keeps the styling of its first part; the continuation leaves its line.
+    """
+    for i in range(len(lines) - 1):
+        if not lines[i] or not lines[i + 1]:
+            continue
+        last = (lines[i][-1].get("text") or "").strip()
+        first = (lines[i + 1][0].get("text") or "").strip()
+        if _ends_with_wrap_hyphen(last) and _is_wrap_continuation(first):
+            lines[i][-1] = {**lines[i][-1], "text": last[:-1] + first}
+            lines[i + 1] = lines[i + 1][1:]
+    return [line for line in lines if line]
+
+
+def _is_cjk(c: str) -> bool:
+    """Han, kana and CJK/full-width punctuation: scripts written without spaces between words.
+
+    Hangul is left out on purpose: Korean separates words with spaces, so a line break there
+    is a word break.
+    """
+    o = ord(c)
+    return (
+        0x3000 <= o <= 0x303F  # CJK symbols and punctuation
+        or 0x3040 <= o <= 0x30FF  # hiragana, katakana
+        or 0x31F0 <= o <= 0x31FF  # katakana extensions
+        or 0x3400 <= o <= 0x4DBF  # CJK extension A
+        or 0x4E00 <= o <= 0x9FFF  # CJK unified ideographs
+        or 0xF900 <= o <= 0xFAFF  # CJK compatibility ideographs
+        or 0xFF00 <= o <= 0xFF60  # full-width forms (，？（）etc.)
+        or 0xFF61 <= o <= 0xFF9F  # half-width katakana and punctuation
+        or 0x20000 <= o <= 0x2FA1F  # CJK extensions B+
+    )
+
+
+def _cjk_boundary(left: str, right: str) -> bool:
+    left, right = left.rstrip(), right.lstrip()
+    return bool(left) and bool(right) and _is_cjk(left[-1]) and _is_cjk(right[0])
+
+
+def _join_cjk_lines(text: str) -> str:
+    """Join visual lines with nothing where the break falls between two CJK characters.
+
+    Chinese and Japanese put no space between words, so a line break inside a sentence is not
+    a word break: "健康保险的基" + "本信息" is one heading, not "健康保险的基 本信息".
+    """
+    out: list[str] = []
+    for line in text.split("\n"):
+        if out and _cjk_boundary(out[-1], line):
+            out[-1] = out[-1].rstrip() + line.lstrip()
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _join_cjk_line_words(lines: list[list[dict]]) -> list[list[dict]]:
+    """Word-level form of :func:`_join_cjk_lines` for the styled render.
+
+    A CJK line that continues a CJK line moves up onto it; its first word is marked to attach
+    without a space.
+    """
+    out: list[list[dict]] = []
+    for line in lines:
+        if out and out[-1] and line:
+            last = out[-1][-1].get("text") or ""
+            first = line[0].get("text") or ""
+            if _cjk_boundary(last, first):
+                out[-1] = out[-1] + [{**line[0], "_cjk_glue": True}] + line[1:]
+                continue
+        out.append(line)
+    return out
