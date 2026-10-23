@@ -404,6 +404,88 @@ Fine-tune of MinerU2.5-Pro-2605-1.2B ([aeddix-labs/aeddix-alpine-ocr](https://hu
 |---|---|---|
 | `aeddix_alpine_ocr_kdl` | vLLM OpenAI-compatible endpoint (layout + per-region recognition) | `AEDDIX_ALPINE_OCR_KDL_ENDPOINT_URL` |
 
+### providus-vl-mini
+
+<img src="providus-logo.png" alt="Providus" width="64">
+
+providus-vl-mini is a fine-tune of MinerU2.5-Pro by OpenDataLab (Apache-2.0). We did not pretrain a model.
+providus-parse-tools extends mineru-vl-utils by OpenDataLab. The weights are open, with gated access (accept the terms on Hugging Face; access is approved automatically).
+
+- Model: [ProvidusAI/providus-vl-mini](https://huggingface.co/ProvidusAI/providus-vl-mini)
+- Code: [ProvidusAI/providus-parse-tools](https://github.com/ProvidusAI/providus-parse-tools), package: [providus-parse-tools on PyPI](https://pypi.org/project/providus-parse-tools/)
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `providus_vlm_mini` | providus_parse `/predict` server (layout + recognition, PDF text layer for formatting marks) | `PROVIDUS_PARSE_URL` |
+
+Option A, the base models setup: start the servers (vLLM 0.28.0, a small router and the parse server) with the commands in [SERVING.md](https://github.com/ProvidusAI/providus-parse-tools/blob/v1/SERVING.md). Then run:
+
+```bash
+export PROVIDUS_PARSE_URL=http://127.0.0.1:8100
+uv run parse-bench run providus_vlm_mini --max_concurrent 24
+```
+
+Scores are the mean of 4 full ParseBench runs (± standard deviation). Scorer: ParseBench `main` at b9ba246 (2026-10-12).
+
+| Run | Overall | Tables | Charts | Content faithfulness | Semantic formatting | Visual grounding |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 78.99 | 86.36 | 71.13 | 87.80 | 74.48 | 75.17 |
+| 2 | 79.00 | 86.32 | 71.22 | 87.80 | 74.48 | 75.18 |
+| 3 | 78.93 | 86.35 | 71.21 | 87.64 | 74.23 | 75.24 |
+| 4 | 78.91 | 86.31 | 71.00 | 87.61 | 74.43 | 75.19 |
+| **Mean ± SD** | **78.96 ± 0.04** | **86.33 ± 0.02** | **71.14 ± 0.10** | **87.71 ± 0.10** | **74.41 ± 0.12** | **75.19 ± 0.03** |
+
+These scores are for the whole v1 system, not for the adapter alone: the base model, the text LoRA adapter on the text route, and providus-parse-tools 1.0.0, which also reads the PDF text layer for formatting marks (bold, italic, headings). A different pipeline will give different scores.
+No rule in our pipeline contains ParseBench documents, file names or answers. We used benchmark results to find common error types, then wrote general rules and checked them on our own data.
+
+Hardware and time: one NVIDIA H100 80 GB. A full ParseBench run (2,078 pages, multi-page documents, scoring included) takes 44.4 minutes from start to scores on one H100 at 24 pages at a time (inference and scoring, servers already running).
+
+#### Option B: one GGUF model with llama.cpp (the short way)
+
+This option uses one model file, one `llama-server` and the parse server. You need no vLLM, no second model and no router.
+The model is [ProvidusAI/providus-vl-mini-GGUF](https://huggingface.co/ProvidusAI/providus-vl-mini-GGUF): the merged model in GGUF (F16) with its vision projector.
+In this setup the one model answers every request: layout, text, tables, formulas and charts.
+
+1. Get llama.cpp b11609 or later (`brew install llama.cpp`, or a release build from [GitHub](https://github.com/ggml-org/llama.cpp/releases)).
+2. Download the model and install the parse server (Python 3.12):
+
+```
+hf download ProvidusAI/providus-vl-mini-GGUF --local-dir ./gguf
+pip install providus-parse-tools==1.0.0
+```
+
+3. Start the model server in terminal 1, and the parse server in terminal 2 when the model server answers (`curl -sf http://127.0.0.1:8000/v1/models`):
+
+```
+GGML_CUDA_DISABLE_GRAPHS=1 llama-server -m gguf/providus-vl-mini-F16.gguf --mmproj gguf/mmproj-providus-vl-mini-F16.gguf \
+  --alias providus-vl-mini --host 127.0.0.1 --port 8000 -c 196608 -np 24 -ngl all --special \
+  --repeat-last-n 8192 --image-min-tokens 64 --image-max-tokens 2048 --cache-ram 0
+```
+
+```
+python -m providus_parse.server --port 8100 --vllm http://127.0.0.1:8000
+```
+
+4. Run ParseBench in terminal 3, in a checkout of this PR (Option A, step 4):
+
+```
+export PROVIDUS_PARSE_URL=http://127.0.0.1:8100
+uv run parse-bench run providus_vlm_mini --max_concurrent 24
+```
+
+About the flags: `--special` keeps the layout tokens, which the parse server reads. `-c` is 8192 tokens for each of the 24 slots (`-np`).
+`GGML_CUDA_DISABLE_GRAPHS=1` and `--cache-ram 0` are for a CUDA GPU with many slots: without them, llama-server b11609 stopped with a CUDA error in the vision encoder in our full runs.
+With less GPU memory, use fewer slots, for example `-np 4 -c 32768` and `--max_concurrent 4`.
+
+Full run: one run, llama.cpp b11609, one NVIDIA H100 80 GB, 24 slots. Scorer: ParseBench `main` at b9ba246 (2026-10-12). 2,078 pages. One run has no standard deviation.
+
+| Setup | Overall | Tables | Charts | Content faithfulness | Semantic formatting | Visual grounding |
+|---|---:|---:|---:|---:|---:|---:|
+| GGUF F16, llama.cpp, one model (1 run) | 79.03 | 86.41 | 71.01 | 88.02 | 74.60 | 75.10 |
+
+
+Credit: thank you to OpenDataLab and the MinerU team for MinerU2.5-Pro and `mineru-vl-utils`.
+
 ---
 
 ## Local Pipelines (No API key needed)
