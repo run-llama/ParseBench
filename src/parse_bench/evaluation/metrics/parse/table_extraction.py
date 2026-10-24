@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 _TABLE_OPEN_RE = re.compile(r"<table(?=[>\s])", re.IGNORECASE)
 _TABLE_CLOSE_RE = re.compile(r"</table\s*>", re.IGNORECASE)
+_UNFINISHED_TAG_RE = re.compile(r"<[a-zA-Z/][^<>]*\Z")
 
 
 def extract_html_tables(content: str) -> list[str]:
@@ -47,6 +48,13 @@ def extract_html_tables(content: str) -> list[str]:
         while pos < len(content):
             next_open = _TABLE_OPEN_RE.search(content, pos)
             next_close = _TABLE_CLOSE_RE.search(content, pos)
+            # A provider may end a block mid-attribute (e.g. ``<th colspan=``)
+            # and start a new table in its next block. Do not let an HTML
+            # parser consume that next opening tag as the attribute's value.
+            if next_open is not None and (next_close is None or next_open.start() < next_close.start()):
+                if _UNFINISHED_TAG_RE.search(content[start : next_open.start()]):
+                    end = next_open.start()
+                    break
             if next_close is None:
                 break
             if next_open is not None and next_open.start() < next_close.start():
@@ -125,7 +133,19 @@ def extract_normalized_tables(
     tables: list[ExtractedTable] = []
     unparseable = 0
     for i, raw in enumerate(raw_slices):
-        parsed_one = parse_html_tables(raw)
+        try:
+            # lxml can silently discard an unfinished cell tag, leaving a
+            # plausible but incomplete table. Keep it in the failure count.
+            parsed_one = [] if _UNFINISHED_TAG_RE.search(raw) else parse_html_tables(raw)
+        except ValueError as exc:
+            # Invalid numeric spans in model HTML are prediction failures,
+            # not grounds to discard every other table/document metric.
+            if side == "expected":
+                raise GroundTruthTableParseError(
+                    f"Failed to parse expected table {i} in doc {doc_id!r}: {exc}"
+                ) from exc
+            unparseable += 1
+            continue
         if not parsed_one:
             if side == "expected":
                 raise GroundTruthTableParseError(f"Failed to parse expected table {i} in doc {doc_id!r}")
