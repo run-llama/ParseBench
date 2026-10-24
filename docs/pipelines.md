@@ -48,6 +48,33 @@ spans and layout coordinates are preserved.
 uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 ```
 
+### Syntel
+
+| Pipeline | Description | Env Vars |
+|---|---|---|
+| `syntel_advanced` | Syntel document parse API, Advanced tier as served at the scoring endpoint | `SYNTEL_API_KEY`, `SYNTEL_BASE_URL` |
+
+Install with `uv sync --extra syntel`. Each document is uploaded unchanged to `POST /v1/parse`
+under a name derived from its sha256, the job is polled on `GET /v1/jobs/{id}`, and the result is
+read from `GET /v1/parse/result/{id}`. The provider never retries by itself: 429 is a rate-limit
+error, 408, 5xx, transport errors and a failed job marked retryable are transient, and the runner
+retries them. A retry resumes the job it started; a job that failed, was cancelled or whose result
+expired is replaced by a new one. Page Markdown and table HTML are the service's own; layout
+predictions come from the response's `data.regions`, one prediction per region, through the
+`syntel` layout adapter (its docstring lists the label rules). No cost is recorded unless
+`cost_per_page_usd` is set.
+
+`per_file_timeout` is 3000 s: the slowest document took 952 s at the scoring endpoint (2,177 s on
+slower hardware). The GPU host is paused when idle, and the first request after idle waits about 7
+minutes while it starts, so send one document first (`--file`) and start the full run within 15
+minutes of its end, before the host pauses again. Keep `--max_concurrent` at or below the
+number of parses your key runs at once: a job waiting for a free slot counts toward
+`per_file_timeout`, and a document that runs out of it is cancelled and parsed again from the start.
+
+```bash
+uv run parse-bench run syntel_advanced --test --max_concurrent 2
+```
+
 ### LlamaParse
 
 | Pipeline | Description | Env Var |

@@ -37,6 +37,26 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Syntel /v1/parse, Advanced tier. provider_name is providers/parse/syntel.py's PROVIDER_NAME.
+    register_fn(
+        PipelineSpec(
+            pipeline_name="syntel_advanced",
+            provider_name="syntel",
+            product_type=ProductType.PARSE,
+            config={
+                "parser": "advanced",
+                # The provider's own wait for one job, below per_file_timeout so a stalled job
+                # surfaces as the provider's retryable error rather than the runner's timeout.
+                # per_file_timeout bounds the retries too: a job that outlives it is cancelled.
+                "job_timeout": 2900,
+            },
+            # The slowest document took 952 s at the scoring endpoint (2,177 s on slower hardware).
+            # The GPU host is paused when idle, and the first request after idle waits about
+            # 7 minutes for it to start (425 s and 445 s measured).
+            per_file_timeout=3000.0,
+        )
+    )
+
     # =========================================================================
     # LlamaParse Production Pipelines (V2 SDK)
     # =========================================================================

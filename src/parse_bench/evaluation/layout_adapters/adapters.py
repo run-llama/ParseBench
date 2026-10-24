@@ -23,6 +23,7 @@ from parse_bench.inference.layout_extraction import (
     extract_all_layouts_from_llamaparse_output,
 )
 from parse_bench.inference.providers.layoutdet.adapters import ChunkrLayoutDetLabelAdapter
+from parse_bench.inference.providers.parse.syntel import PROVIDER_NAME as SYNTEL_PROVIDER_NAME
 from parse_bench.layout_label_mapping import (
     UnknownRawLayoutLabelError,
 )
@@ -3945,4 +3946,267 @@ class UpstageLayoutAdapter(LayoutAdapter):
             image_width=max(int(first_page.width if first_page else 1), 1),
             image_height=max(int(first_page.height if first_page else 1), 1),
             predictions=predictions,
+        )
+
+
+# Syntel region categories -> ParseBench canonical labels. A category not listed is Text.
+_SYNTEL_LABELS = {
+    "paragraph": "Text",
+    "text": "Text",
+    "heading": "Section-header",
+    "section_header": "Section-header",
+    "paragraph_title": "Section-header",
+    "title": "Title",
+    "doc_title": "Title",
+    "list_item": "List-item",
+    "table": "Table",
+    "grid_fallback": "Table",
+    "figure": "Picture",
+    "picture": "Picture",
+    "image": "Picture",
+    "chart": "Picture",
+    "seal": "Picture",
+    "caption": "Caption",
+    "figure_title": "Caption",
+    "formula": "Formula",
+    "display_formula": "Formula",
+    "inline_formula": "Formula",
+    "code": "Code",
+    "algorithm": "Code",
+    "document_index": "Document Index",
+    "header": "Page-header",
+    "page_header": "Page-header",
+    "header_image": "Page-header",
+    "footer": "Page-footer",
+    "page_footer": "Page-footer",
+    "footer_image": "Page-footer",
+    "footnote": "Footnote",
+    "vision_footnote": "Footnote",
+    # A printed page number is Text unless the page band below makes it page furniture.
+    "number": "Text",
+    "vertical_text": "Text",
+    "abstract": "Text",
+    "content": "Text",
+    "reference": "Text",
+    "reference_content": "Text",
+    "aside_text": "Text",
+    "formula_number": "Text",
+}
+# Fraction of the page height, at the top and at the bottom, in which a ``number`` region is
+# Page-header / Page-footer.
+_SYNTEL_PAGE_FURNITURE_BAND = 0.12
+_SYNTEL_TABLE_HTML_RE = re.compile(r"<table\b", re.IGNORECASE)
+
+
+def _syntel_content(category: str, text: str) -> LayoutTextContent | LayoutTableContent:
+    """Table regions, and any region whose text is an HTML table, attribute cell text, not tags."""
+    if text and (category in {"table", "grid_fallback"} or _SYNTEL_TABLE_HTML_RE.search(text)):
+        return LayoutTableContent(html=text)
+    return LayoutTextContent(text=text)
+
+
+def _syntel_label(category: str, y1: float, y2: float, page_height: float) -> str:
+    label = _SYNTEL_LABELS.get(category, "Text")
+    if category == "number" and page_height > 0:
+        center = (y1 + y2) / 2.0 / page_height
+        if center >= 1.0 - _SYNTEL_PAGE_FURNITURE_BAND:
+            return "Page-footer"
+        if center <= _SYNTEL_PAGE_FURNITURE_BAND:
+            return "Page-header"
+    return label
+
+
+def _syntel_page_size(data: dict[str, Any], page_filter: int | None) -> tuple[int, int]:
+    """The page's size from the canonical pages when no region carries it; 1 x 1 when none does."""
+    structured = data.get("structured")
+    pages = structured.get("pages") if isinstance(structured, dict) else None
+    for page in pages if isinstance(pages, list) else []:
+        if not isinstance(page, dict):
+            continue
+        if page_filter is not None and page.get("page_number") != page_filter:
+            continue
+        width, height = page.get("width"), page.get("height")
+        if isinstance(width, (int, float)) and isinstance(height, (int, float)) and width > 0 and height > 0:
+            return int(width), int(height)
+    return 1, 1
+
+
+_SYNTEL_CONTAINED_SHARE = 0.9
+
+
+def _syntel_without_containers(predictions: list[LayoutPrediction]) -> list[LayoutPrediction]:
+    """Drop every prediction that encloses another on the same page (see ``SyntelLayoutAdapter``)."""
+
+    def area(box: list[float]) -> float:
+        return max(0.0, box[2] - box[0]) * max(0.0, box[3] - box[1])
+
+    dropped: set[int] = set()
+    for i, inner in enumerate(predictions):
+        inner_area = area(inner.bbox)
+        for j, outer in enumerate(predictions):
+            if i == j or outer.page != inner.page:
+                continue
+            outer_area = area(outer.bbox)
+            # The larger box is the container; of two equal ones, the later.
+            if outer_area < inner_area or (outer_area == inner_area and j < i):
+                continue
+            overlap = area(
+                [
+                    max(inner.bbox[0], outer.bbox[0]),
+                    max(inner.bbox[1], outer.bbox[1]),
+                    min(inner.bbox[2], outer.bbox[2]),
+                    min(inner.bbox[3], outer.bbox[3]),
+                ]
+            )
+            if overlap >= _SYNTEL_CONTAINED_SHARE * inner_area:
+                dropped.add(j)
+    return [prediction for k, prediction in enumerate(predictions) if k not in dropped]
+
+
+@register_layout_adapter(SYNTEL_PROVIDER_NAME, priority=90)
+class SyntelLayoutAdapter(LayoutAdapter):
+    """Layout predictions from Syntel's ``raw_output.data.regions``.
+
+    Rules, all applied per region and disclosed with the submission:
+
+    - **One region is one prediction.** A region's box (``bbox`` x/y/w/h in the page's pixel frame,
+      ``page_width`` x ``page_height``) is clipped to the page; no region is split or merged.
+    - **No container beside its parts.** A region can enclose another (a figure around its
+      caption, a block around its lines). Where
+      at least 90% of one prediction's box lies inside another of equal or larger area on the same
+      page, the larger is dropped and the parts are kept; of two equal boxes, the first is kept.
+    - **Labels** come from the region's ``category`` through ``_SYNTEL_LABELS``; an unlisted
+      category is Text.
+    - **Page band.** A ``number`` region (a printed page number) whose vertical centre lies in the
+      top 12% of the page is Page-header, in the bottom 12% Page-footer, elsewhere Text (figure or
+      equation numbering).
+    - **No text, no content.** A region whose ``text`` is null (a picture or formula region the
+      service reports without text) carries no content.
+    - **Content.** A table region, or any region whose text is an HTML table, is table content
+      (cell text is attributed, never markup); every other region's text is text content.
+    - **Empty pages.** An empty region list is an empty layout for the page, scored as such. A
+      missing or non-list ``regions`` is an error.
+    """
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        raw_output = inference_result.raw_output
+        data = raw_output.get("data") if isinstance(raw_output, dict) else None
+        data_payload: dict[str, Any] = data if isinstance(data, dict) else {}
+        regions = data_payload.get("regions")
+        if not isinstance(regions, list):
+            raise ValueError("Syntel layout adapter requires raw_output.data.regions to be a list")
+
+        selected_regions = [
+            region
+            for region in regions
+            if isinstance(region, dict)
+            and isinstance(region.get("page_number"), int)
+            and (page_filter is None or region["page_number"] == page_filter)
+        ]
+        dimensions = next(
+            (
+                (int(region["page_width"]), int(region["page_height"]))
+                for region in selected_regions
+                if isinstance(region.get("page_width"), (int, float))
+                and isinstance(region.get("page_height"), (int, float))
+                and region["page_width"] > 0
+                and region["page_height"] > 0
+            ),
+            None,
+        )
+        if dimensions is None:
+            if selected_regions:
+                raise ValueError("Syntel layout adapter requires positive page dimensions")
+            page_width, page_height = _syntel_page_size(data_payload, page_filter)
+            return LayoutOutput(
+                task_type="layout_detection",
+                example_id=inference_result.request.example_id,
+                pipeline_name=inference_result.pipeline_name,
+                model=LayoutDetectionModel.SYNTEL_LAYOUT,
+                image_width=page_width,
+                image_height=page_height,
+                predictions=[],
+            )
+        output_width, output_height = dimensions
+
+        predictions: list[LayoutPrediction] = []
+        for order_index, region in enumerate(regions):
+            if not isinstance(region, dict):
+                continue
+            page_number = region.get("page_number")
+            if not isinstance(page_number, int):
+                continue
+            if page_filter is not None and page_number != page_filter:
+                continue
+
+            page_width = region.get("page_width")
+            page_height = region.get("page_height")
+            if not isinstance(page_width, (int, float)) or page_width <= 0:
+                continue
+            if not isinstance(page_height, (int, float)) or page_height <= 0:
+                continue
+            if int(page_width) != output_width or int(page_height) != output_height:
+                raise ValueError("Syntel regions disagree on page dimensions")
+
+            bbox = region.get("bbox")
+            if not isinstance(bbox, dict):
+                continue
+            coordinates = [bbox.get(key) for key in ("x", "y", "w", "h")]
+            if not all(isinstance(value, (int, float)) for value in coordinates):
+                continue
+            x, y, width, height = (float(value) for value in coordinates)
+            x1 = max(0.0, min(float(output_width), x))
+            y1 = max(0.0, min(float(output_height), y))
+            x2 = max(0.0, min(float(output_width), x + width))
+            y2 = max(0.0, min(float(output_height), y + height))
+            if x2 <= x1 or y2 <= y1:
+                continue
+
+            category = region.get("category")
+            if not isinstance(category, str):
+                continue
+            coordinate_space = region.get("coordinate_space")
+            dpi = region.get("dpi")
+            if not isinstance(coordinate_space, str):
+                continue
+            if not isinstance(dpi, (int, float)) or dpi <= 0:
+                continue
+
+            confidence = region.get("confidence")
+            score = float(confidence) if isinstance(confidence, (int, float)) else 1.0
+            text = region.get("text")
+            normalized_category = category.strip().lower().replace("-", "_")
+            label = _syntel_label(normalized_category, y1, y2, float(output_height))
+            content = (
+                None if text is None else _syntel_content(normalized_category, text if isinstance(text, str) else "")
+            )
+            predictions.append(
+                LayoutPrediction(
+                    bbox=[x1, y1, x2, y2],
+                    score=max(0.0, min(1.0, score)),
+                    label=label,
+                    page=page_number,
+                    content=content,
+                    provider_metadata={
+                        "coordinate_space": coordinate_space,
+                        "dpi": dpi,
+                        "original_category": category,
+                        "order_index": order_index,
+                    },
+                )
+            )
+
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.SYNTEL_LAYOUT,
+            image_width=output_width,
+            image_height=output_height,
+            predictions=_syntel_without_containers(predictions),
         )

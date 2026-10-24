@@ -61,6 +61,7 @@ _PROVIDER_MODULES = [
     "qwen",
     "reducto",
     "surya2",
+    "syntel",
     "teleocr",
     "tesseract",
     "textract",
