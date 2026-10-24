@@ -14,6 +14,11 @@ All notable changes to `parse-bench` are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- Layout attribution no longer crashes on layout rules without an `ro_index`.
+  `LayoutDetectionEvaluator` dumps rules with `ro_index=None`, which
+  `parse_gt_elements` kept, so the reading-order sort raised `TypeError` and
+  the page was dropped. A null `ro_index` now reads as `0`, as an absent key
+  already did.
 - `diagram_graph` rules no longer crash when their `reference_image` resolves.
   The rule reached for `rules_image.thumbnail_data_uri`, a module that only
   exists in the internal harness, so scoring a diagram with a reference render
@@ -22,6 +27,13 @@ All notable changes to `parse-bench` are recorded here. The format follows
   is what lets the reference resolve in the first place.
 
 ### Added
+- `nemotron_parse_3_5_sdk` pipeline and `nemotron_parse_3_5` provider for
+  Nemotron 3.5 Parse, driven by an SDK server that runs the model repository's
+  triple-pass pipeline (`NEMOTRON_PARSE_3_5_SERVER_URL`). Its layout adapter
+  keeps the Canonical17 label strings under the new
+  `LayoutDetectionModel.NEMOTRON_PARSE_LAYOUT` (with a `LAYOUT_MODEL_INFO`
+  entry), and a passthrough label mapper resolves them, so Visual Grounding is
+  scored instead of raising `UnknownRawLayoutLabelError`.
 - `register_reference_thumbnailer` (exported from `parse_bench.extensions`):
   how a rule's `reference_image` is rendered into the detailed report. parse-bench
   keeps no image stack in its core dependencies, so it ships no default and

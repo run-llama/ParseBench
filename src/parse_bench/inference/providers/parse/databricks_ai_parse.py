@@ -10,7 +10,10 @@ from typing import Any
 
 import requests
 
-from parse_bench.evaluation.metrics.parse.chart_json_to_html import chart_description_to_html
+from parse_bench.evaluation.metrics.parse.chart_json_to_html import (
+    chart_description_to_html,
+    chart_json_to_html,
+)
 from parse_bench.inference.providers.base import (
     Provider,
     ProviderConfigError,
@@ -44,6 +47,7 @@ DATABRICKS_LABEL_MAP: dict[str, str] = {
     "page_footer": "Page-footer",
     "page_number": "Page-footer",
     "footnote": "Footnote",
+    "signature": "Picture",
 }
 
 # ai_parse_document returns element bboxes in absolute pixel coordinates of
@@ -176,6 +180,19 @@ def _primary_page_id(element: dict[str, Any]) -> int:
     return 0
 
 
+def _chart_value_to_html(value: Any) -> str:
+    if isinstance(value, dict):
+        return chart_json_to_html(value)
+    if isinstance(value, str):
+        return chart_description_to_html(value)
+    return ""
+
+
+def _figure_chart_html(element: dict[str, Any]) -> str:
+    """Render current chart content, falling back to legacy descriptions."""
+    return _chart_value_to_html(element.get("content")) or _chart_value_to_html(element.get("description"))
+
+
 def _render_markdown(elements: list[dict[str, Any]]) -> str:
     """Concatenate element content in reading order, grouped by page."""
     from collections import defaultdict
@@ -187,17 +204,19 @@ def _render_markdown(elements: list[dict[str, Any]]) -> str:
     parts: list[str] = []
     for page_id in sorted(by_page.keys()):
         for el in sorted(by_page[page_id], key=lambda e: e.get("id", 0)):
-            content = (el.get("content") or "").strip()
+            raw_content = el.get("content")
+            content = raw_content.strip() if isinstance(raw_content, str) else ""
             el_type = (el.get("type") or "").lower()
+            content_chart_tables = _chart_value_to_html(raw_content) if el_type == "figure" else ""
             if content:
                 if el_type == "title":
                     parts.append(f"# {content}")
                 elif el_type == "section_header":
                     parts.append(f"## {content}")
-                else:
+                elif not content_chart_tables:
                     parts.append(content)
             if el_type == "figure":
-                chart_tables = chart_description_to_html(el.get("description") or "")
+                chart_tables = content_chart_tables or _chart_value_to_html(el.get("description"))
                 if chart_tables:
                     parts.append(chart_tables)
     return "\n\n".join(parts)
@@ -288,6 +307,7 @@ def _build_layout_pages(document: dict[str, Any], source_file_path: str) -> list
         items: list[LayoutItemIR] = []
         for entry in entries:
             el = entry["element"]
+            el_type = (el.get("type") or "").lower()
             coord = entry["coord"] or []
             if len(coord) < 4:
                 continue
@@ -295,7 +315,7 @@ def _build_layout_pages(document: dict[str, Any], source_file_path: str) -> list
             w = max(x2 - x1, 0.0)
             h = max(y2 - y1, 0.0)
 
-            canonical = DATABRICKS_LABEL_MAP.get((el.get("type") or "").lower())
+            canonical = DATABRICKS_LABEL_MAP.get(el_type)
             if canonical is None:
                 continue
 
@@ -320,6 +340,7 @@ def _build_layout_pages(document: dict[str, Any], source_file_path: str) -> list
                 LayoutItemIR(
                     type=item_type,
                     value=el.get("content") or "",
+                    html=(_figure_chart_html(el) if el_type == "figure" else ""),
                     bbox=seg,
                     layout_segments=[seg],
                 )
