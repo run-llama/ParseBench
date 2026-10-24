@@ -344,8 +344,8 @@ def load_test_case(
     has_layout_rules = any(r.get("type") == "layout" for r in test_rules)
 
     # If data_schema is present, keep it as an EXTRACT test case unless the
-    # caller is explicitly loading this corpus for PARSE/LAYOUT_DETECTION and
-    # the file carries layout rules.
+    # caller is loading for PARSE/LAYOUT_DETECTION and the file carries layout
+    # rules; the layout case then keeps data_schema for its extract_field rules.
     prefer_layout_rules = bool(product_type_hint and product_type_hint.upper() in {"PARSE", "LAYOUT_DETECTION"})
     if data_schema and not (prefer_layout_rules and has_layout_rules):
         extract_case = ExtractTestCase(
@@ -383,6 +383,7 @@ def load_test_case(
             file_path=file_path,
             tags=all_tags,
             test_rules=test_rules,
+            data_schema=data_schema or None,
             ontology=test_config.get("ontology"),
             source_ontology=test_config.get("source_ontology"),
             source_dataset=test_config.get("source_dataset"),

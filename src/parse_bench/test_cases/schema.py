@@ -353,9 +353,13 @@ class LayoutDetectionTestCase(BaseTestCase):
     bounding boxes in [0,1] range. This enables unified loading with other test types.
     """
 
-    test_rules: list[LayoutTestRule | ParseRule] = Field(
+    test_rules: list[LayoutTestRule | ParseRule | ExtractFieldTestRule] = Field(
         default_factory=list,
         description="Test rules including layout annotations (type='layout')",
+    )
+    data_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="Extraction schema for pages that also carry extract_field rules",
     )
     ontology: str | None = Field(
         default=None,
@@ -374,13 +378,15 @@ class LayoutDetectionTestCase(BaseTestCase):
 
     @field_validator("test_rules", mode="before")
     @classmethod
-    def _coerce_layout_or_parse_rules(cls, value: list[dict[str, Any]] | None) -> list[LayoutTestRule | ParseRule]:
+    def _coerce_layout_or_parse_rules(
+        cls, value: list[dict[str, Any]] | None
+    ) -> list[LayoutTestRule | ParseRule | ExtractFieldTestRule]:
         if value is None:
             return []
 
-        typed_rules: list[LayoutTestRule | ParseRule] = []
+        typed_rules: list[LayoutTestRule | ParseRule | ExtractFieldTestRule] = []
         for rule in value:
-            if isinstance(rule, (LayoutTestRule,)):
+            if isinstance(rule, (LayoutTestRule, ExtractFieldTestRule)):
                 typed_rules.append(rule)
                 continue
 
@@ -388,6 +394,8 @@ class LayoutDetectionTestCase(BaseTestCase):
                 rule_type = rule.get("type")
                 if rule_type == "layout":
                     typed_rules.append(LayoutTestRule.model_validate(rule))
+                elif rule_type == "extract_field":
+                    typed_rules.append(ExtractFieldTestRule.model_validate(rule))
                 else:
                     typed_rules.append(coerce_parse_rule(rule))
                 continue
@@ -408,6 +416,10 @@ class LayoutDetectionTestCase(BaseTestCase):
                 if page is None or rule.page == page:
                     layout_rules.append(rule)
         return layout_rules
+
+    def get_extract_field_rules(self) -> list[ExtractFieldTestRule]:
+        """Return only the typed ``extract_field`` rules from ``test_rules``."""
+        return [rule for rule in self.test_rules if isinstance(rule, ExtractFieldTestRule)]
 
     def get_layout_annotations(self, page: int | None = None) -> list[LayoutAnnotation]:
         """Get layout annotations as LayoutAnnotation objects.
