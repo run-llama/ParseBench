@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import unittest
 from pathlib import Path
@@ -96,6 +97,53 @@ class TestPricing(unittest.TestCase):
 
     def test_rate_is_overridable(self) -> None:
         self.assertEqual(self._provider(credit_rate_usd=0.0012).credit_rate_usd, 0.0012)
+
+
+class TestInstructions(unittest.TestCase):
+    """The options each mode sends."""
+
+    def test_spatial_modes_ask_for_words_and_inline_formatting(self) -> None:
+        for mode in ("structure", "understand", "agentic"):
+            provider = NutrientDwsProvider("nutrient_dws", {"mode": mode, "api_key": "test"})
+            self.assertEqual(
+                json.loads(provider._instructions()),
+                {
+                    "mode": mode,
+                    "output": {
+                        "formats": ["markdown", "spatial"],
+                        "includeWords": True,
+                        "enableInlineFormatting": True,
+                    },
+                },
+            )
+
+    def test_hosted_body_also_asks_for_headers_footers_and_picture_words(self) -> None:
+        for mode in ("structure", "understand", "agentic"):
+            provider = NutrientDwsProvider("nutrient_dws", {"mode": mode, "body_source": "hosted", "api_key": "test"})
+            self.assertEqual(
+                json.loads(provider._instructions()),
+                {
+                    "mode": mode,
+                    "output": {
+                        "formats": ["markdown", "spatial"],
+                        "includeWords": True,
+                        "enableInlineFormatting": True,
+                        "includeHeadersAndFooters": True,
+                        "extractWordsFromPictures": True,
+                    },
+                },
+            )
+
+    def test_hosted_body_from_environment_also_asks_for_them(self) -> None:
+        with mock.patch.dict(os.environ, {"NUTRIENT_DWS_BODY_SOURCE": "hosted"}):
+            provider = NutrientDwsProvider("nutrient_dws", {"mode": "understand", "api_key": "test"})
+        output = json.loads(provider._instructions())["output"]
+        self.assertIs(output["includeHeadersAndFooters"], True)
+        self.assertIs(output["extractWordsFromPictures"], True)
+
+    def test_text_mode_sends_only_the_markdown_format(self) -> None:
+        provider = NutrientDwsProvider("nutrient_dws", {"mode": "text", "api_key": "test"})
+        self.assertEqual(json.loads(provider._instructions()), {"mode": "text", "output": {"format": "markdown"}})
 
 
 if __name__ == "__main__":
