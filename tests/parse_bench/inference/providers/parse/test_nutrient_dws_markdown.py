@@ -197,11 +197,165 @@ class TestWrapHyphenMarkdown(unittest.TestCase):
         self.assertEqual(self.provider._graph_body_md(element, {}), "## **健康保险的基本信息**")
 
 
+class TestStyleRunAcrossLineWraps(unittest.TestCase):
+    def setUp(self) -> None:
+        self.provider = NutrientDwsProvider("nutrient_dws", {"mode": "agentic", "api_key": "test"})
+
+    def test_bold_sentence_over_a_full_line_stays_one_span(self) -> None:
+        element = _element(
+            [
+                [("We now acknowledge this as a limitation", True), ("of", True)],
+                [("the survey design", True)],
+            ],
+            right=300,
+        )
+
+        self.assertEqual(
+            self.provider._graph_body_md(element, {}),
+            "**We now acknowledge this as a limitation of\nthe survey design**",
+        )
+
+    def test_lower_case_continuation_keeps_the_span_open(self) -> None:
+        element = _element([[("the vibrant and", False, True)], [("traditional flavors", False, True)]], right=300)
+
+        self.assertEqual(self.provider._graph_body_md(element, {}), "*the vibrant and\ntraditional flavors*")
+
+    def test_span_that_starts_and_ends_mid_line_crosses_the_wrap(self) -> None:
+        element = _element(
+            [
+                [("This limitation is now described as", False), ("Although we", True)],
+                [("examined several predictors", True), ("in the study.", False)],
+            ],
+            right=300,
+        )
+
+        self.assertEqual(
+            self.provider._graph_body_md(element, {}),
+            "This limitation is now described as **Although we\nexamined several predictors** in the study.",
+        )
+
+    def test_line_that_ends_a_sentence_closes_the_span(self) -> None:
+        element = _element(
+            [[("The questions did not differentiate the care.", True)], [("Methods were updated", True)]],
+            right=300,
+        )
+
+        self.assertEqual(
+            self.provider._graph_body_md(element, {}),
+            "**The questions did not differentiate the care.**\n**Methods were updated**",
+        )
+
+    def test_short_title_case_lines_stay_separate_spans(self) -> None:
+        # A name over its credentials: two units that share a style, not a wrapped sentence.
+        element = _element([[("Victoria Powell RN CCM", True)], [("CNLCP MSCC CEAS", True)]], right=150)
+
+        self.assertEqual(self.provider._graph_body_md(element, {}), "**Victoria Powell RN CCM**\n**CNLCP MSCC CEAS**")
+
+    def test_line_with_room_left_for_the_next_word_is_a_hard_break(self) -> None:
+        element = _element(
+            [[("Office of the Attorney General of the State", True)], [("Department of Justice", True)]],
+            right=900,
+        )
+
+        self.assertEqual(
+            self.provider._graph_body_md(element, {}),
+            "**Office of the Attorney General of the State**\n**Department of Justice**",
+        )
+
+    def test_heading_lines_form_one_span(self) -> None:
+        element = {**_element([[("Sunday Masses", True)], [("29/30 September", True)]], right=150)}
+        element["role"] = "SectionHeader"
+        element["headingLevel"] = 4
+
+        self.assertEqual(self.provider._graph_body_md(element, {}), "#### **Sunday Masses 29/30 September**")
+
+
+class TestProductHyphenDecision(unittest.TestCase):
+    def setUp(self) -> None:
+        self.provider = NutrientDwsProvider("nutrient_dws", {"mode": "agentic", "api_key": "test"})
+
+    def _element(self, decision: str | None, bold: bool = False) -> dict:
+        styles = {"bold": True} if bold else {}
+        hyphen = {"hyphenAtLineEnd": decision} if decision else {}
+        return {
+            "type": "paragraph",
+            "text": "a performance-\nbased plan",
+            "words": [
+                _word("a", 0, **styles),
+                _word("performance-", 25, **styles, **hyphen),
+                _word("based", 0, y=30, **styles),
+                _word("plan", 30, y=30, **styles),
+            ],
+        }
+
+    def test_compound_keeps_its_hyphen(self) -> None:
+        self.assertEqual(self.provider._graph_body_md(self._element("compound"), {}), "a performance-based\nplan")
+
+    def test_wrap_drops_the_hyphen(self) -> None:
+        self.assertEqual(self.provider._graph_body_md(self._element("wrap"), {}), "a performancebased\nplan")
+
+    def test_suspended_keeps_the_words_apart(self) -> None:
+        self.assertEqual(self.provider._graph_body_md(self._element("suspended"), {}), "a performance-\nbased plan")
+
+    def test_no_decision_keeps_the_old_rule(self) -> None:
+        # Payloads without the field render as before: the hyphen is taken for a wrap hyphen.
+        self.assertEqual(self.provider._graph_body_md(self._element(None), {}), "a performancebased\nplan")
+
+    def test_unknown_decision_is_ignored(self) -> None:
+        self.assertEqual(self.provider._graph_body_md(self._element("other"), {}), "a performancebased\nplan")
+
+    def test_compound_before_a_capital_fuses(self) -> None:
+        element = {
+            "type": "paragraph",
+            "text": "Franco-\nGerman talks",
+            "words": [
+                _word("Franco-", 0, hyphenAtLineEnd="compound"),
+                _word("German", 0, y=30),
+                _word("talks", 50, y=30),
+            ],
+        }
+
+        self.assertEqual(self.provider._graph_body_md(element, {}), "Franco-German\ntalks")
+
+    def test_styled_words_follow_the_decision(self) -> None:
+        for decision, expected in (
+            ("compound", "**a performance-based\nplan**"),
+            ("wrap", "**a performancebased\nplan**"),
+            ("suspended", "**a performance-\nbased plan**"),
+            (None, "**a performancebased\nplan**"),
+        ):
+            with self.subTest(decision=decision):
+                self.assertEqual(self.provider._graph_body_md(self._element(decision, bold=True), {}), expected)
+
+
 def _word(text: str, x: float, width: float = 20, y: float = 10, **styles: bool) -> dict:
     return {
         "text": text,
         "bounds": {"x": x, "y": y, "width": width, "height": 10},
         **styles,
+    }
+
+
+def _element(lines: list[list[tuple]], right: float) -> dict:
+    """A paragraph from (text, bold[, italic]) runs, one list per visual line, laid out from x=0.
+
+    Each run is split into words 8 units per character wide; the element ends at ``right``.
+    """
+    words = []
+    for n, line in enumerate(lines):
+        x = 0.0
+        for run in line:
+            text, bold = run[0], run[1]
+            italic = run[2] if len(run) > 2 else False
+            for token in text.split():
+                styles = {k: True for k, v in (("bold", bold), ("italic", italic)) if v}
+                words.append(_word(token, x, width=8 * len(token), y=10 + 30 * n, **styles))
+                x += 8 * len(token) + 5
+    return {
+        "type": "paragraph",
+        "text": "\n".join(" ".join(run[0] for run in line) for line in lines),
+        "bounds": {"x": 0, "y": 0, "width": right, "height": 30 * len(lines)},
+        "words": words,
     }
 
 

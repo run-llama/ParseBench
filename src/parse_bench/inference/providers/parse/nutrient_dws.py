@@ -346,53 +346,70 @@ class NutrientDwsProvider(Provider):
             height = max(float(pb.get("height", 0)), float(cb.get("height", 0)), 1.0)
             return gap < max(2.0, 0.15 * height)
 
-        def _style_line(line: list[dict]) -> str:
-            out = ""
-            prev_word: dict | None = None
-            i = 0
-            while i < len(line):
-                key = _key(line[i])
-                j = i
-                while j + 1 < len(line) and key == _key(line[j + 1]):
-                    j += 1
-                run_words = line[i : j + 1]
-                run = "".join(
-                    ("" if k == 0 or w.get("_cjk_glue") else " ") + (w.get("text") or "")
-                    for k, w in enumerate(run_words)
-                ).strip()
-                first_word = run_words[0]
-                i = j + 1
-                if not run:
-                    continue
-                bold, italic, strike, sup, sub, underlined, mark = key
-                if sup:
-                    run = f"<sup>{run}</sup>"
-                elif sub:
-                    run = f"<sub>{run}</sub>"
-                if strike:
-                    run = f"~~{run}~~"
-                if underlined:
-                    # Markdown has no native underline; <u> is the standard inline-HTML form.
-                    run = f"<u>{run}</u>"
-                if mark:
-                    run = f"<mark>{run}</mark>"
-                if bold and italic:
-                    run = f"***{run}***"
-                elif bold:
-                    run = f"**{run}**"
-                elif italic:
-                    run = f"*{run}*"
-                if not out:
-                    out = run
-                elif _glued(prev_word, first_word):
-                    out += run
-                else:
-                    out += " " + run
-                prev_word = run_words[-1]
-            return out
+        # A heading is collapsed to one line, so every break inside it is a wrap.
+        heading = el.get("role") in ("Title", "SectionHeader")
+        right_edge = _right(el)
+        # One entry per word: the word, whether it opens a visual line, and whether a style
+        # run may continue into it from the line above (a soft wrap) or must close first.
+        flat: list[tuple[dict, bool, bool]] = []
+        for n, line in enumerate(lines):
+            wrap = n > 0 and (heading or _is_soft_wrap(lines[n - 1], line, right_edge))
+            flat.extend((w, k == 0 and n > 0, wrap) for k, w in enumerate(line))
 
-        rendered = "\n".join(s for s in (_style_line(line) for line in lines) if s)
-        return rendered or plain
+        out = ""
+        prev_word: dict | None = None
+        newline_due = False
+        i = 0
+        while i < len(flat):
+            key = _key(flat[i][0])
+            j = i
+            while j + 1 < len(flat) and key == _key(flat[j + 1][0]) and (not flat[j + 1][1] or flat[j + 1][2]):
+                j += 1
+            run = ""
+            for k in range(i, j + 1):
+                w, opens_line, _ = flat[k]
+                text = (w.get("text") or "").strip()
+                if not text:
+                    continue
+                if run:
+                    run += "\n" if opens_line else ("" if w.get("_cjk_glue") else " ")
+                run += text
+            first_word, starts_line = flat[i][0], flat[i][1]
+            prev_in_line = None if starts_line else prev_word
+            newline_due = newline_due or starts_line
+            i = j + 1
+            if not run:
+                continue
+            bold, italic, strike, sup, sub, underlined, mark = key
+            if sup:
+                run = f"<sup>{run}</sup>"
+            elif sub:
+                run = f"<sub>{run}</sub>"
+            if strike:
+                run = f"~~{run}~~"
+            if underlined:
+                # Markdown has no native underline; <u> is the standard inline-HTML form.
+                run = f"<u>{run}</u>"
+            if mark:
+                run = f"<mark>{run}</mark>"
+            if bold and italic:
+                run = f"***{run}***"
+            elif bold:
+                run = f"**{run}**"
+            elif italic:
+                run = f"*{run}*"
+            if not out:
+                out = run
+            elif newline_due:
+                out += "\n" + run
+            elif _glued(prev_in_line, first_word):
+                out += run
+            else:
+                out += " " + run
+            newline_due = False
+            prev_word = flat[j][0]
+
+        return out or plain
 
     def _graph_body_md(self, el: dict, by_id: dict[str, dict]) -> str:
         """Markdown for one element, rendered from the graph (adapter convention)."""
@@ -410,7 +427,7 @@ class NutrientDwsProvider(Provider):
         if role == "Code":
             lang = el.get("codeLanguage") or ""
             return "```" + lang + "\n" + (el.get("text") or "").rstrip() + "\n```"
-        text = _join_cjk_lines(_join_wrapped_hyphens(text))
+        text = _join_cjk_lines(_join_wrapped_hyphens(text, el.get("words") or []))
         if role in ("Title", "SectionHeader"):
             level = el.get("headingLevel") or (1 if role == "Title" else 2)
             # A markdown heading ends at the newline, so a heading that wrapped in
@@ -700,19 +717,56 @@ def _is_wrap_continuation(word: str) -> bool:
     return bool(word) and word[0].isalpha() and word[0].islower() and not _looks_like_address(word)
 
 
-def _join_wrapped_hyphens(text: str) -> str:
+# The product's own decision for a hyphen that ends a line, on that line's last word
+# (``hyphenAtLineEnd``): "wrap" is a hyphen the line break inserted, so the halves fuse
+# without it ("concen-" + "trations"); "compound" is the word's own hyphen, so they fuse
+# keeping it ("performance-" + "based"); "suspended" is a hyphen held before a
+# conjunction ("pre-" + "and post-tax"), so the halves stay separate words.
+_HYPHEN_DECISIONS = frozenset({"wrap", "compound", "suspended"})
+
+
+def _hyphen_decision(word: dict) -> str | None:
+    decision = word.get("hyphenAtLineEnd")
+    return decision if decision in _HYPHEN_DECISIONS else None
+
+
+def _fuse(left: str, right: str, decision: str | None) -> str:
+    # Without the product's decision, the hyphen is taken for a wrap hyphen.
+    return left + right if decision == "compound" else left[:-1] + right
+
+
+def _join_wrapped_hyphens(text: str, words: list[dict] | None = None) -> str:
     """Rejoin words the source broke across lines with a hyphen.
 
     The graph keeps the page's visual lines, so "aufge-" and "führt den" arrive as two
     lines. The hosted Markdown output already joins such words; this does the same for
     the graph body: "aufgeführt" ends the first line and "den" starts the next.
+
+    When the words carry the product's ``hyphenAtLineEnd`` decision, it is followed.
+    Without it, a hyphen after a letter is dropped when the next line opens in lower case.
     """
+    # The decisions in reading order, matched to the line ends by the word's text.
+    decisions = [((w.get("text") or "").strip(), d) for w in words or [] if (d := _hyphen_decision(w))]
+    cursor = 0
     out: list[str] = []
     for line in text.split("\n"):
-        if out and _ends_with_wrap_hyphen(out[-1].rstrip()):
+        if out:
+            tail = out[-1].rstrip()
+            last = tail.split()[-1] if tail.split() else ""
+            decision = None
+            for k in range(cursor, len(decisions)):
+                if decisions[k][0] == last:
+                    decision, cursor = decisions[k][1], k + 1
+                    break
             first, _, rest = line.lstrip().partition(" ")
-            if _is_wrap_continuation(first):
-                out[-1] = out[-1].rstrip()[:-1] + first
+            if decision in ("wrap", "compound") and first:
+                fuse = True
+            elif decision is None:
+                fuse = _ends_with_wrap_hyphen(tail) and _is_wrap_continuation(first)
+            else:
+                fuse = False
+            if fuse:
+                out[-1] = _fuse(tail, first, decision)
                 if rest.strip():
                     out.append(rest.lstrip())
                 continue
@@ -730,8 +784,13 @@ def _join_wrapped_words(lines: list[list[dict]]) -> list[list[dict]]:
             continue
         last = (lines[i][-1].get("text") or "").strip()
         first = (lines[i + 1][0].get("text") or "").strip()
-        if _ends_with_wrap_hyphen(last) and _is_wrap_continuation(first):
-            lines[i][-1] = {**lines[i][-1], "text": last[:-1] + first}
+        decision = _hyphen_decision(lines[i][-1])
+        if decision is None:
+            fuse = _ends_with_wrap_hyphen(last) and _is_wrap_continuation(first)
+        else:
+            fuse = decision != "suspended" and bool(first)
+        if fuse:
+            lines[i][-1] = {**lines[i][-1], "text": _fuse(last, first, decision)}
             lines[i + 1] = lines[i + 1][1:]
     return [line for line in lines if line]
 
@@ -792,3 +851,35 @@ def _join_cjk_line_words(lines: list[list[dict]]) -> list[list[dict]]:
                 continue
         out.append(line)
     return out
+
+
+def _right(item: dict) -> float:
+    b = item.get("bounds") or {}
+    return float(b.get("x", 0)) + float(b.get("width", 0))
+
+
+# A line that ends a sentence or a label ("Total:", "(2020)") closes its style run.
+_LINE_END_PUNCT = re.compile(r"[.!?:;”\"’)]$")
+
+
+def _is_soft_wrap(above: list[dict], below: list[dict], right_edge: float) -> bool:
+    """Is the break between two visual lines of one element a soft wrap?
+
+    A style run (a bold sentence) continues across a soft wrap and closes at a hard
+    break. The break is soft when the line above doesn't end a sentence or label, and
+    either the next line continues it in lower case, or the line above is a full line
+    of text: at least 35 characters, with no room left at its end for the next line's
+    first word. Short lines in title case (a name over a list of credentials, an
+    address block) are separate units even when they share a style.
+    """
+    last = (above[-1].get("text") or "").strip()
+    if _LINE_END_PUNCT.search(last):
+        return False
+    first = below[0]
+    if (first.get("text") or "").strip()[:1].islower():
+        return True
+    if len(" ".join((w.get("text") or "").strip() for w in above)) < 35:
+        return False
+    b = first.get("bounds") or {}
+    space = 0.5 * max(float(b.get("height", 0)), 1.0)
+    return right_edge - _right(above[-1]) < float(b.get("width", 0)) + space
