@@ -316,9 +316,11 @@ class LayoutDetectionModel(StrEnum):
     ANTHROPIC_LAYOUT = "anthropic_layout"
     GEMMA4_LAYOUT = "gemma4_layout"
     HUNYUANOCR_LAYOUT = "hunyuanocr_layout"
+    NEMOTRON_PARSE_LAYOUT = "nemotron_parse_layout"
     DATABRICKS_LAYOUT = "databricks_layout"
     INFINITY_PARSER2_LAYOUT = "infinity_parser2_layout"
     OI_PARSER_LAYOUT = "oi_parser_layout"
+    UPSTAGE_LAYOUT = "upstage_layout"
     OPENAI_COMPATIBLE_VLM_LAYOUT = "openai_compatible_vlm_layout"
     CHECKBOX_DETECTOR_YOLOV8 = "checkbox_detector_yolov8"
     COHERE_PARSE_LAYOUT = "cohere_parse_layout"
@@ -332,6 +334,10 @@ class LayoutDetectionModel(StrEnum):
 
 
 LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
+    LayoutDetectionModel.UPSTAGE_LAYOUT: {
+        "name": "Upstage Document Parse",
+        "hf_url": "https://www.upstage.ai/products/document-parse",
+    },
     LayoutDetectionModel.PPDOCLAYOUT_PLUS_L: {
         "name": "PP-DocLayout-plus-L",
         "hf_url": "https://huggingface.co/llamaindex/paddleOCRDocLayoutPlusL",
@@ -463,6 +469,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.HUNYUANOCR_LAYOUT: {
         "name": "HunyuanOCR 1.5 Layout",
         "hf_url": "https://huggingface.co/tencent/HunyuanOCR",
+    },
+    LayoutDetectionModel.NEMOTRON_PARSE_LAYOUT: {
+        "name": "Nemotron 3.5 Parse Layout",
+        "hf_url": "https://huggingface.co/nvidia/Nemotron-3.5-Parse",
     },
     LayoutDetectionModel.DATABRICKS_LAYOUT: {
         "name": "Databricks ai_parse_document Layout",

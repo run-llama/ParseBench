@@ -19,6 +19,24 @@ from parse_bench.schemas.product import ProductType
 def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-def]
     """Register all parse-related pipelines."""
 
+    register_fn(
+        PipelineSpec(
+            pipeline_name="upstage_dpe_v2",
+            provider_name="upstage",
+            product_type=ProductType.PARSE,
+            config={
+                # Upload original PDFs; API internal default rendering applies.
+                "model": "document-parse-260930",
+                "min_image_short_side": 2000,
+                "mode": "enhanced",
+                "ocr": "force",
+                "chart_recognition": True,
+                "cost_per_page_usd": 0.03,
+                "timeout": 600,
+            },
+        )
+    )
+
     # =========================================================================
     # LlamaParse Production Pipelines (V2 SDK)
     # =========================================================================
@@ -1257,6 +1275,28 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             product_type=ProductType.PARSE,
             config={
                 "server_url": "",  # Set via OVISOCR2_SERVER_URL or override
+            },
+        )
+    )
+
+    # =========================================================================
+    # LightOnOCR-3 (grounding prompt: one pass gives markdown and layout)
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="lightonocr_3_vllm_parse",
+            provider_name="lightonocr-3",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "loocr-grounding",
+                "server_url_env": "LIGHTONOCR_3_SERVER_URL",
+                "prompt": "grounding",
+                "dpi": 400,
+                "max_pixels": 5_000_000,
+                "temperature": 0.1,
+                # QwenProvider's 16384 default is the whole context: image + output tokens would overflow.
+                "max_tokens": 12288,
             },
         )
     )
@@ -2788,6 +2828,25 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             product_type=ProductType.PARSE,
             config={
                 "server_url": "",  # Set via SURYA2_SERVER_URL or override
+            },
+        )
+    )
+
+    # =========================================================================
+    # Nemotron 3.5 Parse (nvidia/Nemotron-3.5-Parse, 0.63B RADIO + mBART)
+    # Model repository's nemotron_parse triple pass (full page + detection +
+    # Table/Chart crops, region union) on a vLLM backend. Markdown with HTML
+    # tables + classed per-block layout boxes.
+    # =========================================================================
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="nemotron_parse_3_5_sdk",
+            provider_name="nemotron_parse_3_5",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",  # Set via NEMOTRON_PARSE_3_5_SERVER_URL or override
+                "mode": "triple",
             },
         )
     )

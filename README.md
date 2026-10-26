@@ -3,6 +3,7 @@
 [![Website](https://img.shields.io/badge/Website-parsebench.ai-blue)](https://parsebench.ai)
 [![arXiv](https://img.shields.io/badge/arXiv-2604.08538-b31b1b.svg)](https://arxiv.org/abs/2604.08538)
 [![Dataset](https://img.shields.io/badge/HuggingFace-Dataset-yellow)](https://huggingface.co/datasets/llamaindex/ParseBench)
+[![Papers with Code: SOTA on ParseBench](https://paperswithcode.co/api/v1/papers/2604.08538/leaderboard-badge.svg?eval=32432&live=1)](https://paperswithcode.co/api/v1/papers/2604.08538/leaderboard-badge-link?eval=32432)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
 
 > **Related:** For schema-guided enterprise document extraction, see our companion benchmark [ExtractBench](https://github.com/run-llama/ExtractBench).
@@ -22,16 +23,16 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 
 | Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
-| 1 | LlamaParse Agentic Plus | LlamaParse | 90.20 | 93.37 | 94.18 | 92.25 | 87.12 | 84.09 | 5.62¢ |
-| 2 | LlamaParse Agentic | LlamaParse | 87.01 | 88.88 | 88.68 | 91.78 | 81.44 | 84.25 | 1.25¢ |
+| 1 | LlamaParse Agentic Plus | LlamaParse | 88.82 | 93.37 | 94.18 | 92.25 | 87.12 | 77.20 | 5.62¢ |
+| 2 | LlamaParse Agentic | LlamaParse | 85.90 | 88.88 | 88.68 | 91.78 | 81.44 | 78.72 | 1.25¢ |
 | 3 | Nutrient DWS (Agentic) | Commercial - IDP | 82.52 | 85.75 | 84.49 | 87.92 | 74.40 | 80.03 | 1.80¢ |
 | 4 | Pulse Ultra 2 | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
-| 5 | LlamaParse Cost Effective | LlamaParse | 80.61 | 84.19 | 77.91 | 89.87 | 67.29 | 83.77 | 0.38¢ |
+| 5 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.51 | 89.49 | 77.26 | 87.36 | 76.88 | 71.56 | 3.00¢ |
 | 6 | anyformat (Standard) | Commercial - Startup APIs | 80.30 | 86.46 | 85.56 | 87.35 | 79.04 | 63.07 | 4.30¢ |
-| 7 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 79.85 | 94.25 | 70.89 | 91.72 | 77.04 | 65.33 | 6.13¢ |
-| 8 | Anthropic Fable 5.1 | VLM - Proprietary | 78.92 | 91.52 | 67.06 | 91.19 | 76.52 | 68.3 | 16.05¢ |
+| 7 | LlamaParse Cost Effective | LlamaParse | 79.62 | 84.19 | 77.91 | 89.87 | 67.29 | 78.82 | 0.38¢ |
+| 8 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 78.89 | 94.25 | 70.89 | 91.72 | 77.04 | 60.53 | 6.13¢ |
 | 9 | oi-parser | Commercial - Startup APIs | 78.30 | 92.62 | 78.28 | 86.17 | 66.88 | 67.53 | — |
-| 10 | Anthropic Opus 5.5 | VLM - Proprietary | 78.01 | 93.86 | 64.12 | 91.81 | 77.04 | 63.2 | 5.79¢ |
+| 10 | Anthropic Fable 5.1 | VLM - Proprietary | 78.12 | 91.52 | 67.06 | 91.19 | 76.52 | 64.32 | 16.05¢ |
 <!-- LEADERBOARD:END -->
 
 **Inclusion criteria:**

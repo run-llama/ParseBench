@@ -28,6 +28,26 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 
 **Bold** pipelines are baselines evaluated in the [ParseBench paper](https://arxiv.org/abs/2604.08538). The name used in the paper is shown in parentheses.
 
+### Upstage
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `upstage_dpe_v2` | Document Parse 2 (Enhanced), snapshot 260930 | `UPSTAGE_API_KEY` |
+
+Install with `uv sync --extra upstage`. PDFs are uploaded unchanged.
+Native images smaller than a 2000px short edge
+are proportionally upscaled; larger images retain their dimensions. The pipeline
+requests HTML, Markdown, text and coordinates. PDF rendering uses API defaults.
+The provider uses API Markdown for body text, retaining HTML for tables,
+charts, figures and lists. It preserves OCR text and authored table captions,
+removes generated image narration and transport attributes from evaluable
+markup, and converts closed HTML code blocks to fences. Literal code, table
+spans and layout coordinates are preserved.
+
+```bash
+uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
+```
+
 ### LlamaParse
 
 | Pipeline | Description | Env Var |
@@ -277,6 +297,12 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 | `qwen3_8_flash_next_parse_with_layout` | Qwen3.8-Flash-Next-FP8, parse + layout | `QWEN3_8_FLASH_NEXT_SERVER_URL` |
 | `qwen3_8_flash_next_thinking_parse_with_layout` | Qwen3.8-Flash-Next-FP8, parse + layout with thinking | `QWEN3_8_FLASH_NEXT_SERVER_URL` |
 
+### LightOnOCR-3
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `lightonocr_3_vllm_parse` | LightOnOCR-3 grounding prompt, parse + layout from one pass (400 DPI, 5M pixel cap) | `LIGHTONOCR_3_SERVER_URL` |
+
 ### Chandra OCR 2
 
 | Pipeline | Description | Env Var |
@@ -341,6 +367,12 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 |---|---|---|
 | `nemotron_omni_30b_vllm` | Nemotron-3-Nano-Omni 30B-A3B Reasoning, thinking disabled | `NEMOTRON_OMNI_SERVER_URL` |
 | `nemotron_omni_30b_vllm_thinking` | Nemotron-3-Nano-Omni 30B-A3B Reasoning, thinking enabled | `NEMOTRON_OMNI_SERVER_URL` |
+
+### Nemotron 3.5 Parse
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `nemotron_parse_3_5_sdk` | Nemotron 3.5 Parse SDK server (triple pass: full page + detection + Table/Chart crops; layout) | `NEMOTRON_PARSE_3_5_SERVER_URL` |
 
 ### Surya OCR 2
 
