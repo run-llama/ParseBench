@@ -17,6 +17,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          python-version: "3.12"
       - run: uv sync --extra runners --extra fast --extra dev
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests

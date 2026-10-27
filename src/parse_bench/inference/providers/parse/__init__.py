@@ -46,6 +46,7 @@ _PROVIDER_MODULES = [
     "llamaparse",
     "llamaparse_v2_normalization",
     "lmkit",
+    "minicpm_ocr",
     "mineru25",
     "mineru2605pro",
     "mineru_diffusion",

@@ -387,8 +387,10 @@ class DotsOcrLabelMapper(LayoutLabelMapper):
 @register_layout_label_mapper(
     "liteparse",
     "hpd_parsing",
+    "minicpm_ocr",
     "model:liteparse_layout",
     "model:hpd_parsing_layout",
+    "model:minicpm_ocr_layout",
     priority=90,
 )
 class LiteParseLabelMapper(LayoutLabelMapper):

@@ -34,6 +34,11 @@ All notable changes to `parse-bench` are recorded here. The format follows
   `LayoutDetectionModel.NEMOTRON_PARSE_LAYOUT` (with a `LAYOUT_MODEL_INFO`
   entry), and a passthrough label mapper resolves them, so Visual Grounding is
   scored instead of raising `UnknownRawLayoutLabelError`.
+- `minicpm_ocr_sdk` pipeline and `minicpm_ocr` provider for MiniCPM-OCR 1.0,
+  driven by a server running the official `minicpmvocr` SDK
+  (`MINICPM_OCR_SERVER_URL`). PP-DocLayoutV3 regions are mapped to canonical
+  labels and scored for Visual Grounding under the new
+  `LayoutDetectionModel.MINICPM_OCR_LAYOUT` (with a `LAYOUT_MODEL_INFO` entry).
 - `register_reference_thumbnailer` (exported from `parse_bench.extensions`):
   how a rule's `reference_image` is rendered into the detailed report. parse-bench
   keeps no image stack in its core dependencies, so it ships no default and
