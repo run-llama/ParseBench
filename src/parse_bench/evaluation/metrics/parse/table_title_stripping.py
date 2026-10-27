@@ -78,6 +78,24 @@ def _is_row_header_only(table: TableData, r: int, n_cols: int, row_header_cols: 
     return bool(th_content_cols) and th_content_cols <= row_header_cols
 
 
+def _declares_row_headers_only(table: TableData, r: int) -> bool:
+    """True when every ``<th>`` in row ``r`` declares a row scope.
+
+    ``scope="row"`` / ``scope="rowgroup"`` says the cell heads rows, not
+    columns, so ``parse_html_tables`` leaves it out of ``col_headers``. A row
+    that holds such cells and nothing that heads a column — the full-width
+    section label ``<th colspan="3" scope="rowgroup">`` — is a body row. Read
+    as part of the column-header block it contributes no key text, and the
+    title detector (which looks at ``col_headers``) cannot see it either, so
+    its text would drop out of the records altogether.
+
+    As in ``_is_row_header_only``, a row inside ``<thead>`` is exempt.
+    """
+    if r not in table.row_scope_rows or r in table.thead_rows:
+        return False
+    return not any(row_idx == r for entries in table.col_headers.values() for row_idx, _ in entries)
+
+
 def find_row_header_cols(table: TableData) -> set[int]:
     """Columns that carry ``<th>`` *row* headers rather than column headers.
 
@@ -121,6 +139,9 @@ def find_col_header_rows(table: TableData, nominal_header_rows: set[int], td_tit
     header — and swallowing it into the header block would fold its text into
     every column key and unmatch the label column against a ground truth that
     spells the same rows with ``<td>``.
+
+    A row whose ``<th>`` cells all declare a row scope (see
+    ``_declares_row_headers_only``) stops the scan for the same reason.
     """
     n_rows, n_cols = table.data.shape
     first_possible_header = max(td_title_rows) + 1 if td_title_rows else 0
@@ -136,6 +157,8 @@ def find_col_header_rows(table: TableData, nominal_header_rows: set[int], td_tit
         if has_non_th_content:
             break
         if _is_row_header_only(table, r, n_cols, row_header_cols):
+            break
+        if _declares_row_headers_only(table, r):
             break
         leading_header_end = r + 1
 
