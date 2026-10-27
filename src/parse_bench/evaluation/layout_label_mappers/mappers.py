@@ -20,6 +20,7 @@ from parse_bench.inference.providers.layoutdet.adapters import (
     SuryaLayoutDetLabelAdapter,
     YoloLayoutDetLabelAdapter,
 )
+from parse_bench.inference.providers.parse.syntel import PROVIDER_NAME as SYNTEL_PROVIDER_NAME
 from parse_bench.layout_label_mapping import (
     UnknownRawLayoutLabelError,
     detect_llamaparse_label_version,
@@ -442,3 +443,12 @@ class UpstageLabelMapper(LayoutLabelMapper):
             return self._MAPPING[label.lower()]
         except KeyError as exc:
             raise UnknownRawLayoutLabelError(f"Unknown Upstage category: {label!r}") from exc
+
+
+@register_layout_label_mapper(SYNTEL_PROVIDER_NAME, "model:syntel_layout", priority=90)
+class SyntelLabelMapper(CanonicalPassthroughMapper):
+    """Pass through the canonical labels the Syntel layout adapter assigns.
+
+    The adapter maps each region's category (with the page-band rule in its docstring), so a
+    label that is not canonical here is an adapter bug and raises.
+    """

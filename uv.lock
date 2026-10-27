@@ -2690,6 +2690,9 @@ runners = [
     { name = "unstructured-client" },
     { name = "warp-ingest", extra = ["ocr"], marker = "extra == 'extra-11-parse-bench-runners'" },
 ]
+syntel = [
+    { name = "httpx" },
+]
 unstructured = [
     { name = "unstructured-client" },
 ]
@@ -2731,6 +2734,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'docling'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'llamaparse'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'runners'", specifier = ">=0.28.0" },
+    { name = "httpx", marker = "extra == 'syntel'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'upstage'", specifier = ">=0.28.0" },
     { name = "huggingface-hub", specifier = ">=0.20.0" },
     { name = "infinity-parser2", marker = "extra == 'runners'", specifier = ">=0.3.0" },
@@ -2788,7 +2792,7 @@ requires-dist = [
     { name = "unstructured-client", marker = "extra == 'unstructured'", specifier = ">=0.26.0" },
     { name = "warp-ingest", extras = ["ocr"], marker = "extra == 'runners'", specifier = ">=2.0.1" },
 ]
-provides-extras = ["anthropic", "anyformat", "aws", "azure", "chunkr", "datalab", "dev", "docling", "extend", "fast", "google", "landingai", "liteparse", "llamaparse", "local", "openai", "pymupdf4llm", "reducto", "runners", "unstructured", "upstage"]
+provides-extras = ["anthropic", "anyformat", "aws", "azure", "chunkr", "datalab", "dev", "docling", "extend", "fast", "google", "landingai", "liteparse", "llamaparse", "local", "openai", "pymupdf4llm", "reducto", "runners", "syntel", "unstructured", "upstage"]
 
 [[package]]
 name = "partial-json-parser"

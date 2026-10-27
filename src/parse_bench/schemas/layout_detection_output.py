@@ -321,6 +321,7 @@ class LayoutDetectionModel(StrEnum):
     INFINITY_PARSER2_LAYOUT = "infinity_parser2_layout"
     OI_PARSER_LAYOUT = "oi_parser_layout"
     UPSTAGE_LAYOUT = "upstage_layout"
+    SYNTEL_LAYOUT = "syntel_layout"
     OPENAI_COMPATIBLE_VLM_LAYOUT = "openai_compatible_vlm_layout"
     CHECKBOX_DETECTOR_YOLOV8 = "checkbox_detector_yolov8"
     COHERE_PARSE_LAYOUT = "cohere_parse_layout"
