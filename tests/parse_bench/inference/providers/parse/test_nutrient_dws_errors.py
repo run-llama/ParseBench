@@ -102,24 +102,12 @@ class TestPricing(unittest.TestCase):
 class TestInstructions(unittest.TestCase):
     """The options each mode sends."""
 
-    def test_spatial_modes_ask_for_words_and_inline_formatting(self) -> None:
+    def test_default_body_is_the_hosted_markdown(self) -> None:
         for mode in ("structure", "understand", "agentic"):
-            provider = NutrientDwsProvider("nutrient_dws", {"mode": mode, "api_key": "test"})
-            self.assertEqual(
-                json.loads(provider._instructions()),
-                {
-                    "mode": mode,
-                    "output": {
-                        "formats": ["markdown", "spatial"],
-                        "includeWords": True,
-                        "enableInlineFormatting": True,
-                    },
-                },
-            )
-
-    def test_hosted_body_also_asks_for_headers_footers_and_picture_words(self) -> None:
-        for mode in ("structure", "understand", "agentic"):
-            provider = NutrientDwsProvider("nutrient_dws", {"mode": mode, "body_source": "hosted", "api_key": "test"})
+            with mock.patch.dict(os.environ):
+                os.environ.pop("NUTRIENT_DWS_BODY_SOURCE", None)
+                provider = NutrientDwsProvider("nutrient_dws", {"mode": mode, "api_key": "test"})
+            self.assertEqual(provider._body_source, "hosted")
             self.assertEqual(
                 json.loads(provider._instructions()),
                 {
@@ -134,16 +122,48 @@ class TestInstructions(unittest.TestCase):
                 },
             )
 
-    def test_hosted_body_from_environment_also_asks_for_them(self) -> None:
-        with mock.patch.dict(os.environ, {"NUTRIENT_DWS_BODY_SOURCE": "hosted"}):
+    def test_graph_body_asks_for_words_and_inline_formatting_only(self) -> None:
+        for mode in ("structure", "understand", "agentic"):
+            provider = NutrientDwsProvider("nutrient_dws", {"mode": mode, "body_source": "graph", "api_key": "test"})
+            self.assertEqual(
+                json.loads(provider._instructions()),
+                {
+                    "mode": mode,
+                    "output": {
+                        "formats": ["markdown", "spatial"],
+                        "includeWords": True,
+                        "enableInlineFormatting": True,
+                    },
+                },
+            )
+
+    def test_graph_body_from_environment(self) -> None:
+        with mock.patch.dict(os.environ, {"NUTRIENT_DWS_BODY_SOURCE": "graph"}):
             provider = NutrientDwsProvider("nutrient_dws", {"mode": "understand", "api_key": "test"})
+        self.assertEqual(provider._body_source, "graph")
         output = json.loads(provider._instructions())["output"]
-        self.assertIs(output["includeHeadersAndFooters"], True)
-        self.assertIs(output["extractWordsFromPictures"], True)
+        self.assertNotIn("includeHeadersAndFooters", output)
+        self.assertNotIn("extractWordsFromPictures", output)
 
     def test_text_mode_sends_only_the_markdown_format(self) -> None:
         provider = NutrientDwsProvider("nutrient_dws", {"mode": "text", "api_key": "test"})
         self.assertEqual(json.loads(provider._instructions()), {"mode": "text", "output": {"format": "markdown"}})
+
+
+class TestChartCaption(unittest.TestCase):
+    """A chart table's caption comes from the page, never from the generated summary."""
+
+    _TABLE = "<table><tr><th>Year</th><th>Sales</th></tr><tr><td>2024</td><td>12</td></tr></table>"
+
+    def test_printed_caption_is_attached(self) -> None:
+        el = {"type": "chart", "htmlTable": self._TABLE, "captionIds": ["c1"], "summary": "Bar chart of sales"}
+        html = NutrientDwsProvider._chart_table_html(el, {"c1": {"text": "Figure 3. Sales by year"}})
+        self.assertIn("<caption>Figure 3. Sales by year</caption>", html)
+        self.assertNotIn("Bar chart of sales", html)
+
+    def test_summary_is_not_used_without_a_printed_caption(self) -> None:
+        el = {"type": "chart", "htmlTable": self._TABLE, "summary": "Bar chart of sales"}
+        self.assertEqual(NutrientDwsProvider._chart_table_html(el, {}), self._TABLE)
 
 
 if __name__ == "__main__":

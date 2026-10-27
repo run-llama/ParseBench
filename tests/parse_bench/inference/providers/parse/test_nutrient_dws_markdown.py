@@ -7,7 +7,9 @@ from parse_bench.inference.providers.parse.nutrient_dws import NutrientDwsProvid
 
 class TestInlineStyleMarkdown(unittest.TestCase):
     def setUp(self) -> None:
-        self.provider = NutrientDwsProvider("nutrient_dws", {"mode": "agentic", "api_key": "test"})
+        self.provider = NutrientDwsProvider(
+            "nutrient_dws", {"mode": "agentic", "body_source": "graph", "api_key": "test"}
+        )
 
     def test_section_heading_preserves_underlined_word_run(self) -> None:
         element = {
@@ -96,7 +98,9 @@ class TestInlineStyleMarkdown(unittest.TestCase):
 
 class TestWrapHyphenMarkdown(unittest.TestCase):
     def setUp(self) -> None:
-        self.provider = NutrientDwsProvider("nutrient_dws", {"mode": "agentic", "api_key": "test"})
+        self.provider = NutrientDwsProvider(
+            "nutrient_dws", {"mode": "agentic", "body_source": "graph", "api_key": "test"}
+        )
 
     def test_word_broken_at_a_line_end_is_rejoined(self) -> None:
         element = {"type": "paragraph", "text": "die aufge-\nführten Daten\nsind da"}
@@ -199,7 +203,9 @@ class TestWrapHyphenMarkdown(unittest.TestCase):
 
 class TestStyleRunAcrossLineWraps(unittest.TestCase):
     def setUp(self) -> None:
-        self.provider = NutrientDwsProvider("nutrient_dws", {"mode": "agentic", "api_key": "test"})
+        self.provider = NutrientDwsProvider(
+            "nutrient_dws", {"mode": "agentic", "body_source": "graph", "api_key": "test"}
+        )
 
     def test_bold_sentence_over_a_full_line_stays_one_span(self) -> None:
         element = _element(
@@ -272,7 +278,9 @@ class TestStyleRunAcrossLineWraps(unittest.TestCase):
 
 class TestProductHyphenDecision(unittest.TestCase):
     def setUp(self) -> None:
-        self.provider = NutrientDwsProvider("nutrient_dws", {"mode": "agentic", "api_key": "test"})
+        self.provider = NutrientDwsProvider(
+            "nutrient_dws", {"mode": "agentic", "body_source": "graph", "api_key": "test"}
+        )
 
     def _element(self, decision: str | None, bold: bool = False) -> dict:
         styles = {"bold": True} if bold else {}

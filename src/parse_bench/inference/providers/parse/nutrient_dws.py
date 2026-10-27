@@ -127,11 +127,11 @@ class NutrientDwsProvider(Provider):
         self._mode = mode
         self._spatial = mode in _SPATIAL_MODES
 
-        # Graded body: "graph" renders from output.elements with inline styling
-        # from word flags (the default; word flags are only consumed here).
-        # "hosted" grades output.markdown verbatim.
+        # Graded body: "hosted" (the default) grades the product's own
+        # output.markdown. "graph" renders the body from output.elements instead,
+        # with inline styling from the word flags.
         body_source = str(
-            os.environ.get("NUTRIENT_DWS_BODY_SOURCE") or self.base_config.get("body_source", "graph")
+            os.environ.get("NUTRIENT_DWS_BODY_SOURCE") or self.base_config.get("body_source", "hosted")
         ).lower()
         if body_source not in ("graph", "hosted"):
             raise ProviderConfigError(f"body_source must be 'graph' or 'hosted', got '{body_source}'")
@@ -453,11 +453,8 @@ class NutrientDwsProvider(Provider):
             for text in (((by_id.get(cid) or {}).get("text") or "").strip() for cid in (el.get("captionIds") or []))
             if text
         )
-        # `summary` is the VLM's own one-line description ("Horizontal bar chart
-        # comparing ..."). It carries the axis/series wording that chart rules match
-        # on, so it stands in when the document has no caption element of its own.
-        if not caption:
-            caption = (el.get("summary") or "").strip()
+        # Only text printed on the page becomes a caption. The chart's `summary` is
+        # generated text, not something the document shows, so it is never used.
         if not caption or not table.startswith("<table"):
             return table
         head, rest = table[: len("<table")], table[len("<table") :]

@@ -275,6 +275,10 @@ parse workflow), `effort`, `prompt_hint`, `figure_enhancement`, `credit_rate_usd
 | `nutrient_dws_understand` | `understand` mode, adds semantic enrichment | `NUTRIENT_DWS_API_KEY` |
 | **`nutrient_dws_agentic`** | `agentic` mode, visual reasoning (In paper: *Nutrient DWS (Agentic)*) | `NUTRIENT_DWS_API_KEY` |
 
+The graded body is the API's own `output.markdown`, with any chart data table it leaves out appended.
+Set `body_source: "graph"` in the pipeline config, or `NUTRIENT_DWS_BODY_SOURCE=graph`, to render the body
+from the returned elements instead.
+
 ## Self-hosted Model Pipelines
 
 These pipelines require you to deploy the model on your own infrastructure (e.g., via vLLM, Modal, etc.) and set the endpoint URL in `.env`.
