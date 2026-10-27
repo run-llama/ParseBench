@@ -45,6 +45,7 @@ _PROVIDER_MODULES = [
     "rakedoc_nano",
     "llamaparse",
     "llamaparse_v2_normalization",
+    "minicpm_ocr",
     "mineru25",
     "mineru2605pro",
     "mineru_diffusion",

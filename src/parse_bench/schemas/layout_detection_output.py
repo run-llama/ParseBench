@@ -328,6 +328,7 @@ class LayoutDetectionModel(StrEnum):
     LITEPARSE_LAYOUT = "liteparse_layout"
     HPD_PARSING_LAYOUT = "hpd_parsing_layout"
     TELEOCR_LAYOUT = "teleocr_layout"
+    MINICPM_OCR_LAYOUT = "minicpm_ocr_layout"
     FIRECRAWL_LAYOUT = "firecrawl_layout"
     ANYFORMAT_LAYOUT = "anyformat_layout"
     DOCAI_LAYOUT = "docai_layout"
@@ -497,6 +498,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.TELEOCR_LAYOUT: {
         "name": "TeleOCR Layout",
         "hf_url": "https://huggingface.co/StarDoc-AI/TeleOCR",
+    },
+    LayoutDetectionModel.MINICPM_OCR_LAYOUT: {
+        "name": "MiniCPM-OCR 1.0 Layout (PP-DocLayoutV3)",
+        "hf_url": "https://huggingface.co/openbmb/MiniCPM-OCR-1.0",
     },
     LayoutDetectionModel.FIRECRAWL_LAYOUT: {
         "name": "Firecrawl Layout",

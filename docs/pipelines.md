@@ -61,6 +61,8 @@ uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 | Pipeline | Description | Env Var |
 |---|---|---|
 | `openai_gpt_6_1_sol_reasoning_low_parse_with_layout_file` | GPT-6.1 Sol, low reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
+| `openai_gpt_6_1_terra_reasoning_low_parse_with_layout_file` | GPT-6.1 Terra, low reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
+| `openai_gpt_6_1_terra_reasoning_med_parse_with_layout_file` | GPT-6.1 Terra, medium reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_medium_parse` | GPT-5 Mini, medium reasoning, image mode | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_medium_parse_file` | GPT-5 Mini, medium reasoning, PDF file mode | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_minimal_parse` | GPT-5 Mini, minimal reasoning | `OPENAI_API_KEY` |
@@ -373,6 +375,12 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 | Pipeline | Description | Env Var |
 |---|---|---|
 | `nemotron_parse_3_5_sdk` | Nemotron 3.5 Parse SDK server (triple pass: full page + detection + Table/Chart crops; layout) | `NEMOTRON_PARSE_3_5_SERVER_URL` |
+
+### MiniCPM-OCR 1.0
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `minicpm_ocr_sdk` | MiniCPM-OCR 1.0 `minicpmvocr` SDK server (PP-DocLayoutV3 regions recognized per label; layout) | `MINICPM_OCR_SERVER_URL` |
 
 ### Surya OCR 2
 

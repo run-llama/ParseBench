@@ -3713,6 +3713,33 @@ class HpdParsingLayoutAdapter(LiteParseLayoutAdapter):
         return layout_output.model_copy(update={"model": LayoutDetectionModel.HPD_PARSING_LAYOUT})
 
 
+@register_layout_adapter("minicpm_ocr", priority=90)
+class MiniCPMOCRLayoutAdapter(LiteParseLayoutAdapter):
+    """Convert MiniCPM-OCR's normalized ``layout_pages`` (PP-DocLayoutV3 regions) to layout output."""
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput) or not inference_result.output.layout_pages:
+            return False
+        page_results = inference_result.raw_output.get("page_results")
+        return (
+            isinstance(page_results, list)
+            and bool(page_results)
+            and isinstance(page_results[0], dict)
+            and "blocks" in page_results[0]
+            and "page_index" in page_results[0]
+        )
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        layout_output = super().to_layout_output(inference_result, page_filter=page_filter)
+        return layout_output.model_copy(update={"model": LayoutDetectionModel.MINICPM_OCR_LAYOUT})
+
+
 @register_layout_adapter("teleocr", priority=90)
 class TeleOCRLayoutAdapter(LayoutAdapter):
     """Project normalized segments into each page's physical coordinate frame."""
