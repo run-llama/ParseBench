@@ -382,6 +382,12 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 |---|---|---|
 | `minicpm_ocr_sdk` | MiniCPM-OCR 1.0 `minicpmvocr` SDK server (PP-DocLayoutV3 regions recognized per label; layout) | `MINICPM_OCR_SERVER_URL` |
 
+### Unlimited-OCR 2
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `unlimitedocr2` | Unlimited-OCR 2 on its official SGLang server (whole document per request; layout) | `UNLIMITEDOCR2_SERVER_URL` |
+
 ### Surya OCR 2
 
 | Pipeline | Description | Env Var |

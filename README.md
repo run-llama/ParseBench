@@ -138,6 +138,23 @@ uv run parse-bench download --test
 uv run parse-bench status
 ```
 
+### Repetition tests
+
+`repetition_overshoot` is a built-in rule that fails an output repeating anything (a dot leader, a unit, a token, a
+line, a table row, a whole table) more than the page holds. Restyling, splitting, merging or dropping a repetition
+never fails; only overshoot does. An empty answer fails too.
+
+```bash
+# Write a repetition test next to each PDF, budgeted from its text layer, then run it
+uv run parse-bench repetition make ./my_docs
+uv run parse-bench run <pipeline_name> --input_dir ./my_docs
+
+# Run any HuggingFace dataset in the ParseBench layout (downloads to ./data/<name> on first run)
+uv run parse-bench run <pipeline_name> --dataset org/name
+```
+
+See [docs/repetition-overshoot.md](docs/repetition-overshoot.md) for the rule and its budgets.
+
 ## Usage
 
 ### Running the Benchmark

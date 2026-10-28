@@ -1314,6 +1314,17 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Unlimited-OCR 2 (baidu/Unlimited-OCR-2): whole document per request on the
+    # official SGLang deployment (UNLIMITEDOCR2_SERVER_URL).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="unlimitedocr2",
+            provider_name="unlimitedocr2",
+            product_type=ProductType.PARSE,
+            config={},
+        )
+    )
+
     # =========================================================================
     # GLM (z.ai)
     # =========================================================================

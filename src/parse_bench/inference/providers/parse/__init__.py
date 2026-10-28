@@ -66,6 +66,7 @@ _PROVIDER_MODULES = [
     "tesseract",
     "textract",
     "unlimitedocr",
+    "unlimitedocr2",
     "unstructured",
     "upstage",
     "warp_ingest",

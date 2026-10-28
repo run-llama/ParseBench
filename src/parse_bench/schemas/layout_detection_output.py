@@ -317,6 +317,7 @@ class LayoutDetectionModel(StrEnum):
     GEMMA4_LAYOUT = "gemma4_layout"
     HUNYUANOCR_LAYOUT = "hunyuanocr_layout"
     NEMOTRON_PARSE_LAYOUT = "nemotron_parse_layout"
+    UNLIMITED_OCR_2_LAYOUT = "unlimited_ocr_2_layout"
     DATABRICKS_LAYOUT = "databricks_layout"
     INFINITY_PARSER2_LAYOUT = "infinity_parser2_layout"
     OI_PARSER_LAYOUT = "oi_parser_layout"
@@ -474,6 +475,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.NEMOTRON_PARSE_LAYOUT: {
         "name": "Nemotron 3.5 Parse Layout",
         "hf_url": "https://huggingface.co/nvidia/Nemotron-3.5-Parse",
+    },
+    LayoutDetectionModel.UNLIMITED_OCR_2_LAYOUT: {
+        "name": "Unlimited-OCR 2 Layout",
+        "hf_url": "https://huggingface.co/baidu/Unlimited-OCR-2",
     },
     LayoutDetectionModel.DATABRICKS_LAYOUT: {
         "name": "Databricks ai_parse_document Layout",

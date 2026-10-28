@@ -13,6 +13,13 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `repetition_overshoot`, a built-in rule that fails an output repeating anything (a leader, a unit, a token, a line,
+  a table row, a whole table) more than the page holds. `parse-bench repetition make <dir>` writes this test next to
+  each of your own PDFs, budgeted from its text layer. See `docs/repetition-overshoot.md`.
+- `--dataset` on `download`, `status` and `run` accepts any HuggingFace dataset repo id (`org/name`) in the ParseBench
+  layout, downloaded to `./data/<name>`.
+
 ### Fixed
 - Layout attribution no longer crashes on layout rules without an `ro_index`.
   `LayoutDetectionEvaluator` dumps rules with `ro_index=None`, which
@@ -27,6 +34,10 @@ All notable changes to `parse-bench` are recorded here. The format follows
   is what lets the reference resolve in the first place.
 
 ### Added
+- `unlimitedocr2` pipeline and provider for Unlimited-OCR 2
+  (`UNLIMITEDOCR2_SERVER_URL`). Converts the model's layout-block output with
+  Baidu's official converter (vendored) and scores layout through
+  `LayoutDetectionModel.UNLIMITED_OCR_2_LAYOUT`.
 - `nemotron_parse_3_5_sdk` pipeline and `nemotron_parse_3_5` provider for
   Nemotron 3.5 Parse, driven by an SDK server that runs the model repository's
   triple-pass pipeline (`NEMOTRON_PARSE_3_5_SERVER_URL`). Its layout adapter

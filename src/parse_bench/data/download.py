@@ -1,6 +1,9 @@
-"""Download parse-bench dataset from HuggingFace.
+"""Download parse-bench datasets from HuggingFace.
 
-Dataset: https://huggingface.co/datasets/llamaindex/ParseBench
+Datasets (``--dataset``):
+    parsebench  https://huggingface.co/datasets/llamaindex/ParseBench (default)
+    org/name    any other HuggingFace dataset repo in the same layout: ``<category>.jsonl`` rows and ``docs/``,
+                downloaded to ``./data/<name, lowercased>``
 
 Structure after download:
     <local_dir>/
@@ -14,6 +17,8 @@ Structure after download:
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from pathlib import Path
 
 DATASET_REPO = "llamaindex/ParseBench"
@@ -27,45 +32,89 @@ DEFAULT_DATA_DIR = Path("./data")
 DEFAULT_TEST_DATA_DIR = Path("./data/test")
 
 
-def default_data_dir(test: bool = False) -> Path:
+@dataclass(frozen=True)
+class DatasetSpec:
+    """A dataset the CLI can download: where it lives on HuggingFace and on disk, and what a complete copy holds."""
+
+    repo: str
+    data_dir: Path
+    required_files: tuple[str, ...]
+    doc_dirs: tuple[str, ...]
+    test_data_dir: Path | None = None
+    test_revision: str | None = None
+
+
+DATASETS: dict[str, DatasetSpec] = {
+    "parsebench": DatasetSpec(
+        repo=DATASET_REPO,
+        data_dir=DEFAULT_DATA_DIR,
+        required_files=(
+            "chart.jsonl",
+            "layout.jsonl",
+            "table.jsonl",
+            "text_content.jsonl",
+            "text_formatting.jsonl",
+        ),
+        doc_dirs=("docs/chart", "docs/layout", "docs/table", "docs/text"),
+        test_data_dir=DEFAULT_TEST_DATA_DIR,
+        test_revision=TEST_DATA_REVISION,
+    ),
+}
+
+_REPO_ID = re.compile(r"[\w.-]+/[\w.-]+")
+
+
+def dataset_spec(dataset: str = "parsebench", test: bool = False) -> DatasetSpec:
+    """Look up a dataset by name or HuggingFace repo id; ``test`` requires one that has a test subset.
+
+    A repo id (``org/name``) not in ``DATASETS`` is any dataset in the ParseBench layout. Its categories are not
+    known in advance, so a complete copy is one with at least one ``*.jsonl`` and a non-empty ``docs/``.
+    """
+    if dataset in DATASETS:
+        spec = DATASETS[dataset]
+    elif _REPO_ID.fullmatch(dataset):
+        name = dataset.split("/", 1)[1].lower()
+        spec = DatasetSpec(repo=dataset, data_dir=DEFAULT_DATA_DIR / name, required_files=(), doc_dirs=("docs",))
+    else:
+        raise ValueError(
+            f"Unknown dataset {dataset!r}; choose one of: {', '.join(DATASETS)}, or a HuggingFace repo id (org/name)"
+        )
+    if test and spec.test_data_dir is None:
+        raise ValueError(f"The {dataset!r} dataset has no test subset; drop --test")
+    return spec
+
+
+def default_data_dir(test: bool = False, dataset: str = "parsebench") -> Path:
     """Return the default on-disk dataset path for the given mode.
 
     Used by every CLI surface that takes ``--test`` so the routing is
     consistent between ``download``, ``run`` and ``status``.
     """
-    return DEFAULT_TEST_DATA_DIR if test else DEFAULT_DATA_DIR
+    spec = dataset_spec(dataset, test)
+    return spec.test_data_dir if test and spec.test_data_dir else spec.data_dir
 
 
-# Files that must exist for the dataset to be considered complete
-_REQUIRED_FILES = [
-    "chart.jsonl",
-    "layout.jsonl",
-    "table.jsonl",
-    "text_content.jsonl",
-    "text_formatting.jsonl",
-]
-
-# At least one document must exist per category
-_REQUIRED_DOC_DIRS = ["docs/chart", "docs/layout", "docs/table", "docs/text"]
-
-
-def is_dataset_ready(data_dir: Path) -> bool:
+def is_dataset_ready(data_dir: Path, dataset: str = "parsebench") -> bool:
     """Check if the dataset is already downloaded and complete.
 
     Args:
         data_dir: Path to the data directory.
+        dataset: Which dataset to check for (see ``dataset_spec``).
 
     Returns:
         True if all required files and at least one PDF per category exist.
     """
+    spec = dataset_spec(dataset)
     if not data_dir.exists():
         return False
 
-    for f in _REQUIRED_FILES:
+    for f in spec.required_files:
         if not (data_dir / f).exists():
             return False
+    if not spec.required_files and not any(data_dir.glob("*.jsonl")):
+        return False
 
-    for d in _REQUIRED_DOC_DIRS:
+    for d in spec.doc_dirs:
         doc_dir = data_dir / d
         if not doc_dir.exists():
             return False
@@ -80,8 +129,9 @@ def download_dataset(
     data_dir: Path | None = None,
     force: bool = False,
     test: bool = False,
+    dataset: str = "parsebench",
 ) -> Path:
-    """Download the parse-bench dataset from HuggingFace.
+    """Download a parse-bench dataset from HuggingFace.
 
     Uses huggingface_hub's snapshot_download to fetch the full dataset,
     including JSONL files and PDFs.
@@ -92,35 +142,37 @@ def download_dataset(
         force: Force re-download even if data already exists.
         test: Download the small test dataset (3 files per category)
             instead of the full dataset.
+        dataset: Which dataset to download: a name in ``DATASETS`` or a HuggingFace repo id.
 
     Returns:
         Path to the downloaded dataset directory.
     """
     from huggingface_hub import snapshot_download
 
+    spec = dataset_spec(dataset, test)
     if data_dir is None:
-        data_dir = Path.cwd() / "data"
+        data_dir = Path.cwd() / default_data_dir(test=test, dataset=dataset)
 
-    revision = TEST_DATA_REVISION if test else None
+    revision = spec.test_revision if test else None
 
-    if not force and is_dataset_ready(data_dir):
+    if not force and is_dataset_ready(data_dir, dataset):
         print(f"Dataset already downloaded at: {data_dir}")
         return data_dir
 
     label = "test dataset" if test else "dataset"
-    print(f"Downloading {label} from HuggingFace: {DATASET_REPO}")
-    if test:
-        print(f"Branch: {TEST_DATA_REVISION}")
+    print(f"Downloading {label} from HuggingFace: {spec.repo}")
+    if revision:
+        print(f"Branch: {revision}")
     print(f"Destination: {data_dir}")
 
     snapshot_download(
-        repo_id=DATASET_REPO,
+        repo_id=spec.repo,
         repo_type=DATASET_REPO_TYPE,
         local_dir=str(data_dir),
         revision=revision,
     )
 
-    if not is_dataset_ready(data_dir):
+    if not is_dataset_ready(data_dir, dataset):
         raise RuntimeError(f"Dataset download completed but validation failed. Check {data_dir} for missing files.")
 
     print(f"Dataset ready at: {data_dir}")
