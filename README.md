@@ -23,16 +23,16 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 
 | Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
-| 1 | LlamaParse Agentic Plus | LlamaParse | 88.82 | 93.37 | 94.18 | 92.25 | 87.12 | 77.20 | 5.62¢ |
-| 2 | LlamaParse Agentic | LlamaParse | 85.90 | 88.88 | 88.68 | 91.78 | 81.44 | 78.72 | 1.25¢ |
+| 1 | LlamaParse Agentic Plus | LlamaParse | 86.61 | 93.37 | 90.19 | 88.74 | 86.54 | 74.21 | 5.62¢ |
+| 2 | LlamaParse Agentic | LlamaParse | 83.07 | 88.88 | 81.47 | 87.63 | 84.25 | 73.12 | 1.25¢ |
 | 3 | Nutrient DWS (Agentic) | Commercial - IDP | 82.83 | 86.06 | 86.53 | 88.59 | 72.72 | 80.23 | 1.80¢ |
 | 4 | Pulse Ultra 2 | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
 | 5 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.51 | 89.49 | 77.26 | 87.36 | 76.88 | 71.56 | 3.00¢ |
 | 6 | anyformat (Standard) | Commercial - Startup APIs | 80.30 | 86.46 | 85.56 | 87.35 | 79.04 | 63.07 | 4.30¢ |
-| 7 | LlamaParse Cost Effective | LlamaParse | 79.62 | 84.19 | 77.91 | 89.87 | 67.29 | 78.82 | 0.38¢ |
-| 8 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 78.89 | 94.25 | 70.89 | 91.72 | 77.04 | 60.53 | 6.13¢ |
-| 9 | oi-parser | Commercial - Startup APIs | 78.30 | 92.62 | 78.28 | 86.17 | 66.88 | 67.53 | — |
-| 10 | Anthropic Fable 5.1 | VLM - Proprietary | 78.12 | 91.52 | 67.06 | 91.19 | 76.52 | 64.32 | 16.05¢ |
+| 7 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 78.89 | 94.25 | 70.89 | 91.72 | 77.04 | 60.53 | 6.13¢ |
+| 8 | oi-parser | Commercial - Startup APIs | 78.30 | 92.62 | 78.28 | 86.17 | 66.88 | 67.53 | — |
+| 9 | Anthropic Fable 5.1 | VLM - Proprietary | 78.12 | 91.52 | 67.06 | 91.19 | 76.52 | 64.32 | 16.05¢ |
+| 10 | LlamaParse Cost Effective | LlamaParse | 78.02 | 85.14 | 72.99 | 87.43 | 78.29 | 66.26 | 0.38¢ |
 <!-- LEADERBOARD:END -->
 
 **Inclusion criteria:**
