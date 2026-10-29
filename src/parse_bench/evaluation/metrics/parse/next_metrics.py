@@ -259,9 +259,9 @@ def attach_next_metrics(
 ) -> EvaluationResult:
     """Append the extended metrics of one document to its evaluation result.
 
-    A result skipped for lack of layout predictions becomes a scored one when an extended metric scores it
-    (layout grounding counts a document without predictions as 0). A failure inside the extended scorers is
-    reported as an evaluation error on the result.
+    A layout test case the layout evaluator could not score because the output has no layout for it becomes
+    a scored result when an extended metric scores it (layout grounding counts it as 0). A failure inside the
+    extended scorers is reported as an evaluation error on the result.
     """
     try:
         extra = compute_next_metrics(inference_result, test_case)
@@ -271,6 +271,14 @@ def attach_next_metrics(
     if not extra:
         return result
     update: dict[str, Any] = {"metrics": [*result.metrics, *extra]}
-    if not result.success and result.error and "No layout data" in result.error:
+    if not result.success and not result.metrics and _layout_unavailable(result, inference_result, test_case):
         update.update(success=True, error=None)
     return result.model_copy(update=update)
+
+
+def _layout_unavailable(result: EvaluationResult, inference_result: InferenceResult, test_case: TestCase) -> bool:
+    """Whether the layout evaluator failed only because the output has no layout for this document."""
+    output = inference_result.output
+    if not isinstance(test_case, LayoutDetectionTestCase) or not isinstance(output, ParseOutput):
+        return False
+    return not output.layout_pages or "No layout data" in (result.error or "")

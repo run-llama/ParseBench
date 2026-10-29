@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -157,3 +158,28 @@ def test_cli_scores_each_subset_directory_and_reports_the_rest_missing(dataset: 
         "dense_tables",
     ]
     assert combined["next_score"] is None
+
+
+def test_layout_document_without_layout_pages_scores_zero_only_with_next(tmp_path: Path) -> None:
+    _write_case(tmp_path, "layout", "page", PROSE, PROSE)
+    rule = {
+        "type": "layout",
+        "id": "r1",
+        "page": 1,
+        "bbox": [0.1, 0.1, 0.5, 0.1],
+        "canonical_class": "Text",
+        "content": {"type": "text", "text": PROSE},
+    }
+    (tmp_path / "cases" / "layout" / "page.test.json").write_text(json.dumps({"test_rules": [rule]}))
+
+    def evaluate(next_metrics: bool) -> Any:
+        runner = EvaluationRunner(tmp_path / "results", tmp_path / "cases", next_metrics=next_metrics)
+        (result,) = runner.run_evaluation(max_workers=1, use_rich=False).per_example_results
+        return result
+
+    default = evaluate(False)
+    assert not default.success and not default.metrics
+    scored = evaluate(True)
+    assert scored.success
+    (metric,) = [m for m in scored.metrics if m.metric_name == "layout_grounding_pass_rate"]
+    assert metric.value == 0.0 and metric.metadata["no_predictions"] is True

@@ -258,7 +258,20 @@ def _evaluate_single_worker(
                 result = evaluator.evaluate(inference_result, test_case)
                 return result
 
-        result = dispatch()
+        try:
+            result = dispatch()
+        except Exception as e:
+            if not next_metrics:
+                raise
+            # The extended metrics still score a document whose layout could not be adapted.
+            result = EvaluationResult(
+                test_id=test_case.test_id,
+                example_id=inference_result.request.example_id,
+                pipeline_name=inference_result.pipeline_name,
+                product_type=inference_result.product_type.value,
+                success=False,
+                error=f"Worker error: {e}",
+            )
         if next_metrics:
             from parse_bench.evaluation.metrics.parse.next_metrics import attach_next_metrics
 
