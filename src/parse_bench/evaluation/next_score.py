@@ -71,6 +71,7 @@ GROUP_SUBSETS: dict[str, str] = {
 }
 
 SUBSET_DIR_SEPARATOR = "::"
+QUESTION_MARK = "#q"  # per-question results carry ``<document test id>#q<n>``
 
 
 @dataclass(frozen=True)
@@ -149,9 +150,15 @@ def group_subset(test_id: str) -> str | None:
 def split_by_subset(
     results: Iterable[EvaluationResult], subset_of: Callable[[str], str | None]
 ) -> dict[str, list[EvaluationResult]]:
-    """Group evaluation results by the subset of their test id (results of no subset are dropped)."""
+    """Group document results by the subset of their test id.
+
+    Results of no subset are dropped, and so are per-question results (``<test id>#q<n>``): a slot averages
+    documents, and a question's failure says nothing about the document's extended metrics.
+    """
     by_subset: dict[str, list[EvaluationResult]] = {}
     for result in results:
+        if QUESTION_MARK in result.test_id:
+            continue
         subset = subset_of(result.test_id)
         if subset is not None:
             by_subset.setdefault(subset, []).append(result)

@@ -16,8 +16,10 @@ from parse_bench.evaluation.next_score import (
     NEXT_SUBSETS,
     combine_next_score,
     parse_next_option,
+    split_by_subset,
 )
 from parse_bench.evaluation.runner import EvaluationRunner
+from parse_bench.schemas.evaluation import EvaluationResult
 from parse_bench.schemas.parse_output import PageIR, ParseOutput
 from parse_bench.schemas.pipeline_io import InferenceRequest, InferenceResult
 from parse_bench.schemas.product import ProductType
@@ -183,3 +185,12 @@ def test_layout_document_without_layout_pages_scores_zero_only_with_next(tmp_pat
     assert scored.success
     (metric,) = [m for m in scored.metrics if m.metric_name == "layout_grounding_pass_rate"]
     assert metric.value == 0.0 and metric.metadata["no_predictions"] is True
+
+
+def test_question_results_do_not_join_a_slot() -> None:
+    """A failed question padded the document's extended metrics with zeros."""
+    doc = EvaluationResult(
+        test_id="forms/a", example_id="a", pipeline_name="p", product_type="parse", success=True, metrics=[]
+    )
+    question = doc.model_copy(update={"test_id": "forms/a#q1", "success": False, "error": "LLM API error"})
+    assert split_by_subset([doc, question], lambda _test_id: "forms") == {"forms": [doc]}

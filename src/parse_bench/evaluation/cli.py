@@ -40,6 +40,10 @@ NEXT_SCORE_FILE = "_next_score.json"
 class EvaluationCLI:
     """Command-line interface for evaluating inference results."""
 
+    # Per-subset aggregates of the last ``--next`` evaluation (read when several subsets are combined).
+    _next_subset_metrics: dict[str, dict[str, float]] = {}
+    _next_subset_documents: dict[str, int] = {}
+
     def run(
         self,
         output_dir: str | Path,
@@ -350,10 +354,9 @@ class EvaluationCLI:
         """
         subset_of = (lambda _test_id: subset) if subset else group_subset
         by_subset = split_by_subset(summary.per_example_results, subset_of)
-        combined = combine_next_score(
-            {name: runner.aggregate_metrics(results) for name, results in by_subset.items()},
-            {name: len(results) for name, results in by_subset.items()},
-        )
+        self._next_subset_metrics = {name: runner.aggregate_metrics(results) for name, results in by_subset.items()}
+        self._next_subset_documents = {name: len(results) for name, results in by_subset.items()}
+        combined = combine_next_score(self._next_subset_metrics, self._next_subset_documents)
         summary.aggregate_metrics.update(next_score_aggregates(combined))
         self._write_next_score(combined, report_dir)
         return combined
@@ -376,8 +379,8 @@ class EvaluationCLI:
                 print(f"Subset {source.subset} failed; it is reported missing", file=sys.stderr)
                 exit_code = exit_code or code or 1
                 continue
-            subset_metrics[source.subset] = summary.aggregate_metrics
-            subset_documents[source.subset] = summary.total_examples
+            subset_metrics[source.subset] = self._next_subset_metrics.get(source.subset, {})
+            subset_documents[source.subset] = self._next_subset_documents.get(source.subset, 0)
         combined = combine_next_score(subset_metrics, subset_documents)
         combined["subsets"] = {
             s.subset: {
