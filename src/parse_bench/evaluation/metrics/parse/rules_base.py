@@ -611,6 +611,7 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
         ListLevelRule,
     )
     from parse_bench.evaluation.metrics.parse.rules_page_decoration import PageDecorationRule
+    from parse_bench.evaluation.metrics.parse.rules_repetition import RepetitionOvershootRule
     from parse_bench.evaluation.metrics.parse.rules_table import (
         TableAdjacentDownRule,
         TableAdjacentLeftRule,
@@ -746,6 +747,8 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
         return FormFieldRule(typed_rule)
     elif rule_type == TestType.WATERMARK_REMOVAL.value:
         return WatermarkRemovalRule(typed_rule)
+    elif rule_type == TestType.REPETITION_OVERSHOOT.value:
+        return RepetitionOvershootRule(typed_rule)
     # Diagram (mermaid) rules
     elif rule_type == TestType.DIAGRAM_GRAPH.value:
         return DiagramGraphRule(typed_rule)

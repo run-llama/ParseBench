@@ -1294,6 +1294,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # OvisOCR3 (ATH-MaaS/OvisOCR3): official structured parse (JSON regions with
+    # bbox/category/content) -> markdown + layout; each chart region is re-read
+    # with the official chart_parsing prompt (OVISOCR3_SERVER_URL).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="ovisocr3_vllm",
+            provider_name="ovisocr3",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",  # Set via OVISOCR3_SERVER_URL or override
+            },
+        )
+    )
+
     # =========================================================================
     # LightOnOCR-3 (grounding prompt: one pass gives markdown and layout)
     # =========================================================================
@@ -1324,6 +1338,17 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         PipelineSpec(
             pipeline_name="unlimitedocr",
             provider_name="unlimitedocr",
+            product_type=ProductType.PARSE,
+            config={},
+        )
+    )
+
+    # Unlimited-OCR 2 (baidu/Unlimited-OCR-2): whole document per request on the
+    # official SGLang deployment (UNLIMITEDOCR2_SERVER_URL).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="unlimitedocr2",
+            provider_name="unlimitedocr2",
             product_type=ProductType.PARSE,
             config={},
         )

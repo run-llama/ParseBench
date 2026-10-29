@@ -95,6 +95,7 @@ class TestType(StrEnum):
     FORM_FIELD = "form_field"
     # Watermark suppression plus preservation of nearby document text.
     WATERMARK_REMOVAL = "watermark_removal"
+    REPETITION_OVERSHOOT = "repetition_overshoot"
     # Diagrams rendered as mermaid: graph semantics (nodes/edges), anchor relations, page-level count.
     DIAGRAM_GRAPH = "diagram_graph"
     DIAGRAM_EDGE = "diagram_edge"
