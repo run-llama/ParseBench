@@ -1,0 +1,971 @@
+{
+ "doc_id": "k1_1065-2025--f004--native-helv",
+ "pages": [
+  {
+   "page_number": 1,
+   "items": [
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Final K-1",
+     "value": true
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Amended K-1",
+     "value": false
+    },
+    {
+     "type": "section",
+     "label": "For calendar year 2025, or tax year",
+     "items": [
+      {
+       "type": "field",
+       "field": "text",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "value": "2025"
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "value": "2025"
+      }
+     ]
+    },
+    {
+     "type": "section",
+     "id": "Part I",
+     "label": "Information About the Partnership",
+     "items": [
+      {
+       "type": "field",
+       "field": "text",
+       "id": "A",
+       "label": "Partnership's employer identification number",
+       "value": "00-9730773"
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "B",
+       "label": "Partnership's name, address, city, state, and ZIP code",
+       "value": "Johnson LLC\n39974 Oneill Plains\nAnitaport, MD 21464"
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "C",
+       "label": "IRS center where partnership filed return:",
+       "value": "e-file"
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "id": "D",
+       "label": "Check if this is a publicly traded partnership (PTP)",
+       "value": false
+      }
+     ]
+    },
+    {
+     "type": "section",
+     "id": "Part II",
+     "label": "Information About the Partner",
+     "items": [
+      {
+       "type": "field",
+       "field": "text",
+       "id": "E",
+       "label": "Partner's SSN or TIN",
+       "value": "920-89-6868"
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "F",
+       "label": "Name, address, city, state, and ZIP code for partner entered in E.",
+       "value": "Melissa Santos\n9568 Tammy Islands\nLamton, WV 26284"
+      },
+      {
+       "type": "field",
+       "field": "single_select",
+       "id": "G",
+       "valueItems": [
+        {
+         "type": "field",
+         "field": "checkbox",
+         "label": "General partner or LLC member-manager",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "label": "Limited partner or other LLC member",
+         "value": true
+        }
+       ]
+      },
+      {
+       "type": "field",
+       "field": "single_select",
+       "id": "H1",
+       "valueItems": [
+        {
+         "type": "field",
+         "field": "checkbox",
+         "label": "Domestic partner",
+         "value": true
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "label": "Foreign partner",
+         "value": false
+        }
+       ]
+      },
+      {
+       "type": "section",
+       "id": "H2",
+       "label": "If the partner is a disregarded entity (DE), enter the partner's:",
+       "items": [
+        {
+         "type": "field",
+         "field": "text",
+         "label": "TIN",
+         "isEmpty": true
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "label": "Name",
+         "isEmpty": true
+        }
+       ]
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "I1",
+       "label": "What type of entity is this partner?",
+       "value": "S Corporation"
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "id": "I2",
+       "label": "If this partner is a retirement plan (IRA/SEP/Keogh/etc.), check here",
+       "value": false
+      },
+      {
+       "type": "table",
+       "id": "J",
+       "label": "Partner's share of profit, loss, and capital",
+       "columns": [
+        "Beginning",
+        "Ending"
+       ],
+       "rows": [
+        [
+         "Profit",
+         {
+          "items": [
+           {
+            "type": "field",
+            "field": "text",
+            "value": "10.000000"
+           }
+          ]
+         },
+         {
+          "items": [
+           {
+            "type": "field",
+            "field": "text",
+            "value": "10.000000"
+           }
+          ]
+         }
+        ],
+        [
+         "Loss",
+         {
+          "items": [
+           {
+            "type": "field",
+            "field": "text",
+            "value": "10.000000"
+           }
+          ]
+         },
+         {
+          "items": [
+           {
+            "type": "field",
+            "field": "text",
+            "value": "10.000000"
+           }
+          ]
+         }
+        ],
+        [
+         "Capital",
+         {
+          "items": [
+           {
+            "type": "field",
+            "field": "text",
+            "value": "10.000000"
+           }
+          ]
+         },
+         {
+          "items": [
+           {
+            "type": "field",
+            "field": "text",
+            "value": "10.000000"
+           }
+          ]
+         }
+        ]
+       ]
+      },
+      {
+       "type": "section",
+       "label": "Check if decrease is due to:",
+       "items": [
+        {
+         "type": "field",
+         "field": "checkbox",
+         "label": "Sale",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "label": "Exchange of partnership interest.",
+         "value": false
+        }
+       ]
+      },
+      {
+       "type": "table",
+       "id": "K1",
+       "label": "Partner's share of liabilities:",
+       "columns": [
+        "Beginning",
+        "Ending"
+       ],
+       "rows": [
+        [
+         "Nonrecourse",
+         {
+          "items": [
+           {
+            "type": "field",
+            "field": "text",
+            "value": "74,081.87"
+           }
+          ]
+         },
+         {
+          "items": [
+           {
+            "type": "field",
+            "field": "text",
+            "value": "342,197.74"
+           }
+          ]
+         }
+        ],
+        [
+         "Qualified nonrecourse financing",
+         {
+          "items": [
+           {
+            "type": "field",
+            "field": "text",
+            "value": "155,807.66"
+           }
+          ]
+         },
+         {
+          "items": [
+           {
+            "type": "field",
+            "field": "text",
+            "value": "162,913.06"
+           }
+          ]
+         }
+        ],
+        [
+         "Recourse",
+         {
+          "items": [
+           {
+            "type": "field",
+            "field": "text",
+            "value": "84,261.95"
+           }
+          ]
+         },
+         {
+          "items": [
+           {
+            "type": "field",
+            "field": "text",
+            "value": "89,727.39"
+           }
+          ]
+         }
+        ]
+       ]
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "id": "K2",
+       "label": "Check this box if item K1 includes liability amounts from lower-tier partnerships",
+       "value": false
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "id": "K3",
+       "label": "Check if any of the above liability is subject to guarantees or other payment obligations by the partner.",
+       "value": false
+      },
+      {
+       "type": "section",
+       "id": "L",
+       "label": "Partner's Capital Account Analysis",
+       "items": [
+        {
+         "type": "field",
+         "field": "text",
+         "label": "Beginning capital account",
+         "isEmpty": true
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "label": "Capital contributed during the year",
+         "isEmpty": true
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "label": "Current year net income (loss)",
+         "isEmpty": true
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "label": "Other increase (decrease) (attach explanation)",
+         "isEmpty": true
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "label": "Withdrawals and distributions",
+         "isEmpty": true
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "label": "Ending capital account",
+         "isEmpty": true
+        }
+       ]
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "id": "M",
+       "label": "Did the partner contribute property with a built-in gain (loss)?",
+       "value": false
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Yes",
+       "value": false
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "No",
+       "value": true
+      },
+      {
+       "type": "section",
+       "id": "N",
+       "label": "Partner's Share of Net Unrecognized Section 704(c) Gain or (Loss)",
+       "items": [
+        {
+         "type": "field",
+         "field": "text",
+         "label": "Beginning",
+         "isEmpty": true
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "label": "Ending",
+         "isEmpty": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "section",
+     "id": "Part III",
+     "label": "Partner's Share of Current Year Income, Deductions, Credits, and Other Items",
+     "items": [
+      {
+       "type": "field",
+       "field": "text",
+       "id": "1",
+       "label": "Ordinary business income (loss)",
+       "value": "112,738.40"
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "2",
+       "label": "Net rental real estate income (loss)",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "3",
+       "label": "Other net rental income (loss)",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "4a",
+       "label": "Guaranteed payments for services",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "4b",
+       "label": "Guaranteed payments for capital",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "4c",
+       "label": "Total guaranteed payments",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "5",
+       "label": "Interest income",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "6a",
+       "label": "Ordinary dividends",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "6b",
+       "label": "Qualified dividends",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "6c",
+       "label": "Dividend equivalents",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "7",
+       "label": "Royalties",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "8",
+       "label": "Net short-term capital gain (loss)",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "9a",
+       "label": "Net long-term capital gain (loss)",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "9b",
+       "label": "Collectibles (28%) gain (loss)",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "9c",
+       "label": "Uncaptured section 1250 gain",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "10",
+       "label": "Net section 1231 gain (loss)",
+       "isEmpty": true
+      },
+      {
+       "type": "section",
+       "id": "11",
+       "label": "Other income (loss)",
+       "items": [
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        },
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "12",
+       "label": "Section 179 deduction",
+       "isEmpty": true
+      },
+      {
+       "type": "section",
+       "id": "13",
+       "label": "Other deductions",
+       "items": [
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "value": "9,950.13"
+          }
+         ]
+        },
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        },
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "section",
+       "id": "14",
+       "label": "Self-employment earnings (loss)",
+       "items": [
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        },
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "section",
+       "id": "15",
+       "label": "Credits",
+       "items": [
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "value": "F"
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "value": "7,931.77"
+          }
+         ]
+        },
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "value": "C"
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "value": "5,540.40"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "id": "16",
+       "label": "Schedule K-3 is attached if checked",
+       "value": false
+      },
+      {
+       "type": "section",
+       "id": "17",
+       "label": "Alternative minimum tax (AMT) items",
+       "items": [
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        },
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        },
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "section",
+       "id": "18",
+       "label": "Tax-exempt income and nondeductible expenses",
+       "items": [
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        },
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        },
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "section",
+       "id": "19",
+       "label": "Distributions",
+       "items": [
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "value": "B"
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "value": "36,083.79"
+          }
+         ]
+        },
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "section",
+       "id": "20",
+       "label": "Other information",
+       "items": [
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        },
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        },
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        },
+        {
+         "type": "section",
+         "items": [
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          },
+          {
+           "type": "field",
+           "field": "text",
+           "isEmpty": true
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "id": "21",
+       "label": "Foreign taxes paid or accrued",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "id": "22",
+       "label": "More than one activity for at-risk purposes",
+       "value": false
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "id": "23",
+       "label": "More than one activity for passive activity purposes",
+       "value": false
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

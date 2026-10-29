@@ -4,11 +4,21 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import fire
 
 from parse_bench import __version__
 from parse_bench.analysis.detailed_report import generate_detailed_html_report
+from parse_bench.evaluation.next_score import (
+    SubsetSource,
+    combine_next_score,
+    format_next_score,
+    group_subset,
+    next_score_aggregates,
+    parse_next_option,
+    split_by_subset,
+)
 from parse_bench.evaluation.reports import (
     export_csv as export_csv_report,
 )
@@ -23,6 +33,8 @@ from parse_bench.evaluation.reports import (
 )
 from parse_bench.evaluation.runner import EvaluationRunner
 from parse_bench.schemas.evaluation import EvaluationSummary
+
+NEXT_SCORE_FILE = "_next_score.json"
 
 
 class EvaluationCLI:
@@ -48,6 +60,7 @@ class EvaluationCLI:
         skip_rules: bool = False,
         ontology: str = "basic",
         verified_only: bool = False,
+        next: bool | str | list[str] | tuple[str, ...] | dict[str, Any] = False,
     ) -> int:
         """
         Run evaluation on inference results.
@@ -73,15 +86,93 @@ class EvaluationCLI:
                 (e.g. "basic", "canonical")
             verified_only: Discard test_rules explicitly marked verified=false before
                 evaluation (default: False)
+            next: Also run the extended scorers (text_next, formatting_v2, table_next, chart_next,
+                forms_v2, form_kv_*, layout_grounding_pass_rate) and write the combined score
+                `next_score` (mean of six dimensions; weights in parse_bench.evaluation.next_score)
+                to _next_score.json. A dimension is reported missing until all its subsets are
+                evaluated. `--next`: subsets from the dataset groups (text, table, chart, layout).
+                `--next=SUBSET`: the whole run is SUBSET. `--next=SUBSET=RESULTS_DIR[::TEST_CASES_DIR],...`:
+                evaluate each results directory (relative to OUTPUT_DIR) as its subset; a test cases
+                directory not given is read from the results' _metadata.json. Subsets: text, headings,
+                strikeout, underline, tables, complex_table_headers, financial_tables,
+                insurance_filing_tables, dense_tables, charts, layout, forms, fillable_forms.
 
         Returns:
             Exit code (0 for success, non-zero for failure)
         """
+        code, _ = self._evaluate(
+            output_dir=output_dir,
+            test_cases_dir=test_cases_dir,
+            product_type=product_type,
+            pipeline_name=pipeline_name,
+            group=group,
+            report_dir=report_dir,
+            export_csv=export_csv,
+            export_rule_csv=export_rule_csv,
+            export_markdown=export_markdown,
+            export_html=export_html,
+            verbose=verbose,
+            multi_task=multi_task,
+            max_workers=max_workers,
+            enable_teds=enable_teds,
+            skip_rules=skip_rules,
+            ontology=ontology,
+            verified_only=verified_only,
+            next=next,
+        )
+        return code
+
+    def _evaluate(
+        self,
+        output_dir: str | Path,
+        test_cases_dir: str | Path | None,
+        product_type: str | None,
+        pipeline_name: str | None,
+        group: str | None,
+        report_dir: str | Path | None,
+        export_csv: bool,
+        export_rule_csv: bool,
+        export_markdown: bool,
+        export_html: bool,
+        verbose: bool,
+        multi_task: bool,
+        max_workers: int | None,
+        enable_teds: bool,
+        skip_rules: bool,
+        ontology: str,
+        verified_only: bool,
+        next: bool | str | list[str] | tuple[str, ...] | dict[str, Any],
+    ) -> tuple[int, EvaluationSummary | None]:
+        """Body of ``run``: returns the exit code and, on success, the evaluation summary."""
         try:
             output_dir_path = Path(output_dir)
             if not output_dir_path.exists():
                 print(f"Error: Output directory does not exist: {output_dir}", file=sys.stderr)
-                return 1
+                return 1, None
+
+            next_enabled = next is not False and next is not None
+            next_subset: str | None = None
+            if next_enabled:
+                next_subset, next_sources = parse_next_option(next, output_dir_path)
+                if next_sources:
+                    passthrough = {
+                        "product_type": product_type,
+                        "pipeline_name": pipeline_name,
+                        "group": group,
+                        "export_csv": export_csv,
+                        "export_rule_csv": export_rule_csv,
+                        "export_markdown": export_markdown,
+                        "export_html": export_html,
+                        "verbose": verbose,
+                        "multi_task": multi_task,
+                        "max_workers": max_workers,
+                        "enable_teds": enable_teds,
+                        "skip_rules": skip_rules,
+                        "ontology": ontology,
+                        "verified_only": verified_only,
+                    }
+                    report_base = Path(report_dir) if report_dir else output_dir_path
+                    return self._evaluate_next_subsets(next_sources, report_base, passthrough), None
 
             # Infer test_cases_dir and product_type from metadata if not provided
             # First try at output_dir level, then search in subdirectories
@@ -152,6 +243,7 @@ class EvaluationCLI:
                 skip_rules=skip_rules,
                 layout_ontology=ontology,
                 verified_only=verified_only,
+                next_metrics=next_enabled,
             )
 
             print(f"Running evaluation on: {output_dir_path}")
@@ -178,6 +270,8 @@ class EvaluationCLI:
             )
             summary.completed_at = datetime.now()
             summary.parse_bench_version = __version__
+            if next_enabled:
+                self._report_next_score(runner, summary, next_subset, report_dir_path)
 
             # Save JSON report
             report_json_path = report_dir_path / "_evaluation_report.json"
@@ -228,20 +322,80 @@ class EvaluationCLI:
                 except Exception as e:
                     print(f"⚠️  Skipped detailed HTML report (non-fatal): {e}", file=sys.stderr)
 
-            return 0
+            return 0, summary
 
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
-            return 1
+            return 1, None
         except KeyboardInterrupt:
             print("\n\nInterrupted by user", file=sys.stderr)
-            return 130
+            return 130, None
         except Exception as e:
             print(f"Unexpected error: {e}", file=sys.stderr)
             import traceback
 
             traceback.print_exc()
-            return 1
+            return 1, None
+
+    def _report_next_score(
+        self,
+        runner: EvaluationRunner,
+        summary: EvaluationSummary,
+        subset: str | None,
+        report_dir: Path,
+    ) -> dict[str, Any]:
+        """Combine the run's extended metrics, add them to the summary aggregates and write _next_score.json.
+
+        ``subset`` names the subset of every document of the run; None maps each document by its group.
+        """
+        subset_of = (lambda _test_id: subset) if subset else group_subset
+        by_subset = split_by_subset(summary.per_example_results, subset_of)
+        combined = combine_next_score(
+            {name: runner.aggregate_metrics(results) for name, results in by_subset.items()},
+            {name: len(results) for name, results in by_subset.items()},
+        )
+        summary.aggregate_metrics.update(next_score_aggregates(combined))
+        self._write_next_score(combined, report_dir)
+        return combined
+
+    def _evaluate_next_subsets(self, sources: list[SubsetSource], report_base: Path, options: dict[str, Any]) -> int:
+        """Evaluate each subset's results directory with the extended scorers and combine them."""
+        subset_metrics: dict[str, dict[str, float]] = {}
+        subset_documents: dict[str, int] = {}
+        exit_code = 0
+        for source in sources:
+            print(f"\n=== Subset {source.subset}: {source.output_dir} ===")
+            code, summary = self._evaluate(
+                output_dir=source.output_dir,
+                test_cases_dir=source.test_cases_dir,
+                report_dir=None,
+                next=source.subset,
+                **options,
+            )
+            if code != 0 or summary is None:
+                print(f"Subset {source.subset} failed; it is reported missing", file=sys.stderr)
+                exit_code = exit_code or code or 1
+                continue
+            subset_metrics[source.subset] = summary.aggregate_metrics
+            subset_documents[source.subset] = summary.total_examples
+        combined = combine_next_score(subset_metrics, subset_documents)
+        combined["subsets"] = {
+            s.subset: {
+                "output_dir": str(s.output_dir),
+                "test_cases_dir": str(s.test_cases_dir) if s.test_cases_dir else None,
+            }
+            for s in sources
+        }
+        report_base.mkdir(parents=True, exist_ok=True)
+        self._write_next_score(combined, report_base)
+        return exit_code
+
+    @staticmethod
+    def _write_next_score(combined: dict[str, Any], report_dir: Path) -> None:
+        path = report_dir / NEXT_SCORE_FILE
+        path.write_text(json.dumps(combined, indent=2))
+        print("\n" + format_next_score(combined))
+        print(f"Next score saved to: {path.resolve()}")
 
     def regenerate_report(
         self,
