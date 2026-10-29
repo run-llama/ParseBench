@@ -251,6 +251,47 @@ _QUANTITY = _rx(r"\A(?:0|[1-9][0-9]{0,2}(?:,[0-9]{3})+|[1-9][0-9]*)(?:\.[0-9]+)?
 _TAG_TAIL = _rx(rf"(?:{_S}|\u2039[^>\u203a\n]*[>\u203a])+\Z")  # spaces and leftover tags (``‹math›``) at the end
 
 
+# A figure alone in parentheses, with a currency sign inside or before them and a percent inside or after:
+# "(8)", "(1,234)", "($5.2)", "$ (5)", "(3.4%)", "(9)%".
+_PAREN_OPEN = _rx(r"(\p{Sc}[ \t]?)?\([ \t]?(\p{Sc}[ \t]?)?\Z")
+_PAREN_CLOSE = _rx(r"\A[ \t]?%?[ \t]?\)")
+# What a parenthesised figure follows when it is an amount: a colon, or another figure or a "-" placeholder
+# (a row of figures).
+_FIGURE_BEFORE = _rx(r"(?::|[0-9][%)]{0,2}[ \t]|(?<![^ \t])-[ \t])[ \t]*\Z")
+# A reference marker before the figure ("note 3 (2)", "section 4 (b)", "§ 12 (1)") makes it a sub-reference.
+_MARKER_BEFORE = _rx(
+    r"(?<!\p{L})(?:notes?|items?|sections?|sec|pages?|pp?|steps?|figures?|fig|tables?|clauses?|articles?|art|"
+    r"paragraphs?|para|chapters?|ch|rules?|parts?|schedules?|appendix|exhibits?|no|§+)\.?"
+    r"[ \t]*(?:[0-9][0-9.]*[ \t]*)?:?[ \t]*\Z",
+    _I,
+)
+_YEAR = _rx(r"\A(?:1[6-9]|20)[0-9]{2}\Z")
+_PHONE_TAIL = _rx(r"\A[ \t]*[0-9]{3}[-. ][0-9]{4}")
+
+
+def _paren_sign(line: str, s0: int, e0: int, piece: str) -> str:
+    """The sign of the quantity ``line[s0:e0]`` written alone in parentheses: "-", "?" (unclear) or "" (none).
+
+    An accounting negative reads "-": (8) is -8. It is nonzero and reads as an amount: a currency sign or a
+    thousands separator ("(1,234)", "$(58)"); a colon or another figure right before it ("Operating result: (8)",
+    the row "12 (8) (3.4%)"); or nothing else on its line (a table cell written on its own line). Any other
+    figure in parentheses is unclear: a marker ("note (8)", "(1) The ..."), a year ("(2024)"), an area code
+    ("(555) 123-4567"), a sub-reference ("section 4 (2)", "6(1)"), or a table's first value after its row label,
+    which reads "-" when the same table writes each cell on its own line. "" when no parentheses enclose it.
+    """
+    m = _PAREN_OPEN.search(line[:s0])
+    close = _PAREN_CLOSE.search(line[e0:])
+    if m is None or close is None:
+        return ""
+    head, tail = line[: m.start()], line[e0 + close.end() :]
+    if not _QUANTITY.search(piece) or not piece.strip("0.,") or _MARKER_BEFORE.search(head) or _PHONE_TAIL.search(tail):
+        return "?"
+    if m.group(1) or m.group(2) or "," in piece:
+        return "-"
+    alone = not _js_trim(head) and _js_trim(tail) in ("", "%")
+    return "-" if not _YEAR.search(piece) and (alone or _FIGURE_BEFORE.search(head)) else "?"
+
+
 def _sign(line: str, s0: int, e0: int, piece: str) -> str:
     """The sign written before a quantity: "-" or "+", "" when no dash or plus precedes it, "?" when unclear.
 
@@ -266,7 +307,9 @@ def _sign(line: str, s0: int, e0: int, piece: str) -> str:
         j -= 1
     before = line[: j + 1].rstrip()
     if before[-1:] not in ("-", "+"):
-        return "?" if before[-2:] in ("-.", "+.") else ""
+        if before[-2:] in ("-.", "+."):
+            return "?"
+        return _paren_sign(line, s0, e0, piece)
     if not _QUANTITY.search(piece) or j < 0 or line[j] not in "-+" or line[e0:].lstrip()[:1] == "-":
         return "?"
     if j > 0 and line[j - 1] not in _JS_TRIM and line[j - 1] not in "([=:;>\u203a":

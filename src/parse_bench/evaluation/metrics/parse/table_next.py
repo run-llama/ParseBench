@@ -386,13 +386,16 @@ class Number:
 _RE_CURRENCY = re.compile("[$€£¥]")
 _RE_GROUP = re.compile(rf"([0-9])[, ](?=[0-9]{{3}}{_NOT_W})")
 _RE_NUMBER = re.compile(rf"([<>]?){_S}*(-?[0-9]+(?:\.[0-9]+)?){_S}*(%?){_S}*(.*)\Z")
+# An accounting negative: the whole cell in parentheses, its percent sign inside or after them ("(9%)", "(9)%").
+_RE_PAREN = re.compile(r"\((.*)\)(%?)\Z")
 
 
 def nx_number(s: str) -> Number | None:
     t = _RE_GROUP.sub(r"\1", _ungroup(_RE_CURRENCY.sub("", nx_norm(s))))
     neg = False
-    if re.match(r"\(.*\)\Z", t):
-        neg, t = True, _trim(t[1:-1])
+    paren = _RE_PAREN.match(t)
+    if paren:
+        neg, t = True, _trim(paren.group(1)) + paren.group(2)
     m = _RE_NUMBER.match(t)
     if not m:
         return None
