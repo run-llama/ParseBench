@@ -25,7 +25,7 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
 | 1 | LlamaParse Agentic Plus | LlamaParse | 86.61 | 93.37 | 90.19 | 88.74 | 86.54 | 74.21 | 5.62¢ |
 | 2 | LlamaParse Agentic | LlamaParse | 83.07 | 88.88 | 81.47 | 87.63 | 84.25 | 73.12 | 1.25¢ |
-| 3 | Nutrient DWS (Agentic) | Commercial - IDP | 82.83 | 86.06 | 86.53 | 88.59 | 72.72 | 80.23 | 1.80¢ |
+| 3 | Nutrient DWS (Agentic) | Commercial - IDP | 82.86 | 86.08 | 86.43 | 88.60 | 73.01 | 80.19 | 1.80¢ |
 | 4 | Pulse Ultra 2 | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
 | 5 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.51 | 89.49 | 77.26 | 87.36 | 76.88 | 71.56 | 3.00¢ |
 | 6 | anyformat (Standard) | Commercial - Startup APIs | 80.30 | 86.46 | 85.56 | 87.35 | 79.04 | 63.07 | 4.30¢ |
