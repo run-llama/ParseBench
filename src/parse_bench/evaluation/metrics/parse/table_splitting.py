@@ -103,11 +103,17 @@ def _trim_trailing_padding(table: TableData) -> TableData:
     """Remove only empty tail rows, preserving metadata for retained rows."""
     end = table.data.shape[0]
     # Metadata can carry header text even when the grid cell is empty.
-    header_text_rows = {r for entries in table.col_headers.values() for r, text in entries if str(text).strip()}
+    header_text_rows = {
+        r for entries in table.col_headers.values() for r, text in entries if len(str(text).strip()) > 0
+    }
     header_text_rows.update(
-        r for r, entries in table.row_headers.items() if any(str(text).strip() for _, text in entries)
+        r for r, entries in table.row_headers.items() if any(len(str(text).strip()) > 0 for _, text in entries)
     )
-    while end and end - 1 not in header_text_rows and not any(str(v).strip() for v in table.data[end - 1]):
+    while (
+        end > 0
+        and end - 1 not in header_text_rows
+        and not any(len(str(value).strip()) > 0 for value in table.data[end - 1])
+    ):
         end -= 1
     if end == table.data.shape[0]:
         return table

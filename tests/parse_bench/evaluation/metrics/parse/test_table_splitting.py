@@ -326,6 +326,21 @@ def test_split_spacer_columns_do_not_shift_or_drop_real_cells(spacer_index: int)
         assert_array_equal(output.table_data.data, source.table_data.data)
 
 
+def test_split_preserves_rowspan_coordinates_across_spacer_columns() -> None:
+    narrow = '<tr><th>Code</th><th>Rate</th></tr><tr><td rowspan="2">A</td><td>1</td></tr><tr><td>2</td></tr>'
+    wide = (
+        "<tr><th>Code</th><th>Rate</th><th></th><th>Code</th><th>Rate</th></tr>"
+        '<tr><td rowspan="2">A</td><td>1</td><td></td><td rowspan="2">A</td><td>1</td></tr>'
+        "<tr><td>2</td><td></td><td>2</td></tr>"
+    )
+    expected, actual, _ = extract_table_pairs(_doc_with_tables([_wrap(narrow), _wrap(narrow)]), _wrap(wide))
+    result, did_split = split_ambiguous_merged_pred(expected, actual)
+    assert did_split
+    assert len(result) == 2
+    assert [table.table_data.spanned_cells for table in result] == [{(2, 0)}, {(2, 0)}]
+    assert actual[0].table_data.spanned_cells == {(2, 0), (2, 3)}
+
+
 @pytest.mark.parametrize("last_rate", ["", "99"])
 def test_split_ground_truth_spacer_keeps_missing_or_changed_rate_penalized(last_rate: str) -> None:
     """A spacer before the second block must not erase its rate from GT."""
@@ -340,7 +355,7 @@ def test_split_ground_truth_spacer_keeps_missing_or_changed_rate_penalized(last_
             _wrap("<tr><th>Code</th><th>Rate</th></tr><tr><td>A</td><td>1</td></tr>"),
             _wrap(
                 f"<tr><th></th><th>Code</th><th>Rate</th></tr><tr><td></td><td>C</td><td>{last_rate}</td></tr>"
-                if last_rate
+                if len(last_rate) > 0
                 else "<tr><th></th><th>Code</th></tr><tr><td></td><td>C</td></tr>"
             ),
         ]

@@ -182,8 +182,8 @@ def normalize_table(table: TableData, *, preserve_text: bool = False) -> TableDa
         return True
 
     keep_cols = [c for c in range(n_cols) if not _col_is_empty(c)]
+    old_to_new = {old: new for new, old in enumerate(keep_cols)}
     if len(keep_cols) != n_cols:
-        old_to_new = {old: new for new, old in enumerate(keep_cols)}
         normalized = normalized[:, keep_cols]
         normalized_col_headers = {
             old_to_new[c]: normalized_col_headers[c] for c in keep_cols if c in normalized_col_headers
@@ -209,6 +209,7 @@ def normalize_table(table: TableData, *, preserve_text: bool = False) -> TableDa
         ),
         row_headers=normalized_row_headers,
         header_cells=header_cells,
+        spanned_cells={(r, old_to_new[c]) for r, c in table.spanned_cells if c in old_to_new},
         thead_rows=table.thead_rows,
         tbody_rows=table.tbody_rows,
         tfoot_rows=table.tfoot_rows,
