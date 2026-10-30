@@ -1,4 +1,4 @@
-"""Layout detection providers imported lazily for registry side effects."""
+"""Layout detection providers, imported on first use for their registry side effects."""
 
 import importlib
 import logging
@@ -16,10 +16,18 @@ _PROVIDER_MODULES = [
     "yolo",
 ]
 
-for _mod in _PROVIDER_MODULES:
-    try:
-        importlib.import_module(f"parse_bench.inference.providers.layoutdet.{_mod}")
-    except ImportError:
-        logger.debug("Skipping layout provider %s (missing dependency)", _mod)
+
+def load_providers() -> None:
+    """Import each provider module so it registers itself; skip ones whose SDK is missing.
+
+    Called by ``registry.load_builtin_providers`` on first use rather than on package
+    import, so helpers under this package (such as label adapters) stay cheap to import.
+    """
+    for module in _PROVIDER_MODULES:
+        try:
+            importlib.import_module(f"parse_bench.inference.providers.layoutdet.{module}")
+        except ImportError:
+            logger.debug("Skipping layout provider %s (missing dependency)", module)
+
 
 __all__ = _PROVIDER_MODULES

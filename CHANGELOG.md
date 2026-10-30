@@ -66,6 +66,13 @@ All notable changes to `parse-bench` are recorded here. The format follows
   now computed with a small numpy implementation that matches
   `sklearn.metrics.average_precision_score` (including tied-score handling),
   so evaluation numbers are unchanged. `scipy` remains a core dependency.
+- Built-in providers now register on the first `create_provider` call instead
+  of when `parse_bench.inference.providers` (or any module under it) is
+  imported. Importing `parse_bench.extensions` or the layout adapter and label
+  mapper registries no longer loads every provider and its SDK: about 0.4 s
+  instead of about 4.8 s in a full install. The provider subpackages expose
+  `load_providers()` and the registry `load_builtin_providers()`; code that
+  read `_PROVIDER_REGISTRY` directly should call the latter first.
 
 ## [1.0.2] - 2026-09-04
 
