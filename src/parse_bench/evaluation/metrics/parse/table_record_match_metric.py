@@ -179,7 +179,7 @@ def normalize_table(table: TableData, *, preserve_text: bool = False) -> TableDa
     columns = [
         col
         for col in range(normalized.data.shape[1])
-        if any(str(value) != "" for value in normalized.data[:, col])
+        if any(value != "" for value in normalized.data[:, col])
         or any(text != "" for _, text in normalized.col_headers.get(col, []))
     ]
     return _select_table_columns(table if preserve_text else normalized, columns)
