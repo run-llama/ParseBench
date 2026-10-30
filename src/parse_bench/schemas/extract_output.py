@@ -11,10 +11,10 @@ class FieldCitation(BaseModel):
     """Normalized bbox evidence for an extracted field."""
 
     field_path: str = Field(description="Dotted path of the extracted field this citation supports")
-    page: int = Field(ge=1, description="1-indexed page number")
+    page: int | None = Field(ge=1, description="1-indexed page number, or None when unknown")
     bbox: list[float] | None = Field(
         default=None,
-        description="Normalized COCO [x, y, width, height] bbox. None for page-only citations.",
+        description="Normalized COCO [x, y, width, height] bbox. None when no bounding box is reported.",
     )
     polygon: list[list[float]] | None = Field(default=None, description="Normalized polygon points, when available")
     reference_text: str | None = Field(default=None, description="Provider reference text for the citation")
