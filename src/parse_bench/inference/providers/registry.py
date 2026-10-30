@@ -1,3 +1,5 @@
+import functools
+import importlib
 from collections.abc import Callable
 from typing import TypeVar
 
@@ -6,8 +8,26 @@ from parse_bench.schemas.pipeline import PipelineSpec
 
 _PROVIDER_REGISTRY: dict[str, type[Provider]] = {}
 
+
 # Bound to the concrete class so the decorator hands back that class, not ``type[Provider]``.
 ProviderT = TypeVar("ProviderT", bound=type[Provider])
+
+# Subpackages whose modules register the built-in providers on import.
+_BUILTIN_PROVIDER_PACKAGES = ("extract", "layoutdet", "parse")
+
+
+@functools.cache
+def load_builtin_providers() -> None:
+    """Import the built-in provider subpackages so their providers are registered.
+
+    Deferred to first use: they import every provider SDK, which helpers that only
+    need the evaluation or schema code should not pay for. Runs once: a provider whose
+    SDK is missing raises ImportError each time it is imported, so a retry would
+    repeat those failed imports on every create_provider call.
+    """
+    for package in _BUILTIN_PROVIDER_PACKAGES:
+        importlib.import_module(f"parse_bench.inference.providers.{package}").load_providers()
+
 
 
 def register_provider(provider_name: str) -> Callable[[ProviderT], ProviderT]:
@@ -42,6 +62,7 @@ def create_provider(pipeline: PipelineSpec) -> Provider:
     :return: Concrete Provider instance
     :raises ProviderConfigError: If provider is not registered
     """
+    load_builtin_providers()
     provider_name = pipeline.provider_name
     provider_cls = _PROVIDER_REGISTRY.get(provider_name)
     if provider_cls is None:
