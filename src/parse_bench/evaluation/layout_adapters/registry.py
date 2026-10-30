@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TypeVar
 
 from parse_bench.evaluation.layout_adapters.base import LayoutAdapter
 from parse_bench.inference.pipelines import get_pipeline
@@ -22,16 +23,19 @@ class _LayoutAdapterRegistration:
 
 _LAYOUT_ADAPTER_REGISTRY: list[_LayoutAdapterRegistration] = []
 
+# Bound to the concrete class so the decorator hands back that class, not ``type[LayoutAdapter]``.
+LayoutAdapterT = TypeVar("LayoutAdapterT", bound=type[LayoutAdapter])
+
 
 def register_layout_adapter(
     *provider_keys: str,
     priority: int = 0,
-) -> Callable[[type[LayoutAdapter]], type[LayoutAdapter]]:
+) -> Callable[[LayoutAdapterT], LayoutAdapterT]:
     """Register a layout adapter class for one or more provider keys."""
     if not provider_keys:
         raise ValueError("register_layout_adapter requires at least one provider key")
 
-    def decorator(cls: type[LayoutAdapter]) -> type[LayoutAdapter]:
+    def decorator(cls: LayoutAdapterT) -> LayoutAdapterT:
         existing_keys = {key for entry in _LAYOUT_ADAPTER_REGISTRY for key in entry.keys}
         for key in provider_keys:
             if key in existing_keys:
