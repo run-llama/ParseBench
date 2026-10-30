@@ -8,6 +8,8 @@ the existing row wins — our own runs always take precedence over community
 submissions (they have cost data and more decimals of precision).
 
 A non-empty `HF_Model_ID` indicates the row came from the HF community leaderboard.
+Synced rows are self-reported, so they are added as unverified (``Verified=no``)
+with a matching unverified entry in ``leaderboard/results.yaml``.
 
 Run: uv run python scripts/sync_hf_leaderboard.py [--dry-run]
 """
@@ -56,6 +58,7 @@ FIELDNAMES = [
     "Cost_Text",
     "Cost_Layout",
     "HF_Model_ID",
+    "Verified",
 ]
 
 
@@ -135,6 +138,7 @@ def main() -> None:
         for col, val in scores.items():
             row[col] = fmt(val)
         row["HF_Model_ID"] = model_id
+        row["Verified"] = "no"
         added.append(row)
 
     print(f"Added ({len(added)}):")
@@ -159,6 +163,20 @@ def main() -> None:
             w.writeheader()
             w.writerows(all_rows)
         print(f"\nWrote {len(all_rows)} rows to {CSV_PATH.name}")
+
+        sys.path.insert(0, str(Path(__file__).parent / "leaderboard"))
+        from common import UNVERIFIED, MapEntry, load_map, save_map
+
+        rmap = load_map()
+        known = {e.provider for e in rmap.rows}
+        for r in added:
+            if r["Provider"] not in known:
+                rmap.rows.append(
+                    MapEntry(
+                        provider=r["Provider"], status=UNVERIFIED, note=f"HF community submission {r['HF_Model_ID']}"
+                    )
+                )
+        save_map(rmap)
     else:
         print("\nNo new rows.")
 

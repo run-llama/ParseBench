@@ -13,7 +13,19 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+### Scoring (changes evaluation numbers)
+- A layout page the provider returned no layout for ("<adapter> requires non-empty layout_pages") now counts as 0
+  in the aggregate, like output that cannot be adapted to a `LayoutOutput` already did. It was treated as a harness
+  error and silently dropped from the denominator, so a pipeline that returned nothing on its hardest pages scored
+  as if those pages did not exist. Visual Grounding drops for affected pipelines (median 3 of 500 pages; up to 78
+  for some lightweight models).
+
 ### Added
+- Leaderboard accountability: `leaderboard/results.yaml` ties every `leaderboard.csv` row to its published outputs
+  in `llamaindex/ParseBench-results`, `leaderboard.csv` gains a `Verified` column, and `scripts/leaderboard/`
+  re-scores rows from those outputs (locally or on Modal). Two workflows use it: *Leaderboard verification* checks
+  leaderboard PRs against a re-score, and *Leaderboard re-score* re-scores every verified row daily when the harness
+  changes and opens a PR. See `leaderboard/README.md`.
 - `repetition_overshoot`, a built-in rule that fails an output repeating anything (a leader, a unit, a token, a line,
   a table row, a whole table) more than the page holds. `parse-bench repetition make <dir>` writes this test next to
   each of your own PDFs, budgeted from its text layer. See `docs/repetition-overshoot.md`.

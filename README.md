@@ -32,13 +32,16 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | 7 | oi-parser | Commercial - Startup APIs | 78.30 | 92.62 | 78.28 | 86.17 | 66.88 | 67.53 | — |
 | 8 | Anthropic Fable 5.1 | VLM - Proprietary | 78.12 | 91.52 | 67.06 | 91.19 | 76.52 | 64.32 | 16.05¢ |
 | 9 | LlamaParse Cost Effective | LlamaParse | 78.02 | 85.14 | 72.99 | 87.43 | 78.29 | 66.26 | 0.38¢ |
-| 10 | rakedoc-nano | VLM - Open Weight | 77.23 | 86.44 | 64.89 | 88.84 | 71.68 | 74.28 | — |
+| 10 | rakedoc-nano † | VLM - Open Weight | 77.23 | 86.44 | 64.89 | 88.84 | 71.68 | 74.28 | — |
+
+† Unverified: no published outputs in [ParseBench-results](https://huggingface.co/datasets/llamaindex/ParseBench-results); scores as submitted.
 <!-- LEADERBOARD:END -->
 
 **Inclusion criteria:**
 1. The model or API needs to be publicly accessible, either via open weights or a self-serve API that any user can sign up for.
 2. The benchmark run needs to finish within a reasonable time (roughly single-digit hours).
 3. We can adjust concurrency based on the provider's recommended settings, but providers should not require custom framework changes, so the evaluation stays fair across models.
+4. The row's per-document outputs are published to [ParseBench-results](https://huggingface.co/datasets/llamaindex/ParseBench-results). Published rows are re-scored automatically whenever the harness changes; see [leaderboard/README.md](leaderboard/README.md).
 
 ## Quick Start
 
