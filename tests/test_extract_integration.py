@@ -515,3 +515,45 @@ def test_parallel_worker_respects_verified_only_flag(tmp_path: Path) -> None:
     by_name = {metric.metric_name: metric for metric in evaluated.metrics}
 
     assert by_name["extract_value_pass_rate"].metadata["total"] == 1
+
+
+def test_citation_unknown_page_survives_serialization_without_grounding_credit() -> None:
+    from parse_bench.evaluation.metrics.field_grounding.extract_adapter import compute_extract_field_grounding_metrics
+    from parse_bench.test_cases.schema import ExtractFieldBbox, ExtractFieldTestRule
+
+    citation = FieldCitation(field_path="amount", page=None, bbox=[0.1, 0.2, 0.3, 0.1], confidence=0.8)
+    restored = FieldCitation.model_validate_json(citation.model_dump_json())
+    assert restored.page is None
+    assert restored.confidence == 0.8
+    metrics = compute_extract_field_grounding_metrics(
+        extracted_data={"amount": 10},
+        field_rules=[
+            ExtractFieldTestRule(
+                field_path="amount",
+                expected_value=10,
+                bboxes=[ExtractFieldBbox(page=1, bbox=[0.1, 0.2, 0.3, 0.1])],
+            )
+        ],
+        field_citations=[restored],
+    )
+    by_name = {metric.metric_name: metric.value for metric in metrics}
+    assert by_name["extract_bbox_recall"] == 0.0
+
+
+def test_provider_box_without_page_does_not_invent_page_one() -> None:
+    from parse_bench.inference.providers.extract.citations import extract_extend_field_citations
+
+    citations = extract_extend_field_citations(
+        {
+            "processor_run": {
+                "output": {
+                    "metadata": {
+                        "amount": {"citations": [{"bbox": [0.1, 0.2, 0.3, 0.1]}]},
+                    }
+                }
+            }
+        }
+    )
+    assert len(citations) == 1
+    assert citations[0].page is None
+    assert citations[0].bbox == [0.1, 0.2, 0.3, 0.1]
