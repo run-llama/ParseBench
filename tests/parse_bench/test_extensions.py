@@ -1,5 +1,9 @@
 """End-to-end coverage of the public extension seams in parse_bench.extensions."""
 
+import os
+import subprocess
+import sys
+import textwrap
 from datetime import datetime
 from typing import Any, Literal
 
@@ -147,3 +151,44 @@ def test_parse_test_case_round_trip_keeps_subclass_rule_fields() -> None:
     assert dumped["test_rules"][1]["formula"] == "x^2"
     reloaded = ParseTestCase.model_validate(dumped)
     assert reloaded.test_rules is not None and reloaded.test_rules[0].word == "hi"  # type: ignore[union-attr]
+
+
+# --- import weight ----------------------------------------------------------
+
+_PROVIDER_IMPORT_PROBE = textwrap.dedent(
+    """
+    import sys
+
+    import parse_bench.evaluation.layout_adapters
+    import parse_bench.evaluation.layout_label_mappers
+    import parse_bench.extensions
+
+    packages = tuple(f"parse_bench.inference.providers.{p}." for p in ("extract", "layoutdet", "parse"))
+    helpers = ("parse_bench.inference.providers.layoutdet.adapters", "parse_bench.inference.providers.layoutdet.base")
+    print(sorted(m for m in sys.modules if m.startswith(packages) and m not in helpers))
+
+    from parse_bench.inference.pipelines import get_pipeline
+    from parse_bench.inference.providers.registry import create_provider
+
+    print(type(create_provider(get_pipeline("qwen3_8_27b_thinking_parse_with_layout"))).__name__)
+    """
+)
+
+
+def test_extension_seam_imports_no_provider_until_create_provider() -> None:
+    """Importing the extension seam or the evaluation registries must not import a provider module.
+
+    Each provider pulls in its SDK, and an import of parse_bench.inference.providers.* used to load
+    them all. create_provider must still find a built-in provider on first use. Measured in a fresh
+    interpreter: this session's sys.modules already holds the providers.
+    """
+    done = subprocess.run(
+        [sys.executable, "-c", _PROVIDER_IMPORT_PROBE],
+        env={**os.environ, "QWEN3_8_27B_SERVER_URL": "https://example.invalid"},
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr[-2000:]
+    assert done.stdout.splitlines() == ["[]", "QwenProvider"]
