@@ -29,7 +29,6 @@ def load_builtin_providers() -> None:
         importlib.import_module(f"parse_bench.inference.providers.{package}").load_providers()
 
 
-
 def register_provider(provider_name: str) -> Callable[[ProviderT], ProviderT]:
     """
     Decorator to register a Provider class for a given vendor.
