@@ -1,12 +1,16 @@
 from collections.abc import Callable
+from typing import TypeVar
 
 from parse_bench.inference.providers.base import Provider, ProviderConfigError
 from parse_bench.schemas.pipeline import PipelineSpec
 
 _PROVIDER_REGISTRY: dict[str, type[Provider]] = {}
 
+# Bound to the concrete class so the decorator hands back that class, not ``type[Provider]``.
+ProviderT = TypeVar("ProviderT", bound=type[Provider])
 
-def register_provider(provider_name: str) -> Callable[[type[Provider]], type[Provider]]:
+
+def register_provider(provider_name: str) -> Callable[[ProviderT], ProviderT]:
     """
     Decorator to register a Provider class for a given vendor.
 
@@ -21,7 +25,7 @@ def register_provider(provider_name: str) -> Callable[[type[Provider]], type[Pro
         provider = create_provider(pipeline_spec)
     """
 
-    def decorator(cls: type[Provider]) -> type[Provider]:
+    def decorator(cls: ProviderT) -> ProviderT:
         if provider_name in _PROVIDER_REGISTRY:
             raise ValueError(f"Provider already registered for '{provider_name}'")
         _PROVIDER_REGISTRY[provider_name] = cls
