@@ -21,6 +21,11 @@ All notable changes to `parse-bench` are recorded here. The format follows
   layout, downloaded to `./data/<name>`.
 
 ### Fixed
+- `parse-bench run` without `--group` now exits non-zero when the evaluation of
+  any category fails, and stops when Ctrl-C interrupts a category evaluation.
+  `EvaluationCLI.run` returns an exit code instead of raising, and the
+  per-category loop ignored it, so a run with failed evaluations exited `0` and
+  Ctrl-C only skipped to the next category.
 - Layout attribution no longer crashes on layout rules without an `ro_index`.
   `LayoutDetectionEvaluator` dumps rules with `ro_index=None`, which
   `parse_gt_elements` kept, so the reading-order sort raised `TypeError` and
