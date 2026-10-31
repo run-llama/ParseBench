@@ -63,7 +63,7 @@ jobs:
           reason=""
           if [ "$FORCE" = "true" ]; then reason="manual run"
           elif [ "$last" = "-" ] || ! git cat-file -e "$last^{commit}" 2>/dev/null; then reason="no recorded re-score"
-          elif ! git diff --quiet "$last" HEAD -- src/parse_bench pyproject.toml uv.lock; then reason="harness changed since ${last:0:12}"
+          elif ! git diff --quiet "$last" HEAD -- src/parse_bench scripts/leaderboard pyproject.toml uv.lock; then reason="harness changed since ${last:0:12}"
           elif [ "$latest_rev" != "$data_rev" ]; then reason="ground truth moved to ${latest_rev:0:12}"
           fi
           if [ -n "$reason" ]; then

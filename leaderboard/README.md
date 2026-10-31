@@ -36,9 +36,9 @@ from the PR, so it is safe for fork PRs. If your PR also changes scoring code, l
 
 ## Scheduled re-score
 
-The **Leaderboard re-score** workflow runs daily. If `src/parse_bench` (or the ground truth revision) changed since
-`scored_with` in `results.yaml`, it re-scores every verified row on Modal and opens or updates the
-`leaderboard/rescore` pull request with the new numbers. Changes of 2 points or more are flagged ⚠️ and labelled
+The **Leaderboard re-score** workflow runs daily. If `src/parse_bench` or `scripts/leaderboard` (or the ground truth
+revision) changed since `scored_with` in `results.yaml`, it re-scores every verified row on Modal and opens or updates
+the `leaderboard/rescore` pull request with the new numbers. Changes of 2 points or more are flagged ⚠️ and labelled
 `large-score-change`. Run it by hand with *Run workflow* (tick **force** to re-score without a change).
 Pull requests opened with the default `GITHUB_TOKEN` do not trigger other workflows, so CI does not run on the
 re-score PR on its own; push an empty commit or re-run CI from the PR if you want it.

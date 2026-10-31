@@ -131,7 +131,7 @@ def overall(scores: dict[str, float]) -> float:
     return sum(scores[c] for c in DIMENSIONS) / len(DIMENSIONS)
 
 
-HARNESS_PATHS = ("src/parse_bench", "pyproject.toml", "uv.lock")
+HARNESS_PATHS = ("src/parse_bench", "scripts/leaderboard", "pyproject.toml", "uv.lock")
 
 
 def git_head(repo: Path = REPO_ROOT) -> str:
