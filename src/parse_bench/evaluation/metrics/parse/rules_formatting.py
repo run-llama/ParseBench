@@ -12,7 +12,7 @@ from parse_bench.evaluation.metrics.parse.rules_base import (
     is_degenerate_marker_text,
 )
 from parse_bench.evaluation.metrics.parse.test_types import TestType
-from parse_bench.evaluation.metrics.parse.utils import _normalize_quotes, normalize_text
+from parse_bench.evaluation.metrics.parse.utils import _TAG_REST, _normalize_quotes, normalize_text
 from parse_bench.test_cases.parse_rule_schemas import (
     ParseAbsentUnlessStrikeoutRule,
     ParseCodeBlockRule,
@@ -121,28 +121,28 @@ _STRIP_PATTERNS: dict[str, list[tuple[re.Pattern, str]]] = {
     "bold": [
         (re.compile(r"\*\*\*(.+?)\*\*\*", re.DOTALL), r"\1"),
         (re.compile(r"\*\*(.+?)\*\*", re.DOTALL), r"\1"),
-        (re.compile(r"</?(?:b|strong)>", re.IGNORECASE), ""),
+        (re.compile(rf"</?(?:b|strong){_TAG_REST}", re.IGNORECASE), ""),
     ],
     "italic": [
         (re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)"), r"\1"),
         (re.compile(r"(?<!_)_(?!_)(.+?)(?<!_)_(?!_)"), r"\1"),
-        (re.compile(r"</?(?:i|em)>", re.IGNORECASE), ""),
+        (re.compile(rf"</?(?:i|em){_TAG_REST}", re.IGNORECASE), ""),
     ],
     "underline": [
-        (re.compile(r"</?(?:u|ins)>", re.IGNORECASE), ""),
+        (re.compile(rf"</?(?:u|ins){_TAG_REST}", re.IGNORECASE), ""),
     ],
     "strikeout": [
         (re.compile(r"~~"), ""),
-        (re.compile(r"</?(?:s|del|strike)>", re.IGNORECASE), ""),
+        (re.compile(rf"</?(?:s|del|strike){_TAG_REST}", re.IGNORECASE), ""),
     ],
     "mark": [
-        (re.compile(r"</?mark\b[^>]*>", re.IGNORECASE), ""),
+        (re.compile(rf"</?mark{_TAG_REST}", re.IGNORECASE), ""),
     ],
     "sup": [
-        (re.compile(r"</?sup>", re.IGNORECASE), ""),
+        (re.compile(rf"</?sup{_TAG_REST}", re.IGNORECASE), ""),
     ],
     "sub": [
-        (re.compile(r"</?sub>", re.IGNORECASE), ""),
+        (re.compile(rf"</?sub{_TAG_REST}", re.IGNORECASE), ""),
     ],
 }
 
