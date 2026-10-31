@@ -1,0 +1,368 @@
+{
+ "doc_id": "w2-2026--f004--scan-helv",
+ "pages": [
+  {
+   "page_number": 1,
+   "items": [
+    {
+     "type": "field",
+     "field": "text",
+     "id": "a",
+     "label": "Employee's social security number",
+     "value": "920-24-6595"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "b",
+     "label": "Employer identification number (EIN)",
+     "value": "00-3438130"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "c",
+     "label": "Employer's name, address, and ZIP code",
+     "value": "Wilson and Sons\n5435 Bradshaw Trail\nSouth Howardhaven, TX 76177"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "d",
+     "label": "Control number",
+     "value": "M308958"
+    },
+    {
+     "type": "section",
+     "id": "e",
+     "label": "Employee's first name and initial",
+     "items": [
+      {
+       "type": "field",
+       "field": "text",
+       "value": "Laura P."
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "label": "Last name",
+       "value": "Simmons"
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "label": "Suff.",
+       "isEmpty": true
+      }
+     ]
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "f",
+     "label": "Employee's address and ZIP code",
+     "value": "772 Eaton Mountain Apt. 360\nNew Calebton, TX 75734"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "1",
+     "label": "Wages, tips, other compensation",
+     "value": "52,287.47"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "2",
+     "label": "Federal income tax withheld",
+     "value": "10,652.09"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "3",
+     "label": "Social security wages",
+     "value": "52,287.47"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "4",
+     "label": "Social security tax withheld",
+     "value": "3,241.82"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "5",
+     "label": "Medicare wages and tips",
+     "value": "52,287.47"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "6",
+     "label": "Medicare tax withheld",
+     "value": "758.17"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "7",
+     "label": "Social security tips",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "8",
+     "label": "Allocated tips",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "9",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "10",
+     "label": "Dependent care benefits",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "11",
+     "label": "Nonqualified plans",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "multi_select",
+     "id": "13",
+     "valueItems": [
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Statutory employee",
+       "value": true
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Retirement plan",
+       "value": true
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Third-party sick pay",
+       "value": false
+      }
+     ]
+    },
+    {
+     "type": "section",
+     "id": "14a",
+     "label": "Other",
+     "items": [
+      {
+       "type": "field",
+       "field": "text",
+       "value": "CASDI"
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "value": "1,378.48"
+      }
+     ]
+    },
+    {
+     "type": "section",
+     "id": "12a",
+     "items": [
+      {
+       "type": "field",
+       "field": "text",
+       "label": "Code",
+       "value": "AA"
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "value": "21,133.73"
+      }
+     ]
+    },
+    {
+     "type": "section",
+     "id": "12b",
+     "items": [
+      {
+       "type": "field",
+       "field": "text",
+       "label": "Code",
+       "value": "D"
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "value": "18,076.02"
+      }
+     ]
+    },
+    {
+     "type": "section",
+     "id": "12c",
+     "items": [
+      {
+       "type": "field",
+       "field": "text",
+       "label": "Code",
+       "value": "DD"
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "value": "14,727.23"
+      }
+     ]
+    },
+    {
+     "type": "section",
+     "id": "12d",
+     "items": [
+      {
+       "type": "field",
+       "field": "text",
+       "label": "Code",
+       "isEmpty": true
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "isEmpty": true
+      }
+     ]
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "14b",
+     "label": "Treasury Tipped Occupation Code(s)",
+     "isEmpty": true
+    },
+    {
+     "type": "section",
+     "id": "15 - 1",
+     "label": "State",
+     "items": [
+      {
+       "type": "field",
+       "field": "text",
+       "value": "TX"
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "label": "Employer's state ID number",
+       "value": "6109955677"
+      }
+     ]
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "16 - 1",
+     "label": "State wages, tips, etc.",
+     "value": "27,834.55"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "17 - 1",
+     "label": "State income tax",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "18 - 1",
+     "label": "Local wages, tips, etc.",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "19 - 1",
+     "label": "Local income tax",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "20 - 1",
+     "label": "Locality name",
+     "isEmpty": true
+    },
+    {
+     "type": "section",
+     "id": "15 - 2",
+     "label": "State",
+     "items": [
+      {
+       "type": "field",
+       "field": "text",
+       "value": "NV"
+      },
+      {
+       "type": "field",
+       "field": "text",
+       "label": "Employer's state ID number",
+       "value": "6979145005"
+      }
+     ]
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "16 - 2",
+     "label": "State wages, tips, etc.",
+     "value": "24,452.92"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "17 - 2",
+     "label": "State income tax",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "18 - 2",
+     "label": "Local wages, tips, etc.",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "19 - 2",
+     "label": "Local income tax",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "20 - 2",
+     "label": "Locality name",
+     "isEmpty": true
+    }
+   ]
+  }
+ ]
+}

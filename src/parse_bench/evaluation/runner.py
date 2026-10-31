@@ -124,6 +124,7 @@ def _evaluate_single_worker(
     skip_rules: bool = False,
     verified_only: bool = False,
     grits_pair_workers: int = 1,
+    next_metrics: bool = False,
 ) -> dict[str, Any]:
     """
     Worker function for parallel evaluation using ProcessPoolExecutor.
@@ -144,6 +145,7 @@ def _evaluate_single_worker(
     :param verified_only: Discard test rules explicitly marked verified=false
     :param grits_pair_workers: Per-document GriTS page-parallelism width (CPU budget
         split with the document pool, see ``EvaluationRunner.run``)
+    :param next_metrics: Also append the extended scorers' metrics (``evaluation run --next``)
     :return: Serialized EvaluationResult dict
     """
     # Import here to avoid circular imports and ensure fresh state in worker
@@ -194,66 +196,87 @@ def _evaluate_single_worker(
             "layout_detection": LayoutDetectionEvaluator(default_ontology=default_layout_ontology),
         }
 
-        if eval_mode == "multi_task":
-            # Multi-task evaluation needs special handling
-            # For now, return error - multi_task is complex and rarely used
-            # The main parallel path is for normal evaluations
-            return EvaluationResult(
-                test_id=test_case.test_id,
-                example_id=inference_result.request.example_id,
-                pipeline_name=inference_result.pipeline_name,
-                product_type=inference_result.product_type.value,
-                success=False,
-                error="multi_task evaluation not supported in parallel mode",
-            ).model_dump()
-
-        elif eval_mode is True:  # is_cross_eval
-            # Cross-evaluation: extract layout from PARSE result
-            assert isinstance(test_case, LayoutDetectionTestCase)
-
-            adapter = create_layout_adapter_for_result(inference_result)
-            layout_output = adapter.to_layout_output(
-                inference_result,
-                page_filter=test_case.page_index + 1,
-            )
-            if not layout_output.predictions:
-                return EvaluationResult(
-                    test_id=test_case.test_id,
-                    example_id=inference_result.request.example_id,
-                    pipeline_name=inference_result.pipeline_name,
-                    product_type="layout_detection",
-                    success=False,
-                    error=f"No layout data for page {test_case.page_index}",
-                ).model_dump()
-
-            # Build a synthetic LAYOUT_DETECTION result from adapted output.
-            layout_inference_result = InferenceResult(
-                request=inference_result.request,
-                pipeline_name=inference_result.pipeline_name,
-                product_type=ProductType.LAYOUT_DETECTION,
-                raw_output=inference_result.raw_output,
-                output=layout_output,
-                started_at=inference_result.started_at,
-                completed_at=inference_result.completed_at,
-                latency_in_ms=inference_result.latency_in_ms,
-            )
-            layout_evaluator = evaluators["layout_detection"]
-            result = layout_evaluator.evaluate(layout_inference_result, test_case)
-            return result.model_dump()
-        else:
-            # Normal evaluation
-            if evaluator_type is None or evaluator_type not in evaluators:
+        def dispatch() -> EvaluationResult:
+            if eval_mode == "multi_task":
+                # Multi-task evaluation needs special handling
+                # For now, return error - multi_task is complex and rarely used
+                # The main parallel path is for normal evaluations
                 return EvaluationResult(
                     test_id=test_case.test_id,
                     example_id=inference_result.request.example_id,
                     pipeline_name=inference_result.pipeline_name,
                     product_type=inference_result.product_type.value,
                     success=False,
-                    error=f"No evaluator for type: {evaluator_type}",
-                ).model_dump()
-            evaluator = evaluators[evaluator_type]
-            result = evaluator.evaluate(inference_result, test_case)
-            return result.model_dump()
+                    error="multi_task evaluation not supported in parallel mode",
+                )
+
+            elif eval_mode is True:  # is_cross_eval
+                # Cross-evaluation: extract layout from PARSE result
+                assert isinstance(test_case, LayoutDetectionTestCase)
+
+                adapter = create_layout_adapter_for_result(inference_result)
+                layout_output = adapter.to_layout_output(
+                    inference_result,
+                    page_filter=test_case.page_index + 1,
+                )
+                if not layout_output.predictions:
+                    return EvaluationResult(
+                        test_id=test_case.test_id,
+                        example_id=inference_result.request.example_id,
+                        pipeline_name=inference_result.pipeline_name,
+                        product_type="layout_detection",
+                        success=False,
+                        error=f"No layout data for page {test_case.page_index}",
+                    )
+
+                # Build a synthetic LAYOUT_DETECTION result from adapted output.
+                layout_inference_result = InferenceResult(
+                    request=inference_result.request,
+                    pipeline_name=inference_result.pipeline_name,
+                    product_type=ProductType.LAYOUT_DETECTION,
+                    raw_output=inference_result.raw_output,
+                    output=layout_output,
+                    started_at=inference_result.started_at,
+                    completed_at=inference_result.completed_at,
+                    latency_in_ms=inference_result.latency_in_ms,
+                )
+                layout_evaluator = evaluators["layout_detection"]
+                result = layout_evaluator.evaluate(layout_inference_result, test_case)
+                return result
+            else:
+                # Normal evaluation
+                if evaluator_type is None or evaluator_type not in evaluators:
+                    return EvaluationResult(
+                        test_id=test_case.test_id,
+                        example_id=inference_result.request.example_id,
+                        pipeline_name=inference_result.pipeline_name,
+                        product_type=inference_result.product_type.value,
+                        success=False,
+                        error=f"No evaluator for type: {evaluator_type}",
+                    )
+                evaluator = evaluators[evaluator_type]
+                result = evaluator.evaluate(inference_result, test_case)
+                return result
+
+        try:
+            result = dispatch()
+        except Exception as e:
+            if not next_metrics:
+                raise
+            # The extended metrics still score a document whose layout could not be adapted.
+            result = EvaluationResult(
+                test_id=test_case.test_id,
+                example_id=inference_result.request.example_id,
+                pipeline_name=inference_result.pipeline_name,
+                product_type=inference_result.product_type.value,
+                success=False,
+                error=f"Worker error: {e}",
+            )
+        if next_metrics:
+            from parse_bench.evaluation.metrics.parse.next_metrics import attach_next_metrics
+
+            result = attach_next_metrics(result, inference_result, test_case)
+        return result.model_dump()
 
     except Exception as e:
         # Return error result
@@ -438,6 +461,7 @@ class EvaluationRunner:
         skip_rules: bool = False,
         layout_ontology: str = "basic",
         verified_only: bool = False,
+        next_metrics: bool = False,
     ):
         """
         Initialize the evaluation runner.
@@ -449,6 +473,8 @@ class EvaluationRunner:
         :param skip_rules: Skip rule-based metric computation in parse evaluation
         :param layout_ontology: Default layout ontology when test case does not specify one
         :param verified_only: Discard test rules explicitly marked verified=false
+        :param next_metrics: Also compute the extended scorers' metrics for every document
+            (``evaluation run --next``)
         """
         self.output_dir = Path(output_dir)
         self.test_cases_dir = Path(test_cases_dir) if test_cases_dir else None
@@ -457,6 +483,7 @@ class EvaluationRunner:
         self.skip_rules = skip_rules
         self.layout_ontology = layout_ontology
         self.verified_only = verified_only
+        self.next_metrics = next_metrics
 
         # Register default evaluators
         self._evaluators: dict[str, Any] = {}
@@ -535,6 +562,21 @@ class EvaluationRunner:
         :param eval_mode: "multi_task", True (cross_eval), or False (normal)
         :return: EvaluationResult
         """
+        result = self._evaluate_single_base(inference_result, test_case, evaluator, eval_mode)
+        if self.next_metrics:
+            from parse_bench.evaluation.metrics.parse.next_metrics import attach_next_metrics
+
+            result = attach_next_metrics(result, inference_result, test_case)
+        return result
+
+    def _evaluate_single_base(
+        self,
+        inference_result: InferenceResult,
+        test_case: TestCase,
+        evaluator: Any,
+        eval_mode: str | bool,
+    ) -> EvaluationResult:
+        """Run the evaluator selected for this document (see ``_evaluate_single``)."""
         try:
             if eval_mode == "multi_task":
                 # Multi-task evaluation: split rules and run both evaluators
@@ -815,6 +857,14 @@ class EvaluationRunner:
                         )
                         if evaluator.can_evaluate(inference_result, per_q_tc):
                             qa_evaluation_tasks.append((inference_result, per_q_tc, evaluator))
+                # The extended scorers read the document itself, not its questions.
+                parse_evaluator = self._evaluators.get(inference_result.product_type.value)
+                if (
+                    self.next_metrics
+                    and parse_evaluator is not None
+                    and parse_evaluator.can_evaluate(inference_result, test_case)
+                ):
+                    non_qa_evaluations.append((inference_result, test_case, parse_evaluator, False))
                 continue
 
             is_qa_test = isinstance(test_case, ParseTestCase) and test_case.qa_config is not None
@@ -1098,6 +1148,7 @@ class EvaluationRunner:
                         bool,
                         bool,
                         int,
+                        bool,
                     ]
                 ] = []
                 for inf_result, tc, _eval_obj, mode in parallelizable_evaluations:
@@ -1133,6 +1184,7 @@ class EvaluationRunner:
                             self.skip_rules,
                             self.verified_only,
                             grits_pair_workers,
+                            self.next_metrics,
                         )
                     )
 
@@ -1301,6 +1353,10 @@ class EvaluationRunner:
             completed_at=None,  # Will be set by caller
             aggregate_stats=aggregate_stats,
         )
+
+    def aggregate_metrics(self, evaluation_results: list[EvaluationResult]) -> dict[str, float]:
+        """Aggregate metrics of a list of evaluation results, as the run summary does."""
+        return self._aggregate_metrics(evaluation_results)
 
     def _aggregate_metrics(self, evaluation_results: list[EvaluationResult]) -> dict[str, float]:
         """

@@ -210,7 +210,12 @@ def _load_jsonl_dataset(root_dir: Path) -> list[TestCase]:
                         pdf_groups[group_key]["tags"].append(t)
 
             # Extract table-specific rule metadata (e.g. allow_splitting_ambiguous_merged_tables)
-            for meta_key in ("allow_splitting_ambiguous_merged_tables", "trm_unsupported", "max_top_title_rows"):
+            for meta_key in (
+                "allow_splitting_ambiguous_merged_tables",
+                "trm_unsupported",
+                "max_top_title_rows",
+                "allow_merged_sub_rows",
+            ):
                 if meta_key in rule_data:
                     pdf_groups[group_key]["rule_meta"][meta_key] = rule_data[meta_key]
 
@@ -271,6 +276,7 @@ def _load_jsonl_dataset(root_dir: Path) -> list[TestCase]:
                 allow_splitting_ambiguous_merged_tables=rule_meta.get("allow_splitting_ambiguous_merged_tables", False),
                 trm_unsupported=rule_meta.get("trm_unsupported", False),
                 max_top_title_rows=rule_meta.get("max_top_title_rows", 1),
+                allow_merged_sub_rows=rule_meta.get("allow_merged_sub_rows", False),
             )
         test_cases.append(tc)
 
@@ -431,6 +437,8 @@ def load_test_case(
         allow_splitting_ambiguous_merged_tables=test_config.get("allow_splitting_ambiguous_merged_tables", False),
         trm_unsupported=test_config.get("trm_unsupported", False),
         max_top_title_rows=test_config.get("max_top_title_rows", 1),
+        allow_merged_sub_rows=test_config.get("allow_merged_sub_rows", False),
+        metadata=test_config.get("metadata"),
     )
 
 
