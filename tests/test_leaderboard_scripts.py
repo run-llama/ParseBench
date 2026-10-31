@@ -136,3 +136,9 @@ def test_apply_writes_scores_and_records_harness(tmp_path: Path) -> None:
     assert by["A"]["Charts"] == "60.00" and by["A"]["Overall"] == "60.00"
     assert by["U"]["Charts"] == "50.00"
     assert load_map(map_path).scored_with == "b" * 40
+
+
+def test_rows_missing_more_than_one_percent_are_incomplete() -> None:
+    assert lb_apply._incomplete({"coverage": {"Tables": (501, 503)}}) is False  # 2 pages: scored 0, still verified
+    assert lb_apply._incomplete({"coverage": {"Content_Faithfulness": (85, 506)}}) is True
+    assert lb_apply._incomplete({"coverage": {}}) is False

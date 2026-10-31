@@ -38,6 +38,8 @@ from common import (  # noqa: E402
 )
 
 COLUMNS = ["Overall", *DIMENSIONS]
+# A verified row may miss at most this share of any category's pages (missing pages score 0).
+MAX_MISSING_SHARE = 0.01
 POLICY = (
     "Pages the provider produced nothing usable for score 0. A dimension where the evaluator left pages out of its "
     "average (a harness error or missing layout data) is not re-scored and keeps its old value."
@@ -119,6 +121,10 @@ def diff_rows(rows: list[dict[str, str]], rescore: dict[str, Any], pipeline_by_p
 
 def max_abs_delta(rec: dict) -> float:
     return max((abs(d) for d in rec["delta"].values() if d is not None), default=0.0)
+
+
+def _incomplete(rec: dict) -> bool:
+    return any(1 - a / t > MAX_MISSING_SHARE for a, t in rec.get("coverage", {}).values() if t)
 
 
 def _cell(rec: dict, col: str, threshold: float) -> str:
@@ -235,7 +241,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
     pipeline_by_provider = {e.provider: e.pipeline for e in rmap.verified() if e.pipeline}
     records = diff_rows(rows, rescore, pipeline_by_provider)
 
-    bad = [r for r in records if "error" in r or r["dim_errors"] or max_abs_delta(r) > args.tolerance]
+    incomplete = [r for r in records if "error" not in r and _incomplete(r)]
+    bad = [r for r in records if "error" in r or r["dim_errors"] or max_abs_delta(r) > args.tolerance or _incomplete(r)]
     intro = (
         f"Submitted values compared with a re-score of the published outputs using ParseBench "
         f"`{_short(rescore['scored_with'])}` (tolerance ±{args.tolerance:g} pt). {POLICY}"
@@ -247,6 +254,13 @@ def cmd_compare(args: argparse.Namespace) -> int:
         else f"**Result: fail** — {len(bad)} row(s) differ from the re-score or could not be re-scored. "
         "Update leaderboard.csv to the re-scored values above or fix the published outputs."
     )
+    if incomplete:
+        report += "\n\n" + "\n".join(
+            f"- **{r['provider']}** misses more than {MAX_MISSING_SHARE:.0%} of "
+            + ", ".join(f"{SHORT[c]} ({a}/{t})" for c, (a, t) in r["coverage"].items() if 1 - a / t > MAX_MISSING_SHARE)
+            + ": publish every page, or keep the row unverified."
+            for r in incomplete
+        )
     if args.report:
         args.report.write_text(report + "\n")
     print(report)
