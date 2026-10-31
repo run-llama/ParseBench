@@ -45,6 +45,7 @@ from parse_bench.test_cases import load_test_cases
 from parse_bench.test_cases.parse_rule_schemas import get_rule_type
 from parse_bench.test_cases.rule_filters import filter_verified_test_rules
 from parse_bench.test_cases.schema import (
+    ExtractFieldTestRule,
     ExtractTestCase,
     LayoutDetectionTestCase,
     ParseTestCase,
@@ -85,6 +86,34 @@ def _is_infra_failure(result: EvaluationResult) -> bool:
     if "not LayoutOutput" in result.error:
         return False
     return result.error.startswith(("Worker error:", "Evaluation error:", "Task execution error:"))
+
+
+def _add_extract_field_grounding(
+    result: EvaluationResult,
+    inference_result: InferenceResult,
+    test_case: LayoutDetectionTestCase,
+    parse_evaluator: ParseEvaluator | None,
+) -> EvaluationResult:
+    """Append parse_field_* metrics when a layout page also carries extract_field rules.
+
+    A page can hold both layout and extract_field annotations. The layout
+    cross-eval scores the first family; this scores the second on the same
+    parse output, so the page gets one result with both metric sets.
+    """
+    rules: list[ExtractFieldTestRule | dict[str, Any]] = [r for r in test_case.get_extract_field_rules() if r.bboxes]
+    if not rules or parse_evaluator is None or inference_result.product_type != ProductType.PARSE:
+        return result
+    extract_view = ExtractTestCase(
+        test_id=test_case.test_id,
+        group=test_case.group,
+        file_path=test_case.file_path,
+        tags=test_case.tags,
+        schema=test_case.data_schema or {},
+        test_rules=rules,
+    )
+    grounding = parse_evaluator.evaluate(inference_result, extract_view)
+    result.metrics.extend(grounding.metrics)
+    return result
 
 
 # Diagnostic metrics that are counts or lower-is-better rates. Padding a
@@ -239,6 +268,9 @@ def _evaluate_single_worker(
             )
             layout_evaluator = evaluators["layout_detection"]
             result = layout_evaluator.evaluate(layout_inference_result, test_case)
+            parse_evaluator = evaluators["parse"]
+            assert isinstance(parse_evaluator, ParseEvaluator)
+            result = _add_extract_field_grounding(result, inference_result, test_case, parse_evaluator)
             return result.model_dump()
         else:
             # Normal evaluation
@@ -570,7 +602,10 @@ class EvaluationRunner:
                     completed_at=inference_result.completed_at,
                     latency_in_ms=inference_result.latency_in_ms,
                 )
-                return evaluator.evaluate(layout_inference_result, test_case)  # type: ignore[no-any-return]
+                result: EvaluationResult = evaluator.evaluate(layout_inference_result, test_case)
+                return _add_extract_field_grounding(
+                    result, inference_result, test_case, self._evaluators.get(ProductType.PARSE.value)
+                )
             else:
                 return evaluator.evaluate(inference_result, test_case)  # type: ignore[no-any-return]
         except Exception as e:
@@ -681,7 +716,7 @@ class EvaluationRunner:
             test_cases = load_test_cases(
                 root_dir=self.test_cases_dir,
                 require_test_json=False,
-                product_type=None if product_type == "parse" else product_type,
+                product_type=product_type,
             )
             # Filter by group if specified
             if group:
@@ -1565,8 +1600,10 @@ class EvaluationRunner:
         if not rules:
             return False
 
-        has_layout = any(get_rule_type(r) == "layout" for r in rules)
-        has_non_layout = any(get_rule_type(r) is not None and get_rule_type(r) != "layout" for r in rules)
+        # extract_field rules ride along with the layout cross-eval, not multi-task.
+        rule_types = [get_rule_type(r) for r in rules]
+        has_layout = "layout" in rule_types
+        has_non_layout = any(t not in (None, "layout", "extract_field") for t in rule_types)
 
         return has_layout and has_non_layout
 
