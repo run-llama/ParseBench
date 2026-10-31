@@ -19,6 +19,16 @@ All notable changes to `parse-bench` are recorded here. The format follows
   error and silently dropped from the denominator, so a pipeline that returned nothing on its hardest pages scored
   as if those pages did not exist. Visual Grounding drops for affected pipelines (median 3 of 500 pages; up to 78
   for some lightweight models).
+- Layout adapters read `layout_pages` whose boxes are 0-1 fractions of the page, which `LayoutSegmentIR` allows
+  alongside page units. Fractional pages are scaled to page units before projection, for detection and attribution
+  alike. Without it, providers without a dedicated adapter (Surya, MinerU, Unlimited-OCR, Qianfan, LightOnOCR, GLM,
+  Mistral OCR, Nova) and Nutrient DWS localized nothing and scored 0 Visual Grounding.
+- The LlamaParse layout adapter reads `raw_output["pages"]` only when it is LlamaParse's own page payload (items with
+  `bBox`/`layoutAwareBbox`). Providers that keep a native `pages` list (Mistral OCR, GLM, Nova) now fall through to
+  their normalized `layout_pages` instead of yielding no boxes.
+- The Upstage label mapper accepts canonical labels (`Page-header`, `Text`) as well as Upstage categories, and
+  `openai_compatible_vlm_layout` (DeepSeek parse-with-layout) maps through the Qwen3-VL label indices like the other
+  parse-with-layout VLMs. Both previously raised on every page.
 
 ### Added
 - Leaderboard accountability: `leaderboard/results.yaml` ties every `leaderboard.csv` row to its published outputs
