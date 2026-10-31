@@ -163,6 +163,27 @@ def pipe_tables_to_html(md: str) -> str:
     return "\n".join(out)
 
 
+_IMG_REF = re.compile(r"^\s*!\[[^\]]*\]\(imgs/")
+
+
+def _chart_spans(lines: list[str], spans: list[tuple[int, int]], limit: int) -> set[tuple[int, int]]:
+    """Pipe tables that follow an image reference are chart data from the vision pass, not grounding tables.
+    At most ``limit`` (the grounding's chart elements), so a table under a logo stays a table."""
+    charts = set()
+    for a, b in spans:
+        if len(charts) >= limit:
+            break
+        seen, j = 0, a - 1
+        while j >= 0 and seen < 4:
+            if lines[j].strip():
+                if _IMG_REF.match(lines[j]):
+                    charts.add((a, b))
+                    break
+                seen += 1
+            j -= 1
+    return charts
+
+
 def tables_to_html(md: str, grounding: dict[str, Any]) -> str:
     """Swap the markdown's pipe tables for the grounding's HTML tables, matched by order.
     When the counts differ, fall back to a plain pipe-to-HTML rewrite."""
@@ -173,17 +194,20 @@ def tables_to_html(md: str, grounding: dict[str, Any]) -> str:
         if e.get("label") == "table" and str(e.get("content") or "").lstrip().lower().startswith("<table")
     ]
     spans = _pipe_blocks(md)
-    if not spans or len(spans) != len(htmls):
-        return pipe_tables_to_html(md)
     lines = md.splitlines()
+    elements = [e for pg in grounding.get("pages") or [] for e in pg.get("elements") or []]
+    n_charts = sum(1 for e in elements if e.get("label") == "chart")
+    real = [s for s in spans if s not in _chart_spans(lines, spans, n_charts)]
+    if not real or len(real) != len(htmls):
+        return pipe_tables_to_html(md)
     out: list[str] = []
     pos = 0
-    for (a, b), h in zip(spans, htmls, strict=True):
+    for (a, b), h in zip(real, htmls, strict=True):
         out.extend(lines[pos:a])
         out.append(_promote_header(h.replace("\r\n", " ").replace("\r", " ")))
         pos = b
     out.extend(lines[pos:])
-    return "\n".join(out)
+    return pipe_tables_to_html("\n".join(out))  # chart tables left as pipes become plain HTML
 
 
 def layout_pages_from_grounding(grounding: dict[str, Any]) -> list[ParseLayoutPageIR]:
@@ -197,6 +221,8 @@ def layout_pages_from_grounding(grounding: dict[str, Any]) -> list[ParseLayoutPa
             raw_label = str(e.get("label") or e.get("type") or "").lower()
             if raw_label in furniture and e.get("content"):
                 furniture[raw_label].append(str(e["content"]).strip())
+            if raw_label == "number" and float((e.get("bbox") or {}).get("y2", 1.0)) < 0.15:
+                raw_label = "header"
             label = LABEL_MAP.get(raw_label)
             b = e.get("bbox") or {}
             if not label or not b:
