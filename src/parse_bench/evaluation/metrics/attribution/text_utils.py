@@ -157,8 +157,14 @@ def normalize_attribution_text(text: str | None, *, strip_image_markup: bool = F
         return str(m.group(0))  # currency — keep the $..$ as-is
 
     text = re.sub(r"\$[^$]+\$", _strip_latex_inline, text)
-    text = re.sub(r"\\\[.*?\\\]", " ", text, flags=re.DOTALL)
-    text = re.sub(r"\\\(.*?\\\)", " ", text, flags=re.DOTALL)
+
+    # \[...\] and \(...\) use the same LaTeX test as $...$: markdown-escaped
+    # brackets such as \[1\] are printed text and stay.
+    def _strip_latex_delimited(m: "re.Match[str]") -> str:
+        return " " if re.search(r"[\\^_{}]", m.group(1)) else str(m.group(0))
+
+    text = re.sub(r"\\\[(.*?)\\\]", _strip_latex_delimited, text, flags=re.DOTALL)
+    text = re.sub(r"\\\((.*?)\\\)", _strip_latex_delimited, text, flags=re.DOTALL)
     text = re.sub(r"\\begin\{.*?\}.*?\\end\{.*?\}", " ", text, flags=re.DOTALL)
 
     # Strip remaining LaTeX commands (with optional brace arguments)
