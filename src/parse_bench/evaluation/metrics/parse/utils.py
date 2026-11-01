@@ -216,10 +216,10 @@ def _normalize_quotes(text: str) -> str:
 # the name keeps custom elements such as <mark-down> intact.
 _TAG_REST = r"""(?:\s(?:"[^"]*"|'[^']*'|[^"'>])*)?/?>"""
 
-# Markdown link ``[label](url)`` or ``[label](<url>)``; images (``![alt](src)``) are excluded.
-# Scoring compares the visible label: a parser that keeps a hyperlink did not
-# write its URL into the sentence or cell.
-_MD_LINK_RE = re.compile(r"(?<!!)\[([^\]]*)\]\((?:<[^>]*>|[^)]*)\)")
+# Markdown link ``[label](url)`` or ``[label](<url>)`` -> label. The label is one line with no
+# brackets; the URL has no whitespace and may hold one level of balanced parentheses. Images
+# (``![alt](src)``) and escaped brackets (``\[a\](b)``) are left alone.
+MD_LINK_RE = re.compile(r"(?<![!\\])\[([^\[\]\n]*)\]\((?:<[^<>\n]*>|[^\s()]*(?:\([^\s()]*\)[^\s()]*)*)\)")
 
 # HTML formatting tags to strip (same set as header_accuracy_metric._FORMATTING_RE)
 _HTML_FORMATTING_RE = re.compile(
@@ -567,7 +567,7 @@ def normalize_cell_text(text: str) -> str:
     # Strip <span> tags (keep content) — e.g. <span color="red">text</span> → text
     text = _HTML_SPAN_RE.sub("", text)
     # Markdown link [label](url) -> label
-    text = _MD_LINK_RE.sub(r"\1", text)
+    text = MD_LINK_RE.sub(r"\1", text)
     # Strip markdown bold, then italic, then strikethrough
     text = _MD_BOLD_RE.sub(r"\1\2", text)
     text = _MD_ITALIC_RE.sub(r"\1\2", text)
@@ -693,7 +693,7 @@ def normalize_text(md_content: str | None) -> str:
     )
 
     # Markdown link [label](url) -> label
-    md_content = _MD_LINK_RE.sub(r"\1", md_content)
+    md_content = MD_LINK_RE.sub(r"\1", md_content)
 
     # Normalize <br>, <br/>, and <br /> to spaces
     md_content = re.sub(r"<br\s*/?>", " ", md_content)

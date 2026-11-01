@@ -5,7 +5,7 @@ import pytest
 from parse_bench.evaluation.metrics.parse.rule_based_metric import RuleBasedMetric
 from parse_bench.evaluation.metrics.parse.table_record_match_metric import TableRecordMatchMetric
 from parse_bench.evaluation.metrics.parse.test_rules import MissingSpecificSentenceRule
-from parse_bench.evaluation.metrics.parse.utils import normalize_cell_text, normalize_text
+from parse_bench.evaluation.metrics.parse.utils import MD_LINK_RE, normalize_cell_text, normalize_text
 
 
 def test_linked_words_satisfy_the_sentence_rule() -> None:
@@ -43,3 +43,21 @@ def test_link_url_does_not_split_sentences_in_the_rule_metric() -> None:
     ]
     actual = "See the [annual report](https://example.com/ar_2024.pdf) for details."
     assert RuleBasedMetric().compute(expected=rules, actual=actual).value == pytest.approx(1.0)
+
+
+def test_url_with_balanced_parentheses_is_removed_whole() -> None:
+    assert normalize_text("see [Foo](https://example.org/wiki/Foo_(bar)) next") == "see foo next"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "\\[a\\](b)",  # escaped brackets are printed text
+        "on the interval [0, 1](see note) only",  # destination with spaces is prose
+        "[a\n\nb](u)",  # a label never spans a paragraph break
+        "[a [b] c](u)",  # nested brackets
+        "[![logo](img.png)](https://example.com)",  # image inside a link
+    ],
+)
+def test_bracket_paren_text_that_is_not_a_link_is_kept(text: str) -> None:
+    assert MD_LINK_RE.sub(r"\1", text) == text
