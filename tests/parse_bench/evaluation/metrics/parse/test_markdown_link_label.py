@@ -5,7 +5,12 @@ import pytest
 from parse_bench.evaluation.metrics.parse.rule_based_metric import RuleBasedMetric
 from parse_bench.evaluation.metrics.parse.table_record_match_metric import TableRecordMatchMetric
 from parse_bench.evaluation.metrics.parse.test_rules import MissingSpecificSentenceRule
-from parse_bench.evaluation.metrics.parse.utils import MD_LINK_RE, normalize_cell_text, normalize_text
+from parse_bench.evaluation.metrics.parse.utils import (
+    MD_LINK_RE,
+    normalize_cell_text,
+    normalize_text,
+    strip_md_links_outside_code,
+)
 
 
 def test_linked_words_satisfy_the_sentence_rule() -> None:
@@ -61,3 +66,16 @@ def test_url_with_balanced_parentheses_is_removed_whole() -> None:
 )
 def test_bracket_paren_text_that_is_not_a_link_is_kept(text: str) -> None:
     assert MD_LINK_RE.sub(r"\1", text) == text
+
+
+def test_label_wrapped_across_one_line_is_still_a_link() -> None:
+    assert normalize_text("See the [annual\nreport](https://example.com/a) now") == "see the annual report now"
+
+
+def test_links_inside_code_are_kept_verbatim() -> None:
+    text = "Call `cb[i](x)` once.\n\n```js\nhandlers[0](event)\n```\n\nSee [docs](https://example.com)."
+    assert strip_md_links_outside_code(text) == text.replace("[docs](https://example.com)", "docs")
+
+
+def test_unclosed_fence_does_not_protect_the_rest_of_the_text() -> None:
+    assert strip_md_links_outside_code("```\nSee [docs](https://example.com).") == "```\nSee docs."

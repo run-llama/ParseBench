@@ -216,10 +216,32 @@ def _normalize_quotes(text: str) -> str:
 # the name keeps custom elements such as <mark-down> intact.
 _TAG_REST = r"""(?:\s(?:"[^"]*"|'[^']*'|[^"'>])*)?/?>"""
 
-# Markdown link ``[label](url)`` or ``[label](<url>)`` -> label. The label is one line with no
-# brackets; the URL has no whitespace and may hold one level of balanced parentheses. Images
-# (``![alt](src)``) and escaped brackets (``\[a\](b)``) are left alone.
-MD_LINK_RE = re.compile(r"(?<![!\\])\[([^\[\]\n]*)\]\((?:<[^<>\n]*>|[^\s()]*(?:\([^\s()]*\)[^\s()]*)*)\)")
+# Markdown link ``[label](url)`` or ``[label](<url>)`` -> label. The label has no brackets and
+# may wrap one line (no blank line); the URL has no whitespace and may hold one level of
+# balanced parentheses. Images (``![alt](src)``) and escaped brackets (``\[a\](b)``) stay.
+MD_LINK_RE = re.compile(
+    r"(?<![!\\])\[((?:[^\[\]\n]|\n(?![ \t]*\n))*)\]\((?:<[^<>\n]*>|[^\s()]*(?:\([^\s()]*\)[^\s()]*)*)\)"
+)
+
+# A fenced code block (``` or ~~~) or a one-line inline code span.
+_MD_CODE_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n.*?^[ \t]{0,3}\1[ \t]*$|(`+)[^`\n]*?\2", re.M | re.S)
+
+
+def strip_md_links_outside_code(text: str) -> str:
+    """Reduce ``[label](url)`` to ``label`` except inside code blocks and code spans.
+
+    Code is compared verbatim by some rules, so ``handlers[0](event)`` in code
+    must stay as written.
+    """
+    parts: list[str] = []
+    pos = 0
+    for m in _MD_CODE_RE.finditer(text):
+        parts.append(MD_LINK_RE.sub(r"\1", text[pos : m.start()]))
+        parts.append(m.group(0))
+        pos = m.end()
+    parts.append(MD_LINK_RE.sub(r"\1", text[pos:]))
+    return "".join(parts)
+
 
 # HTML formatting tags to strip (same set as header_accuracy_metric._FORMATTING_RE)
 _HTML_FORMATTING_RE = re.compile(
