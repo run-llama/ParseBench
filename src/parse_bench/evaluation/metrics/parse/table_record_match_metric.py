@@ -451,10 +451,11 @@ def _is_word_affix(a: str, b: str) -> bool:
     under the threshold for such pairs, which unmatches the column and zeroes
     every cell under it. Cells are still compared by value once columns pair.
     """
-    short, long_ = sorted((a, b), key=len)
-    if not short or short == long_:
+    short, long_ = sorted((a.split(), b.split()), key=len)
+    n = len(short)
+    if not n or n == len(long_):
         return False
-    return long_.startswith(short + " ") or long_.endswith(" " + short)
+    return long_[:n] == short or long_[-n:] == short
 
 
 def _align_columns_header_core(
