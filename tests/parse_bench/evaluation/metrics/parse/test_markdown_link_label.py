@@ -5,6 +5,7 @@ import pytest
 from parse_bench.evaluation.metrics.parse.rule_based_metric import RuleBasedMetric
 from parse_bench.evaluation.metrics.parse.table_record_match_metric import TableRecordMatchMetric
 from parse_bench.evaluation.metrics.parse.test_rules import MissingSpecificSentenceRule
+from parse_bench.evaluation.metrics.parse.text_v21 import reference_rules
 from parse_bench.evaluation.metrics.parse.utils import (
     MD_LINK_RE,
     normalize_cell_text,
@@ -79,3 +80,15 @@ def test_links_inside_code_are_kept_verbatim() -> None:
 
 def test_unclosed_fence_does_not_protect_the_rest_of_the_text() -> None:
     assert strip_md_links_outside_code("```\nSee [docs](https://example.com).") == "```\nSee docs."
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "Intro.\n\n```python\nhandlers[0](event)\n",  # unclosed fence (truncated output)
+        "Intro.\n\n    handlers[0](event)\n\nEnd.",  # indented code
+        "Use `x\nhandlers[0](event)` here.",  # code span across a line break
+    ],
+)
+def test_text_v21_rules_read_the_raw_prediction(reference: str) -> None:
+    assert RuleBasedMetric().compute(expected=reference_rules(reference), actual=reference).value == pytest.approx(1.0)
