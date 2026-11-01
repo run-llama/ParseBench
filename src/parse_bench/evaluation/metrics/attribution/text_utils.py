@@ -114,6 +114,14 @@ def _replace_html_img_with_alt(text: str) -> str:
     return re.sub(r"<img\b[^>]*>", _replacement, text, flags=re.IGNORECASE)
 
 
+# Math environments only; \begin{itemize} and other text environments keep their prose.
+_LATEX_MATH_ENV_RE = re.compile(
+    r"\\begin\{((?:equation|align|alignat|gather|multline|flalign|eqnarray|math|displaymath|split|cases"
+    r"|array|[pbBvV]?matrix|smallmatrix)\*?)\}.*?\\end\{\1\}",
+    re.DOTALL,
+)
+
+
 def normalize_attribution_text(text: str | None, *, strip_image_markup: bool = False) -> str:
     """Normalize text for attribution comparison.
 
@@ -163,12 +171,14 @@ def normalize_attribution_text(text: str | None, *, strip_image_markup: bool = F
     def _strip_latex_delimited(m: "re.Match[str]") -> str:
         return " " if re.search(r"[\\^_{}]", m.group(1)) else str(m.group(0))
 
-    text = re.sub(r"\\\[(.*?)\\\]", _strip_latex_delimited, text, flags=re.DOTALL)
-    text = re.sub(r"\\\((.*?)\\\)", _strip_latex_delimited, text, flags=re.DOTALL)
-    text = re.sub(r"\\begin\{.*?\}.*?\\end\{.*?\}", " ", text, flags=re.DOTALL)
+    text = re.sub(r"\\\[((?:(?!\\\[).)*?)\\\]", _strip_latex_delimited, text, flags=re.DOTALL)
+    text = re.sub(r"\\\(((?:(?!\\\().)*?)\\\)", _strip_latex_delimited, text, flags=re.DOTALL)
+    text = re.sub(_LATEX_MATH_ENV_RE, " ", text)
 
-    # Strip remaining LaTeX commands (with optional brace arguments)
-    text = re.sub(r"\\[a-zA-Z]+(\s*\{[^}]*\})*", " ", text)
+    # Drop the name of a LaTeX command that takes a brace argument and keep the
+    # argument: \textbf{Net income} keeps "net income". A backslash word with no
+    # brace (a path such as C:\Users) stays as text.
+    text = re.sub(r"\\[a-zA-Z]+(?=\s*\{)", " ", text)
     # Strip leftover superscripts/subscripts
     text = re.sub(r"[_^]\{[^}]*\}", " ", text)
     text = re.sub(r"[_^][a-zA-Z0-9]+", " ", text)

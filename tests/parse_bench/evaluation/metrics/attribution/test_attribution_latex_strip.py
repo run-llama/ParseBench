@@ -4,12 +4,26 @@ from parse_bench.evaluation.metrics.attribution.text_utils import normalize_attr
 
 
 def test_display_inline_and_environment_math_are_removed() -> None:
-    text = r"display \[ x^2 \] inline \( y_1 \) env \begin{eq} z \end{eq} end"
+    text = r"display \[ x^2 \] inline \( y_1 \) env \begin{equation} z \end{equation} end"
     assert normalize_attribution_text(text).split() == ["display", "inline", "env", "end"]
 
 
-def test_latex_commands_and_braced_scripts_are_removed() -> None:
-    assert normalize_attribution_text(r"cmd \alpha{b} sub_{ij} end").split() == ["cmd", "sub", "end"]
+def test_command_name_and_braced_scripts_are_removed_and_the_argument_kept() -> None:
+    text = normalize_attribution_text(r"\textbf{Net income} rose sub_{ij} end")
+    assert "textbf" not in text and "ij" not in text
+    assert "net income" in text and text.endswith("rose sub end")
+
+
+def test_text_environment_keeps_its_prose() -> None:
+    assert "first point" in normalize_attribution_text(r"\begin{itemize} \item first point \end{itemize}")
+
+
+def test_backslash_path_keeps_its_words() -> None:
+    assert "users documents" in normalize_attribution_text(r"Save to C:\Users\Documents\Report.docx")
+
+
+def test_unclosed_display_math_does_not_eat_later_math_or_prose() -> None:
+    assert normalize_attribution_text(r"\[ open \[x^2\] close").split()[-2:] == ["open", "close"]
 
 
 def test_plain_words_and_amounts_survive() -> None:
