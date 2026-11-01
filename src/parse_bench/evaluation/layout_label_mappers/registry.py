@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeVar
 
-from parse_bench.evaluation._registration import retain_registrations
+from parse_bench.evaluation._registration import updated_registrations
 from parse_bench.evaluation.layout_adapters.registry import resolve_layout_provider_name
 from parse_bench.evaluation.layout_label_mappers.base import (
     LayoutLabelMapper,
@@ -42,17 +42,9 @@ def register_layout_label_mapper(
         raise ValueError("register_layout_label_mapper requires at least one key")
 
     def decorator(cls: LayoutLabelMapperT) -> LayoutLabelMapperT:
-        retained = retain_registrations(
-            _LAYOUT_LABEL_MAPPER_REGISTRY, mapper_keys, dangerous_override=_DANGEROUSLY_OVERRIDE
-        )
-        _LAYOUT_LABEL_MAPPER_REGISTRY[:] = retained
-
-        _LAYOUT_LABEL_MAPPER_REGISTRY.append(
-            _LayoutLabelMapperRegistration(
-                keys=tuple(mapper_keys),
-                priority=priority,
-                mapper_cls=cls,
-            )
+        replacement = _LayoutLabelMapperRegistration(keys=tuple(mapper_keys), priority=priority, mapper_cls=cls)
+        _LAYOUT_LABEL_MAPPER_REGISTRY[:] = updated_registrations(
+            _LAYOUT_LABEL_MAPPER_REGISTRY, replacement, dangerous_override=_DANGEROUSLY_OVERRIDE
         )
         return cls
 

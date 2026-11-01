@@ -63,7 +63,7 @@ def register_rule_type(
     """
     _validate_rule_class(rule_type, rule_class)
     register_parse_rule_model(rule_type, schema, _DANGEROUSLY_OVERRIDE=_DANGEROUSLY_OVERRIDE)
-    register_rule_class(rule_type, rule_class)
+    register_rule_class(rule_type, rule_class, _DANGEROUSLY_OVERRIDE=_DANGEROUSLY_OVERRIDE)
 
 
 __all__ = [

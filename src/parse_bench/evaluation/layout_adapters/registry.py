@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeVar
 
-from parse_bench.evaluation._registration import retain_registrations
+from parse_bench.evaluation._registration import updated_registrations
 from parse_bench.evaluation.layout_adapters.base import LayoutAdapter
 from parse_bench.inference.pipelines import get_pipeline
 from parse_bench.schemas.pipeline import PipelineSpec
@@ -38,17 +38,9 @@ def register_layout_adapter(
         raise ValueError("register_layout_adapter requires at least one provider key")
 
     def decorator(cls: LayoutAdapterT) -> LayoutAdapterT:
-        retained = retain_registrations(
-            _LAYOUT_ADAPTER_REGISTRY, provider_keys, dangerous_override=_DANGEROUSLY_OVERRIDE
-        )
-        _LAYOUT_ADAPTER_REGISTRY[:] = retained
-
-        _LAYOUT_ADAPTER_REGISTRY.append(
-            _LayoutAdapterRegistration(
-                keys=tuple(provider_keys),
-                priority=priority,
-                adapter_cls=cls,
-            )
+        replacement = _LayoutAdapterRegistration(keys=tuple(provider_keys), priority=priority, adapter_cls=cls)
+        _LAYOUT_ADAPTER_REGISTRY[:] = updated_registrations(
+            _LAYOUT_ADAPTER_REGISTRY, replacement, dangerous_override=_DANGEROUSLY_OVERRIDE
         )
         return cls
 

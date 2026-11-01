@@ -17,6 +17,7 @@ from parse_bench.evaluation.layout_label_mappers import registry as mapper_regis
 from parse_bench.evaluation.layout_label_mappers.base import MappingContext
 from parse_bench.evaluation.layout_label_mappers.mappers import CanonicalPassthroughMapper
 from parse_bench.evaluation.metrics.parse import rules_base
+from parse_bench.evaluation.metrics.parse.rules_bag import MissingWordPercentRule
 from parse_bench.evaluation.metrics.parse.rules_base import create_test_rule
 from parse_bench.extensions import (
     ExtensionProductType,
@@ -311,3 +312,58 @@ def test_invalid_rule_override_leaves_existing_schema_and_scorer(monkeypatch: py
     unchanged = parse_rule_schemas.coerce_parse_rule({"type": "present", "text": "hello"})
     assert type(unchanged) is type(original)
     assert type(create_test_rule(unchanged)) is original_scorer
+
+
+@pytest.mark.parametrize("combined_api", [False, True])
+def test_normalization_precedence_changes_only_with_explicit_override(
+    monkeypatch: pytest.MonkeyPatch, combined_api: bool
+) -> None:
+    monkeypatch.setattr(rules_base, "_RULE_CLASS_REGISTRY", dict(rules_base._RULE_CLASS_REGISTRY))
+    monkeypatch.setattr(parse_rule_schemas, "_RULE_TYPE_TO_MODEL", dict(parse_rule_schemas._RULE_TYPE_TO_MODEL))
+    payload = {"type": "missing_word_percent", "bag_of_word": {"café": 1}, "text_normalization": "text-v2.1"}
+    for override, expected_score in ((False, 0.0), (True, 1.0), (False, 0.0)):
+        if combined_api:
+            register_rule_type(
+                "missing_word_percent",
+                parse_rule_schemas.ParseMissingWordPercentRule,
+                MissingWordPercentRule,
+                _DANGEROUSLY_OVERRIDE=override,
+            )
+        elif override:
+            rules_base.register_rule_class("missing_word_percent", MissingWordPercentRule, _DANGEROUSLY_OVERRIDE=True)
+        else:
+            rules_base.register_rule_class("missing_word_percent", MissingWordPercentRule)
+        rule = create_test_rule(payload)
+        assert rule.run("cafe")[2] == expected_score
+        assert rules_base.registered_rule_classes()["missing_word_percent"] is MissingWordPercentRule
+
+
+@pytest.mark.parametrize("replace_keys", [("first",), ("first", "third")])
+def test_adapter_override_preserves_equal_priority_shape_order(
+    monkeypatch: pytest.MonkeyPatch, replace_keys: tuple[str, ...]
+) -> None:
+    monkeypatch.setattr(adapter_registry, "_LAYOUT_ADAPTER_REGISTRY", [])
+    monkeypatch.setattr(adapter_registry, "_PIPELINE_RESOLVERS", [])
+    register_layout_adapter("first", priority=90)(_MatchedAdapter)
+    register_layout_adapter("second", priority=90)(_ReplacementAdapter)
+    register_layout_adapter("third", priority=90)(_MatchedAdapter)
+    result = _result({"task_type": "parse", "example_id": "e", "pipeline_name": "p", "markdown": ""})
+    assert type(adapter_registry.create_layout_adapter_for_result(result)) is _MatchedAdapter
+    register_layout_adapter(*replace_keys, priority=90, _DANGEROUSLY_OVERRIDE=True)(_MatchedAdapter)
+    assert type(adapter_registry.create_layout_adapter_for_result(result)) is _MatchedAdapter
+
+
+def test_mapper_override_preserves_equal_priority_provider_model_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mapper_registry, "_LAYOUT_LABEL_MAPPER_REGISTRY", [])
+    model = LayoutDetectionModel.LLAMAPARSE
+    register_layout_label_mapper("parser", priority=90)(_MatchedMapper)
+    register_layout_label_mapper(f"model:{model.value}", priority=90)(_ReplacementMapper)
+    output = LayoutOutput(
+        example_id="e", pipeline_name="p", model=model, image_width=100, image_height=100, predictions=[]
+    )
+    context = MappingContext(
+        provider_name="parser", pipeline_name="p", model=model, raw_output={}, layout_output=output
+    )
+    assert type(mapper_registry.resolve_layout_label_mapper(context)) is _MatchedMapper
+    register_layout_label_mapper("parser", priority=90, _DANGEROUSLY_OVERRIDE=True)(_MatchedMapper)
+    assert type(mapper_registry.resolve_layout_label_mapper(context)) is _MatchedMapper
