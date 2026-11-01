@@ -157,14 +157,14 @@ def normalize_attribution_text(text: str | None, *, strip_image_markup: bool = F
         return str(m.group(0))  # currency — keep the $..$ as-is
 
     text = re.sub(r"\$[^$]+\$", _strip_latex_inline, text)
-    text = re.sub(r"\\\\\\[.*?\\\\\\]", " ", text, flags=re.DOTALL)
-    text = re.sub(r"\\\\\\(.*?\\\\\\)", " ", text, flags=re.DOTALL)
-    text = re.sub(r"\\\\begin\\{.*?\\}.*?\\\\end\\{.*?\\}", " ", text, flags=re.DOTALL)
+    text = re.sub(r"\\\[.*?\\\]", " ", text, flags=re.DOTALL)
+    text = re.sub(r"\\\(.*?\\\)", " ", text, flags=re.DOTALL)
+    text = re.sub(r"\\begin\{.*?\}.*?\\end\{.*?\}", " ", text, flags=re.DOTALL)
 
     # Strip remaining LaTeX commands (with optional brace arguments)
-    text = re.sub(r"\\\\[a-zA-Z]+(\\s*\\{[^}]*\\})*", " ", text)
+    text = re.sub(r"\\[a-zA-Z]+(\s*\{[^}]*\})*", " ", text)
     # Strip leftover superscripts/subscripts
-    text = re.sub(r"[_^]\\{[^}]*\\}", " ", text)
+    text = re.sub(r"[_^]\{[^}]*\}", " ", text)
     text = re.sub(r"[_^][a-zA-Z0-9]+", " ", text)
 
     # Expand ligatures
