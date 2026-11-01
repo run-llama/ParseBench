@@ -234,10 +234,10 @@ def test_adapter_override_replaces_aliases_and_shape_matching(monkeypatch: pytes
     with pytest.raises(ValueError, match="already registered"):
         register_layout_adapter("parser", "alias")(_ReplacementAdapter)
     with pytest.raises(ValueError, match="all aliases"):
-        register_layout_adapter("parser", _DANGEROUS_OVERRIDE=True)(_ReplacementAdapter)
+        register_layout_adapter("parser", _DANGEROUSLY_OVERRIDE=True)(_ReplacementAdapter)
     assert type(adapter_registry.create_layout_adapter("parser")) is _MatchedAdapter
 
-    register_layout_adapter("parser", "alias", priority=0, _DANGEROUS_OVERRIDE=True)(_ReplacementAdapter)
+    register_layout_adapter("parser", "alias", priority=0, _DANGEROUSLY_OVERRIDE=True)(_ReplacementAdapter)
     for key in ("parser", "alias"):
         assert type(adapter_registry.create_layout_adapter(key)) is _ReplacementAdapter
     assert type(adapter_registry.create_layout_adapter("unrelated")) is NormalizedLayoutOutputAdapter
@@ -261,10 +261,10 @@ def test_mapper_override_replaces_provider_model_and_shape_matching(monkeypatch:
     with pytest.raises(ValueError, match="already registered"):
         register_layout_label_mapper(*keys)(_ReplacementMapper)
     with pytest.raises(ValueError, match="all aliases"):
-        register_layout_label_mapper("parser", _DANGEROUS_OVERRIDE=True)(_ReplacementMapper)
+        register_layout_label_mapper("parser", _DANGEROUSLY_OVERRIDE=True)(_ReplacementMapper)
     assert type(mapper_registry.resolve_layout_label_mapper(context)) is _MatchedMapper
 
-    register_layout_label_mapper(*keys, priority=0, _DANGEROUS_OVERRIDE=True)(_ReplacementMapper)
+    register_layout_label_mapper(*keys, priority=0, _DANGEROUSLY_OVERRIDE=True)(_ReplacementMapper)
     assert type(mapper_registry.resolve_layout_label_mapper(context)) is _ReplacementMapper
     assert type(mapper_registry.resolve_layout_label_mapper(replace(context, provider_name=None))) is _ReplacementMapper
     unmatched = replace(context, provider_name=None, model=LayoutDetectionModel.DOCLING_PARSE_LAYOUT)
@@ -284,7 +284,7 @@ def test_rule_override_replaces_validation_and_scoring(
 ) -> None:
     monkeypatch.setattr(parse_rule_schemas, "_RULE_TYPE_TO_MODEL", dict(parse_rule_schemas._RULE_TYPE_TO_MODEL))
     monkeypatch.setattr(rules_base, "_RULE_CLASS_REGISTRY", dict(rules_base._RULE_CLASS_REGISTRY))
-    register_rule_type("present", _PresentOverrideSchema, _ShoutRule, _DANGEROUS_OVERRIDE=True)
+    register_rule_type("present", _PresentOverrideSchema, _ShoutRule, _DANGEROUSLY_OVERRIDE=True)
     case = ParseTestCase.model_validate(
         {
             "test_id": "ext/doc",
@@ -307,7 +307,7 @@ def test_invalid_rule_override_leaves_existing_schema_and_scorer(monkeypatch: py
     original = parse_rule_schemas.coerce_parse_rule({"type": "present", "text": "hello"})
     original_scorer = type(create_test_rule(original))
     with pytest.raises(TypeError, match="subclass ParseTestRule"):
-        register_rule_type("present", _PresentOverrideSchema, object, _DANGEROUS_OVERRIDE=True)  # type: ignore[arg-type]
+        register_rule_type("present", _PresentOverrideSchema, object, _DANGEROUSLY_OVERRIDE=True)  # type: ignore[arg-type]
     unchanged = parse_rule_schemas.coerce_parse_rule({"type": "present", "text": "hello"})
     assert type(unchanged) is type(original)
     assert type(create_test_rule(unchanged)) is original_scorer

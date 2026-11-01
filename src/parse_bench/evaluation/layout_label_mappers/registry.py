@@ -35,7 +35,7 @@ LayoutLabelMapperT = TypeVar("LayoutLabelMapperT", bound=type[LayoutLabelMapper]
 def register_layout_label_mapper(
     *mapper_keys: str,
     priority: int = 0,
-    _DANGEROUS_OVERRIDE: bool = False,
+    _DANGEROUSLY_OVERRIDE: bool = False,
 ) -> Callable[[LayoutLabelMapperT], LayoutLabelMapperT]:
     """Register a layout label mapper for one or more keys."""
     if not mapper_keys:
@@ -43,7 +43,7 @@ def register_layout_label_mapper(
 
     def decorator(cls: LayoutLabelMapperT) -> LayoutLabelMapperT:
         retained = retain_registrations(
-            _LAYOUT_LABEL_MAPPER_REGISTRY, mapper_keys, dangerous_override=_DANGEROUS_OVERRIDE
+            _LAYOUT_LABEL_MAPPER_REGISTRY, mapper_keys, dangerous_override=_DANGEROUSLY_OVERRIDE
         )
         _LAYOUT_LABEL_MAPPER_REGISTRY[:] = retained
 

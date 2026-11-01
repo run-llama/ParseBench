@@ -31,14 +31,16 @@ LayoutAdapterT = TypeVar("LayoutAdapterT", bound=type[LayoutAdapter])
 def register_layout_adapter(
     *provider_keys: str,
     priority: int = 0,
-    _DANGEROUS_OVERRIDE: bool = False,
+    _DANGEROUSLY_OVERRIDE: bool = False,
 ) -> Callable[[LayoutAdapterT], LayoutAdapterT]:
     """Register a layout adapter class for one or more provider keys."""
     if not provider_keys:
         raise ValueError("register_layout_adapter requires at least one provider key")
 
     def decorator(cls: LayoutAdapterT) -> LayoutAdapterT:
-        retained = retain_registrations(_LAYOUT_ADAPTER_REGISTRY, provider_keys, dangerous_override=_DANGEROUS_OVERRIDE)
+        retained = retain_registrations(
+            _LAYOUT_ADAPTER_REGISTRY, provider_keys, dangerous_override=_DANGEROUSLY_OVERRIDE
+        )
         _LAYOUT_ADAPTER_REGISTRY[:] = retained
 
         _LAYOUT_ADAPTER_REGISTRY.append(

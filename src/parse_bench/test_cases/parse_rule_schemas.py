@@ -1042,7 +1042,9 @@ def rule_to_dict(rule: ParseRuleInput | Any) -> dict[str, Any]:
     raise TypeError(f"Expected ParseRule or dict, got {type(rule)!r}")
 
 
-def register_parse_rule_model(rule_type: str, model: type[ParseRuleBase], *, _DANGEROUS_OVERRIDE: bool = False) -> None:
+def register_parse_rule_model(
+    rule_type: str, model: type[ParseRuleBase], *, _DANGEROUSLY_OVERRIDE: bool = False
+) -> None:
     """Register the pydantic schema for an additional rule ``type``.
 
     Extensions pair this with ``rules_base.register_rule_class`` (or call
@@ -1053,7 +1055,12 @@ def register_parse_rule_model(rule_type: str, model: type[ParseRuleBase], *, _DA
     if not (isinstance(model, type) and issubclass(model, ParseRuleBase)):
         raise TypeError("model must subclass ParseRuleBase")
     existing = _RULE_TYPE_TO_MODEL.get(rule_type)
-    if existing is not None and existing is not model and rule_type in _BUILTIN_RULE_TYPES and not _DANGEROUS_OVERRIDE:
+    if (
+        existing is not None
+        and existing is not model
+        and rule_type in _BUILTIN_RULE_TYPES
+        and not _DANGEROUSLY_OVERRIDE
+    ):
         raise ValueError(f"{rule_type!r} is a built-in rule type and cannot be replaced")
     _RULE_TYPE_TO_MODEL[rule_type] = model
 

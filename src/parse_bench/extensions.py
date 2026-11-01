@@ -51,7 +51,7 @@ def register_rule_type(
     schema: type[ParseRuleBase],
     rule_class: type[ParseTestRule],
     *,
-    _DANGEROUS_OVERRIDE: bool = False,
+    _DANGEROUSLY_OVERRIDE: bool = False,
 ) -> None:
     """Register a new ``test_rules`` type: its payload schema and its scoring class.
 
@@ -62,7 +62,7 @@ def register_rule_type(
     built-in rule.
     """
     _validate_rule_class(rule_type, rule_class)
-    register_parse_rule_model(rule_type, schema, _DANGEROUS_OVERRIDE=_DANGEROUS_OVERRIDE)
+    register_parse_rule_model(rule_type, schema, _DANGEROUSLY_OVERRIDE=_DANGEROUSLY_OVERRIDE)
     register_rule_class(rule_type, rule_class)
 
 
