@@ -14,8 +14,13 @@ def test_command_name_and_braced_scripts_are_removed_and_the_argument_kept() -> 
     assert "net income" in text and text.endswith("rose sub end")
 
 
-def test_text_environment_keeps_its_prose() -> None:
-    assert "first point" in normalize_attribution_text(r"\begin{itemize} \item first point \end{itemize}")
+def test_text_environment_keeps_its_prose_and_drops_its_markers() -> None:
+    text = normalize_attribution_text(r"\begin{itemize} \item first point \end{itemize}")
+    assert "first point" in text and "itemize" not in text
+
+
+def test_aligned_inside_display_math_is_removed() -> None:
+    assert normalize_attribution_text(r"\begin{aligned} x^2 + y \end{aligned} done").split() == ["done"]
 
 
 def test_backslash_path_keeps_its_words() -> None:

@@ -116,7 +116,8 @@ def _replace_html_img_with_alt(text: str) -> str:
 
 # Math environments only; \begin{itemize} and other text environments keep their prose.
 _LATEX_MATH_ENV_RE = re.compile(
-    r"\\begin\{((?:equation|align|alignat|gather|multline|flalign|eqnarray|math|displaymath|split|cases"
+    r"\\begin\{((?:equation|align|alignat|aligned|alignedat|gather|gathered|multline|flalign|eqnarray|math"
+    r"|displaymath|split|cases|dcases"
     r"|array|[pbBvV]?matrix|smallmatrix)\*?)\}.*?\\end\{\1\}",
     re.DOTALL,
 )
@@ -174,6 +175,8 @@ def normalize_attribution_text(text: str | None, *, strip_image_markup: bool = F
     text = re.sub(r"\\\[((?:(?!\\\[).)*?)\\\]", _strip_latex_delimited, text, flags=re.DOTALL)
     text = re.sub(r"\\\(((?:(?!\\\().)*?)\\\)", _strip_latex_delimited, text, flags=re.DOTALL)
     text = re.sub(_LATEX_MATH_ENV_RE, " ", text)
+    # Any other environment keeps its content but loses its \begin{..}/\end{..} markers.
+    text = re.sub(r"\\(?:begin|end)\{[^}]*\}", " ", text)
 
     # Drop the name of a LaTeX command that takes a brace argument and keep the
     # argument: \textbf{Net income} keeps "net income". A backslash word with no
