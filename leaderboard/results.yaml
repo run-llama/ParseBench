@@ -395,9 +395,10 @@ rows:
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
   note: 'incomplete published outputs: charts 0/568, content 0/506, formatting 0/476'
 - provider: Infinity-Parser2-Pro
-  status: verified
+  status: unverified
   pipeline: infinity_parser2_pro
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: published chart records are broken (charts re-score to 1.75; a fresh run scores 58.16); fresh outputs pending upload
 - provider: Infinity-Parser2-Flash
   status: verified
   pipeline: infinity_parser2_flash
@@ -549,7 +550,8 @@ rows:
   status: unverified
   pipeline: gemma4_e4b_vllm_with_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: tables 493/503, charts 549/568'
+  note: 'incomplete published outputs: tables 493/503, charts 549/568; fresh complete outputs pending upload (public parser
+    fixed in this branch)'
 - provider: Granite Vision 4.1 4B
   status: unverified
   pipeline: granite_vision_4_1_4b
