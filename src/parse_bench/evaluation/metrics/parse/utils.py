@@ -684,12 +684,6 @@ def normalize_text(md_content: str | None) -> str:
         flags=re.IGNORECASE,
     )
 
-    # An underscore between two letters/digits separates words ("img_001",
-    # "snake_case"). Without this, the italic step below pairs the underscores of
-    # two such words across the text and deletes both ("img_001 and img_002" ->
-    # "img001 and img002"), while the annotation tool turns every "_" into a space.
-    md_content = re.sub(r"(?<=[^\W_])_+(?=[^\W_])", " ", md_content)
-
     # Normalize <br>, <br/>, and <br /> to spaces
     md_content = re.sub(r"<br\s*/?>", " ", md_content)
 
@@ -707,6 +701,12 @@ def normalize_text(md_content: str | None) -> str:
 
     # Normalize whitespace in the md_content
     md_content = re.sub(r"\s+", " ", md_content)
+
+    # An underscore run (optionally markdown-escaped, "\_") between two letters/digits
+    # separates words ("img_001", "snake_case"). Without this, the bold/italic steps
+    # below pair the underscores of two such words and delete both ("img_001 and
+    # img_002" -> "img001 and img002"). Placed after the URL steps above.
+    md_content = re.sub(r"(?<=[^\W_])\\?_+(?=[^\W_])", " ", md_content)
 
     # Remove markdown bold formatting (** or __ for bold)
     md_content = re.sub(r"\*\*(.*?)\*\*", r"\1", md_content)

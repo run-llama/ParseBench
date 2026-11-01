@@ -36,6 +36,8 @@ def test_snake_case_and_dunder_names_split_into_words() -> None:
         ("_a_b_", "a b"),  # italic around a welded word still unwraps
         ("_a_ and _b_", "a and b"),  # separate italic words are unchanged
         ("Name: ______", "name: "),  # a fill-in blank touches no word on its right
+        ("img\\_001.jpg and img\\_002.jpg", "img 001.jpg and img 002.jpg"),  # markdown-escaped
+        ("a__b and c__d", "a b and c d"),  # double underscores do not pair as bold
     ],
 )
 def test_word_underscore_near_misses(text: str, expected: str) -> None:
