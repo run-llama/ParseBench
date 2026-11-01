@@ -2,7 +2,10 @@
 
 import pytest
 
-from parse_bench.evaluation.metrics.parse.table_record_match_metric import TableRecordMatchMetric
+from parse_bench.evaluation.metrics.parse.table_record_match_metric import (
+    TableRecordMatchMetric,
+    _align_columns_header_core,
+)
 
 
 def _trm(expected: str, actual: str) -> float:
@@ -50,3 +53,14 @@ def test_exact_key_wins_over_an_affix_key() -> None:
     gt = "<tr><th>Age</th><th>Rate Age</th></tr><tr><td>1</td><td>9</td></tr><tr><td>2</td><td>8</td></tr>"
     pred = "<tr><th>Rate Age</th><th>Age</th></tr><tr><td>9</td><td>1</td></tr><tr><td>8</td><td>2</td></tr>"
     assert _trm(gt, pred) == pytest.approx(1.0)
+
+
+def test_affix_does_not_pull_a_column_off_its_fuzzy_match() -> None:
+    mapping, _ = _align_columns_header_core(["item", "rate", "rate change"], ["item", "rate changes", "change"])
+    assert mapping["rate change"] == "rate changes"
+    assert "rate" not in mapping
+
+
+def test_affix_with_two_candidates_pairs_neither() -> None:
+    mapping, _ = _align_columns_header_core(["item", "2023"], ["item", "revenue 2023", "cost 2023"])
+    assert "2023" not in mapping

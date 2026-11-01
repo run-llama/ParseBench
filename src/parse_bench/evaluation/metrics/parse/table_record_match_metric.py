@@ -438,7 +438,7 @@ def _normalize_key_for_match(key: str) -> str:
     return _HIERARCHY_DASH_RE.sub(" ", key).lower()
 
 
-# Above _COLUMN_MATCH_THRESHOLD, below an exact match, so a real exact key still wins the assignment.
+# Alignment score credited to a column paired on a word affix (second pass).
 _AFFIX_KEY_SIMILARITY = 0.92
 
 
@@ -471,6 +471,7 @@ def _align_columns_header_core(
     gt_norm = [_normalize_key_for_match(k) for k in gt_keys]
     pred_norm = [_normalize_key_for_match(k) for k in pred_keys]
     sim = np.zeros((n_gt, n_pred))
+    affix = np.zeros((n_gt, n_pred), dtype=bool)
     for i, gk in enumerate(gt_keys):
         for j, pk in enumerate(pred_keys):
             gk_empty = _is_empty_or_nan(gk) or gk in gt_synthetic
@@ -490,8 +491,7 @@ def _align_columns_header_core(
                 sim[i, j] = 1.0
             else:
                 sim[i, j] = fuzz.ratio(gt_norm[i], pred_norm[j]) / 100.0
-                if not gk_empty and _is_word_affix(gt_norm[i], pred_norm[j]):
-                    sim[i, j] = max(sim[i, j], _AFFIX_KEY_SIMILARITY)
+                affix[i, j] = not gk_empty and _is_word_affix(gt_norm[i], pred_norm[j])
 
     row_ind, col_ind = linear_sum_assignment(-sim)
 
@@ -501,6 +501,16 @@ def _align_columns_header_core(
         if sim[r, c] >= _COLUMN_MATCH_THRESHOLD:
             mapping[gt_keys[r]] = pred_keys[c]
             scores.append(sim[r, c])
+            affix[r, :] = False
+            affix[:, c] = False
+
+    # Second pass over columns the fuzzy pass left unpaired: pair on a word affix
+    # only when each side has exactly one affix candidate, so the bonus can neither
+    # pull a column off a fuzzy match nor pick arbitrarily between two candidates.
+    for r, c in zip(*np.nonzero(affix), strict=True):
+        if affix[r].sum() == 1 and affix[:, c].sum() == 1:
+            mapping[gt_keys[r]] = pred_keys[c]
+            scores.append(_AFFIX_KEY_SIMILARITY)
 
     alignment_score = float(np.mean(scores)) if scores else 0.0
     return mapping, alignment_score
