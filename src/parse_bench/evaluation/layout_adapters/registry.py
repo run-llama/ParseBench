@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeVar
 
+from parse_bench.evaluation._registration import retain_registrations
 from parse_bench.evaluation.layout_adapters.base import LayoutAdapter
 from parse_bench.inference.pipelines import get_pipeline
 from parse_bench.schemas.pipeline import PipelineSpec
@@ -30,16 +31,19 @@ LayoutAdapterT = TypeVar("LayoutAdapterT", bound=type[LayoutAdapter])
 def register_layout_adapter(
     *provider_keys: str,
     priority: int = 0,
+    _DANGEROUS_OVERRIDE: bool = False,
 ) -> Callable[[LayoutAdapterT], LayoutAdapterT]:
-    """Register a layout adapter class for one or more provider keys."""
+    """Register a layout adapter for one or more keys.
+
+    ``_DANGEROUS_OVERRIDE=True`` replaces complete registrations; include all
+    their aliases so the old implementation also leaves shape matching.
+    """
     if not provider_keys:
         raise ValueError("register_layout_adapter requires at least one provider key")
 
     def decorator(cls: LayoutAdapterT) -> LayoutAdapterT:
-        existing_keys = {key for entry in _LAYOUT_ADAPTER_REGISTRY for key in entry.keys}
-        for key in provider_keys:
-            if key in existing_keys:
-                raise ValueError(f"Layout adapter already registered for provider key '{key}'")
+        retained = retain_registrations(_LAYOUT_ADAPTER_REGISTRY, provider_keys, dangerous_override=_DANGEROUS_OVERRIDE)
+        _LAYOUT_ADAPTER_REGISTRY[:] = retained
 
         _LAYOUT_ADAPTER_REGISTRY.append(
             _LayoutAdapterRegistration(

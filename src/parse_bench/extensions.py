@@ -26,6 +26,7 @@ from parse_bench.evaluation.layout_adapters.registry import register_layout_adap
 from parse_bench.evaluation.layout_label_mappers.registry import register_layout_label_mapper
 from parse_bench.evaluation.metrics.parse.rules_base import (
     ParseTestRule,
+    _validate_rule_class,
     register_reference_thumbnailer,
     register_rule_class,
     registered_rule_classes,
@@ -45,16 +46,23 @@ from parse_bench.test_cases.parse_rule_schemas import (
 )
 
 
-def register_rule_type(rule_type: str, schema: type[ParseRuleBase], rule_class: type[ParseTestRule]) -> None:
+def register_rule_type(
+    rule_type: str,
+    schema: type[ParseRuleBase],
+    rule_class: type[ParseTestRule],
+    *,
+    _DANGEROUS_OVERRIDE: bool = False,
+) -> None:
     """Register a new ``test_rules`` type: its payload schema and its scoring class.
 
     ``schema`` must subclass ``ParseRuleBase`` and declare ``type`` as a
     ``Literal[rule_type]``; ``rule_class`` must subclass ``ParseTestRule`` and
-    implement ``evaluate``. After registration the type validates inside
+    implement ``run``. After registration the type validates inside
     ``ParseTestCase.test_rules`` and is scored by ``RuleBasedMetric`` like any
-    built-in rule.
+    built-in rule. Replacing a built-in schema requires ``_DANGEROUS_OVERRIDE=True``.
     """
-    register_parse_rule_model(rule_type, schema)
+    _validate_rule_class(rule_type, rule_class)
+    register_parse_rule_model(rule_type, schema, _DANGEROUS_OVERRIDE=_DANGEROUS_OVERRIDE)
     register_rule_class(rule_type, rule_class)
 
 

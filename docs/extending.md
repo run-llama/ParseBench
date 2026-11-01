@@ -66,8 +66,8 @@ register_rule_type("link_attribution", LinkRuleSchema, LinkRule)
 ```
 
 After registration the type loads inside `ParseTestCase.test_rules` and is
-scored by `RuleBasedMetric` alongside the built-ins. Built-in rule types,
-products and output models cannot be replaced.
+scored by `RuleBasedMetric` alongside the built-ins. Built-in products and
+output models cannot be replaced.
 
 ## Layout adapters and label mappers
 
@@ -75,6 +75,32 @@ products and output models cannot be replaced.
 provider's layout output to the canonical ontology used by the Visual
 Grounding metrics. See `parse_bench/evaluation/layout_adapters/adapters.py`
 for the built-in examples.
+
+## Explicit implementation overrides
+
+Advanced users can replace layout adapters, label mappers, or built-in rule
+schemas with the keyword-only `_DANGEROUS_OVERRIDE=True` option. Without it,
+conflicting layout registrations and built-in schema replacements raise errors.
+
+```python
+@register_layout_adapter("my_parser", _DANGEROUS_OVERRIDE=True)
+class CustomLayoutAdapter(LayoutAdapter):
+    ...
+
+register_rule_type("present", CustomPresenceSchema, CustomPresenceRule,
+                   _DANGEROUS_OVERRIDE=True)
+```
+
+`register_layout_label_mapper` accepts the same option. A layout override must
+name **all keys** of each registration it replaces, including model aliases.
+It removes the old registration from both keyed lookup and shape matching;
+the replacement's declared priority applies. Unrelated registrations stay intact.
+
+Register overrides during initialization, before loading or scoring test cases.
+`register_rule_type` replaces schema and scorer together; a registered scorer
+also takes precedence over `text_normalization` dispatch. The lower-level
+`register_parse_rule_model` accepts the flag when registering schemas separately.
+These process-wide changes can change scores; record overrides with your results.
 
 ## CLI
 

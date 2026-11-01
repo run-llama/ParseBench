@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeVar
 
+from parse_bench.evaluation._registration import retain_registrations
 from parse_bench.evaluation.layout_adapters.registry import resolve_layout_provider_name
 from parse_bench.evaluation.layout_label_mappers.base import (
     LayoutLabelMapper,
@@ -34,16 +35,21 @@ LayoutLabelMapperT = TypeVar("LayoutLabelMapperT", bound=type[LayoutLabelMapper]
 def register_layout_label_mapper(
     *mapper_keys: str,
     priority: int = 0,
+    _DANGEROUS_OVERRIDE: bool = False,
 ) -> Callable[[LayoutLabelMapperT], LayoutLabelMapperT]:
-    """Register a layout label mapper for one or more keys."""
+    """Register a layout label mapper for one or more keys.
+
+    ``_DANGEROUS_OVERRIDE=True`` replaces complete registrations; include all
+    their aliases so the old implementation also leaves shape matching.
+    """
     if not mapper_keys:
         raise ValueError("register_layout_label_mapper requires at least one key")
 
     def decorator(cls: LayoutLabelMapperT) -> LayoutLabelMapperT:
-        existing_keys = {key for entry in _LAYOUT_LABEL_MAPPER_REGISTRY for key in entry.keys}
-        for key in mapper_keys:
-            if key in existing_keys:
-                raise ValueError(f"Layout label mapper already registered for key '{key}'")
+        retained = retain_registrations(
+            _LAYOUT_LABEL_MAPPER_REGISTRY, mapper_keys, dangerous_override=_DANGEROUS_OVERRIDE
+        )
+        _LAYOUT_LABEL_MAPPER_REGISTRY[:] = retained
 
         _LAYOUT_LABEL_MAPPER_REGISTRY.append(
             _LayoutLabelMapperRegistration(

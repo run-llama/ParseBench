@@ -504,11 +504,15 @@ def register_rule_class(rule_type: str, rule_class: type["ParseTestRule"]) -> No
     extension can add rule types without editing this module. Pair with
     ``parse_rule_schemas.register_parse_rule_model`` so the payload validates.
     """
-    if not isinstance(rule_type, str) or not rule_type:
-        raise ValueError("rule_type must be a non-empty string")
-    if not (isinstance(rule_type, str) and isinstance(rule_class, type) and issubclass(rule_class, ParseTestRule)):
-        raise TypeError("rule_class must subclass ParseTestRule")
+    _validate_rule_class(rule_type, rule_class)
     _RULE_CLASS_REGISTRY[rule_type] = rule_class
+
+
+def _validate_rule_class(rule_type: str, rule_class: type["ParseTestRule"]) -> None:
+    if not isinstance(rule_type, str) or len(rule_type) == 0:
+        raise ValueError("rule_type must be a non-empty string")
+    if not (isinstance(rule_class, type) and issubclass(rule_class, ParseTestRule)):
+        raise TypeError("rule_class must subclass ParseTestRule")
 
 
 def registered_rule_classes() -> dict[str, type["ParseTestRule"]]:
@@ -643,6 +647,10 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
 
     typed_rule: Any = coerce_parse_rule(rule_data)
     rule_type = get_rule_type(typed_rule)
+    registered = _RULE_CLASS_REGISTRY.get(rule_type)
+    if registered is not None:
+        return registered(typed_rule)
+
     if typed_rule.get("text_normalization") == "text-v2.1":
         from parse_bench.evaluation.metrics.parse.text_v21 import RULE_TYPES, VisibleTextBagRule
 
@@ -651,10 +659,6 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
         return VisibleTextBagRule(typed_rule)
     if not rule_type:
         raise ValueError("Rule must have a 'type' field")
-
-    registered = _RULE_CLASS_REGISTRY.get(rule_type)
-    if registered is not None:
-        return registered(typed_rule)
 
     if rule_type in {TestType.PRESENT.value, TestType.ABSENT.value}:
         return TextPresenceRule(typed_rule)

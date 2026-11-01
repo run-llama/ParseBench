@@ -4,27 +4,38 @@ import os
 import subprocess
 import sys
 import textwrap
+from dataclasses import replace
 from datetime import datetime
 from typing import Any, Literal
 
 import pytest
 from pydantic import BaseModel, Field
 
+from parse_bench.evaluation.layout_adapters import registry as adapter_registry
+from parse_bench.evaluation.layout_adapters.adapters import NormalizedLayoutOutputAdapter
+from parse_bench.evaluation.layout_label_mappers import registry as mapper_registry
+from parse_bench.evaluation.layout_label_mappers.base import MappingContext
+from parse_bench.evaluation.layout_label_mappers.mappers import CanonicalPassthroughMapper
+from parse_bench.evaluation.metrics.parse import rules_base
 from parse_bench.evaluation.metrics.parse.rules_base import create_test_rule
 from parse_bench.extensions import (
     ExtensionProductType,
     ParseRuleBase,
     ParseTestRule,
+    register_layout_adapter,
+    register_layout_label_mapper,
     register_output_model,
     register_product_type,
     register_rule_type,
     registered_parse_rule_types,
     registered_product_types,
 )
+from parse_bench.schemas.layout_detection_output import LayoutDetectionModel, LayoutOutput
 from parse_bench.schemas.parse_output import ParseOutput
 from parse_bench.schemas.pipeline import PipelineSpec
 from parse_bench.schemas.pipeline_io import InferenceRequest, InferenceResult
 from parse_bench.schemas.product import ProductType, coerce_product_type
+from parse_bench.test_cases import parse_rule_schemas
 from parse_bench.test_cases.schema import ParseTestCase
 
 # --- rule types -------------------------------------------------------------
@@ -192,3 +203,111 @@ def test_extension_seam_imports_no_provider_until_create_provider() -> None:
     )
     assert done.returncode == 0, done.stderr[-2000:]
     assert done.stdout.splitlines() == ["[]", "QwenProvider"]
+
+
+class _MatchedAdapter(NormalizedLayoutOutputAdapter):
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        return True
+
+
+class _ReplacementAdapter(_MatchedAdapter):
+    pass
+
+
+class _MatchedMapper(CanonicalPassthroughMapper):
+    @classmethod
+    def matches(cls, context: MappingContext) -> bool:
+        return True
+
+
+class _ReplacementMapper(_MatchedMapper):
+    pass
+
+
+def test_adapter_override_replaces_aliases_and_shape_matching(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(adapter_registry, "_LAYOUT_ADAPTER_REGISTRY", [])
+    monkeypatch.setattr(adapter_registry, "_PIPELINE_RESOLVERS", [])
+    register_layout_adapter("parser", "alias", priority=100)(_MatchedAdapter)
+    register_layout_adapter("unrelated")(NormalizedLayoutOutputAdapter)
+
+    with pytest.raises(ValueError, match="already registered"):
+        register_layout_adapter("parser", "alias")(_ReplacementAdapter)
+    with pytest.raises(ValueError, match="all aliases"):
+        register_layout_adapter("parser", _DANGEROUS_OVERRIDE=True)(_ReplacementAdapter)
+    assert type(adapter_registry.create_layout_adapter("parser")) is _MatchedAdapter
+
+    register_layout_adapter("parser", "alias", priority=0, _DANGEROUS_OVERRIDE=True)(_ReplacementAdapter)
+    for key in ("parser", "alias"):
+        assert type(adapter_registry.create_layout_adapter(key)) is _ReplacementAdapter
+    assert type(adapter_registry.create_layout_adapter("unrelated")) is NormalizedLayoutOutputAdapter
+    result = _result({"task_type": "parse", "example_id": "e", "pipeline_name": "p", "markdown": ""})
+    assert type(adapter_registry.create_layout_adapter_for_result(result)) is _ReplacementAdapter
+
+
+def test_mapper_override_replaces_provider_model_and_shape_matching(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mapper_registry, "_LAYOUT_LABEL_MAPPER_REGISTRY", [])
+    model = LayoutDetectionModel.LLAMAPARSE
+    keys = ("parser", f"model:{model.value}")
+    register_layout_label_mapper(*keys, priority=100)(_MatchedMapper)
+    register_layout_label_mapper("unrelated")(CanonicalPassthroughMapper)
+    output = LayoutOutput(
+        example_id="e", pipeline_name="p", model=model, image_width=100, image_height=100, predictions=[]
+    )
+    context = MappingContext(
+        provider_name="parser", pipeline_name="p", model=model, raw_output={}, layout_output=output
+    )
+
+    with pytest.raises(ValueError, match="already registered"):
+        register_layout_label_mapper(*keys)(_ReplacementMapper)
+    with pytest.raises(ValueError, match="all aliases"):
+        register_layout_label_mapper("parser", _DANGEROUS_OVERRIDE=True)(_ReplacementMapper)
+    assert type(mapper_registry.resolve_layout_label_mapper(context)) is _MatchedMapper
+
+    register_layout_label_mapper(*keys, priority=0, _DANGEROUS_OVERRIDE=True)(_ReplacementMapper)
+    assert type(mapper_registry.resolve_layout_label_mapper(context)) is _ReplacementMapper
+    assert type(mapper_registry.resolve_layout_label_mapper(replace(context, provider_name=None))) is _ReplacementMapper
+    unmatched = replace(context, provider_name=None, model=LayoutDetectionModel.DOCLING_PARSE_LAYOUT)
+    assert type(mapper_registry.resolve_layout_label_mapper(unmatched)) is _ReplacementMapper
+    unrelated = replace(unmatched, provider_name="unrelated")
+    assert type(mapper_registry.resolve_layout_label_mapper(unrelated)) is CanonicalPassthroughMapper
+
+
+class _PresentOverrideSchema(ParseRuleBase):
+    type: Literal["present"] = "present"
+    text: str
+
+
+@pytest.mark.parametrize("normalization", [None, "text-v2.1"])
+def test_rule_override_replaces_validation_and_scoring(
+    monkeypatch: pytest.MonkeyPatch, normalization: str | None
+) -> None:
+    monkeypatch.setattr(parse_rule_schemas, "_RULE_TYPE_TO_MODEL", dict(parse_rule_schemas._RULE_TYPE_TO_MODEL))
+    monkeypatch.setattr(rules_base, "_RULE_CLASS_REGISTRY", dict(rules_base._RULE_CLASS_REGISTRY))
+    register_rule_type("present", _PresentOverrideSchema, _ShoutRule, _DANGEROUS_OVERRIDE=True)
+    case = ParseTestCase.model_validate(
+        {
+            "test_id": "ext/doc",
+            "group": "ext",
+            "file_path": "doc.pdf",
+            "test_rules": [{"type": "present", "text": "hello", "text_normalization": normalization}],
+        }
+    )
+    assert case.test_rules is not None
+    assert isinstance(case.test_rules[0], _PresentOverrideSchema)
+    rule = create_test_rule(case.test_rules[0])
+    assert type(rule) is _ShoutRule
+    assert rule.run("HELLO world")[0] is True
+    assert rule.run("hello world")[0] is False
+
+
+def test_invalid_rule_override_leaves_existing_schema_and_scorer(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(parse_rule_schemas, "_RULE_TYPE_TO_MODEL", dict(parse_rule_schemas._RULE_TYPE_TO_MODEL))
+    monkeypatch.setattr(rules_base, "_RULE_CLASS_REGISTRY", dict(rules_base._RULE_CLASS_REGISTRY))
+    original = parse_rule_schemas.coerce_parse_rule({"type": "present", "text": "hello"})
+    original_scorer = type(create_test_rule(original))
+    with pytest.raises(TypeError, match="subclass ParseTestRule"):
+        register_rule_type("present", _PresentOverrideSchema, object, _DANGEROUS_OVERRIDE=True)  # type: ignore[arg-type]
+    unchanged = parse_rule_schemas.coerce_parse_rule({"type": "present", "text": "hello"})
+    assert type(unchanged) is type(original)
+    assert type(create_test_rule(unchanged)) is original_scorer
