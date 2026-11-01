@@ -216,6 +216,11 @@ def _normalize_quotes(text: str) -> str:
 # the name keeps custom elements such as <mark-down> intact.
 _TAG_REST = r"""(?:\s(?:"[^"]*"|'[^']*'|[^"'>])*)?/?>"""
 
+# Markdown link ``[label](url)`` or ``[label](<url>)``; images (``![alt](src)``) are excluded.
+# Scoring compares the visible label: a parser that keeps a hyperlink did not
+# write its URL into the sentence or cell.
+_MD_LINK_RE = re.compile(r"(?<!!)\[([^\]]*)\]\((?:<[^>]*>|[^)]*)\)")
+
 # HTML formatting tags to strip (same set as header_accuracy_metric._FORMATTING_RE)
 _HTML_FORMATTING_RE = re.compile(
     rf"</?(?:b|i|u|s|em|strong|del|strike|mark|ins){_TAG_REST}",
@@ -539,6 +544,7 @@ def normalize_cell_text(text: str) -> str:
     in TEDS, GriTS, and header-accuracy metrics:
     - Sup/sub tag conversion (<sup>x</sup> → x, ¹ → 1, etc.)
     - HTML formatting tag removal (<b>, <i>, <mark>, <em>, <strong>, etc.)
+    - Markdown links reduced to their label ([label](url) → label)
     - Markdown bold/italic/strikethrough removal
     - Whole-cell boolean marker equivalence (✓/✗/●/[yes]/[no])
     - Unicode symbol equivalence (bullets, circled-x, etc.)
@@ -560,6 +566,8 @@ def normalize_cell_text(text: str) -> str:
     text = _HTML_FORMATTING_RE.sub("", text)
     # Strip <span> tags (keep content) — e.g. <span color="red">text</span> → text
     text = _HTML_SPAN_RE.sub("", text)
+    # Markdown link [label](url) -> label
+    text = _MD_LINK_RE.sub(r"\1", text)
     # Strip markdown bold, then italic, then strikethrough
     text = _MD_BOLD_RE.sub(r"\1\2", text)
     text = _MD_ITALIC_RE.sub(r"\1\2", text)
@@ -683,6 +691,9 @@ def normalize_text(md_content: str | None) -> str:
         md_content,
         flags=re.IGNORECASE,
     )
+
+    # Markdown link [label](url) -> label
+    md_content = _MD_LINK_RE.sub(r"\1", md_content)
 
     # Normalize <br>, <br/>, and <br /> to spaces
     md_content = re.sub(r"<br\s*/?>", " ", md_content)

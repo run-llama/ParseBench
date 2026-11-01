@@ -29,7 +29,7 @@ from parse_bench.evaluation.metrics.parse.test_rules import (
     WordBagRule,
     create_test_rule,
 )
-from parse_bench.evaluation.metrics.parse.utils import normalize_text
+from parse_bench.evaluation.metrics.parse.utils import _MD_LINK_RE, normalize_text
 from parse_bench.schemas.evaluation import MetricValue
 from parse_bench.schemas.parse_output import ParseOutput
 from parse_bench.test_cases.parse_rule_schemas import (
@@ -183,6 +183,9 @@ class RuleBasedMetric(Metric):
             ``chart_table_cache``.
         :return: MetricValue with pass rate and per-rule results
         """
+        # Rules that split or tokenize the raw markdown see a link's URL as text,
+        # so reduce [label](url) to its label before any rule runs.
+        actual = _MD_LINK_RE.sub(r"\1", actual) if actual else actual
         chart_table_cache = kwargs.get("chart_table_cache")
         if not isinstance(chart_table_cache, ChartTableCache):
             kwargs["chart_table_cache"] = ChartTableCache()
