@@ -438,6 +438,25 @@ def _normalize_key_for_match(key: str) -> str:
     return _HIERARCHY_DASH_RE.sub(" ", key).lower()
 
 
+# Above _COLUMN_MATCH_THRESHOLD, below an exact match, so a real exact key still wins the assignment.
+_AFFIX_KEY_SIMILARITY = 0.92
+
+
+def _is_word_affix(a: str, b: str) -> bool:
+    """True when the shorter key is the longer one's leading or trailing whole words.
+
+    One side often keeps a title or unit word in a column key that the other
+    side dropped or split differently: "weekdays north station" vs "north
+    station", "rate age" vs "age". The fuzzy ratio is length-relative and falls
+    under the threshold for such pairs, which unmatches the column and zeroes
+    every cell under it. Cells are still compared by value once columns pair.
+    """
+    short, long_ = sorted((a, b), key=len)
+    if not short or short == long_:
+        return False
+    return long_.startswith(short + " ") or long_.endswith(" " + short)
+
+
 def _align_columns_header_core(
     gt_keys: list[str],
     pred_keys: list[str],
@@ -470,6 +489,8 @@ def _align_columns_header_core(
                 sim[i, j] = 1.0
             else:
                 sim[i, j] = fuzz.ratio(gt_norm[i], pred_norm[j]) / 100.0
+                if not gk_empty and _is_word_affix(gt_norm[i], pred_norm[j]):
+                    sim[i, j] = max(sim[i, j], _AFFIX_KEY_SIMILARITY)
 
     row_ind, col_ind = linear_sum_assignment(-sim)
 
