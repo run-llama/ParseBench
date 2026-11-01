@@ -33,11 +33,7 @@ def register_layout_adapter(
     priority: int = 0,
     _DANGEROUS_OVERRIDE: bool = False,
 ) -> Callable[[LayoutAdapterT], LayoutAdapterT]:
-    """Register a layout adapter for one or more keys.
-
-    ``_DANGEROUS_OVERRIDE=True`` replaces complete registrations; include all
-    their aliases so the old implementation also leaves shape matching.
-    """
+    """Register a layout adapter class for one or more provider keys."""
     if not provider_keys:
         raise ValueError("register_layout_adapter requires at least one provider key")
 

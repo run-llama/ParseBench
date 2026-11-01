@@ -1046,8 +1046,7 @@ def register_parse_rule_model(rule_type: str, model: type[ParseRuleBase], *, _DA
     """Register the pydantic schema for an additional rule ``type``.
 
     Extensions pair this with ``rules_base.register_rule_class`` (or call
-    ``parse_bench.extensions.register_rule_type`` which does both). Built-in
-    rule types require ``_DANGEROUS_OVERRIDE=True`` to be replaced.
+    ``parse_bench.extensions.register_rule_type`` which does both).
     """
     if not isinstance(rule_type, str) or not rule_type:
         raise ValueError("rule_type must be a non-empty string")

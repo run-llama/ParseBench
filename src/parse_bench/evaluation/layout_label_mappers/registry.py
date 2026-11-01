@@ -37,11 +37,7 @@ def register_layout_label_mapper(
     priority: int = 0,
     _DANGEROUS_OVERRIDE: bool = False,
 ) -> Callable[[LayoutLabelMapperT], LayoutLabelMapperT]:
-    """Register a layout label mapper for one or more keys.
-
-    ``_DANGEROUS_OVERRIDE=True`` replaces complete registrations; include all
-    their aliases so the old implementation also leaves shape matching.
-    """
+    """Register a layout label mapper for one or more keys."""
     if not mapper_keys:
         raise ValueError("register_layout_label_mapper requires at least one key")
 

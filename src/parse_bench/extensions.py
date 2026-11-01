@@ -59,7 +59,7 @@ def register_rule_type(
     ``Literal[rule_type]``; ``rule_class`` must subclass ``ParseTestRule`` and
     implement ``run``. After registration the type validates inside
     ``ParseTestCase.test_rules`` and is scored by ``RuleBasedMetric`` like any
-    built-in rule. Replacing a built-in schema requires ``_DANGEROUS_OVERRIDE=True``.
+    built-in rule.
     """
     _validate_rule_class(rule_type, rule_class)
     register_parse_rule_model(rule_type, schema, _DANGEROUS_OVERRIDE=_DANGEROUS_OVERRIDE)
