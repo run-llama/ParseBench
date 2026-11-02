@@ -34,8 +34,8 @@ from parse_bench.inference.providers.base import (
 )
 from parse_bench.inference.providers.parse._layout_utils import (
     build_layout_pages,
+    extract_layout_blocks_tolerant,
     items_to_markdown,
-    parse_layout_blocks,
     resolve_layout_prompts,
 )
 from parse_bench.inference.providers.registry import register_provider
@@ -245,27 +245,29 @@ class Gemma4Provider(Provider):
         }
 
         if self._prompt_mode == "layout":
-            items = parse_layout_blocks(raw_content)
             result["raw_content"] = raw_content
-            # E4B outputs bboxes as [y1, x1, y2, x2]; 26B outputs correct [x1, y1, x2, y2]
-            result["layout_items"] = [
-                {
-                    "bbox": (
-                        [item["bbox"][1], item["bbox"][0], item["bbox"][3], item["bbox"][2]]
-                        if self._swap_bbox
-                        else item["bbox"]
-                    ),
-                    "label": item["label"],
-                    "text": item["text"],
-                }
-                for item in items
-            ]
+            result["layout_items"] = self._layout_items(raw_content)
             result["image_width"] = img_width
             result["image_height"] = img_height
         else:
             result["markdown"] = raw_content
 
         return result
+
+    def _layout_items(self, raw_content: str) -> list[dict[str, Any]]:
+        """Layout items from the model's text; E4B emits boxes as [y1, x1, y2, x2] (``swap_bbox``)."""
+        return [
+            {
+                "bbox": (
+                    [item["bbox"][1], item["bbox"][0], item["bbox"][3], item["bbox"][2]]
+                    if self._swap_bbox
+                    else item["bbox"]
+                ),
+                "label": item["label"],
+                "text": item["text"],
+            }
+            for item in extract_layout_blocks_tolerant(raw_content)
+        ]
 
     async def _run_inference_pages_async(self, pages: list[tuple[bytes, int, int]]) -> dict[str, Any]:
         """Run pages sequentially to preserve document order and avoid endpoint overload."""
@@ -417,7 +419,14 @@ class Gemma4Provider(Provider):
             page_markdowns: list[str] = []
             layout_pages = []
             for page_number, page_result in enumerate(page_results, start=1):
-                layout_items = page_result.get("layout_items", [])
+                # Re-parse the model's text when it was kept, so parser fixes reach
+                # saved results through renormalization.
+                raw_content = page_result.get("raw_content")
+                layout_items = (
+                    self._layout_items(raw_content)
+                    if isinstance(raw_content, str)
+                    else page_result.get("layout_items", [])
+                )
                 markdown = items_to_markdown(layout_items)
                 if markdown:
                     markdown = self._sanitize_html_attributes(markdown)

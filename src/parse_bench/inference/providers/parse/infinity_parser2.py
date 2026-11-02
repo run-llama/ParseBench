@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 import traceback
 from datetime import datetime
@@ -62,8 +63,9 @@ class InfinityParser2Provider(Provider):
 
     Configuration options:
         - model_name (str, default="infly/Infinity-Parser2-Flash"): Model name (must match server)
-        - api_url (str, default="http://localhost:8000/v1/chat/completions"): vLLM server endpoint
-        - api_key (str, default="EMPTY"): API key for the server
+        - api_url (str): vLLM server endpoint; falls back to ``INFINITY_PARSER2_API_URL``,
+          then ``http://localhost:8000/v1/chat/completions``
+        - api_key (str): API key for the server; falls back to ``VLLM_API_KEY``, then ``"EMPTY"``
         - timeout (int, default=900): Request timeout in seconds (the pro model can
           exceed 300 s on dense pages)
         - task_type (str, default="doc2json"): Parse task type
@@ -78,8 +80,14 @@ class InfinityParser2Provider(Provider):
         super().__init__(provider_name, base_config)
 
         self._model_name = self.base_config.get("model_name", DEFAULT_MODEL_NAME)
-        self._api_url = self.base_config.get("api_url", "http://localhost:8000/v1/chat/completions")
-        self._api_key = self.base_config.get("api_key", "EMPTY")
+        # Like the other self-hosted vLLM providers, the server can be named by
+        # environment so the registered pipelines run against a remote server.
+        self._api_url = (
+            self.base_config.get("api_url")
+            or os.getenv("INFINITY_PARSER2_API_URL")
+            or "http://localhost:8000/v1/chat/completions"
+        )
+        self._api_key = self.base_config.get("api_key") or os.getenv("VLLM_API_KEY") or "EMPTY"
         self._timeout = self.base_config.get("timeout", 900)
         self._task_type = self.base_config.get("task_type", "doc2json")
         self._output_format = self.base_config.get("output_format", "json")
