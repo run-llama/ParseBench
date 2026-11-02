@@ -77,12 +77,14 @@ def _is_infra_failure(result: EvaluationResult) -> bool:
     Exception: a worker error whose cause is that the provider's output could
     not be adapted to a ``LayoutOutput`` (raised in the layout adapters /
     layout-detection evaluator) is a *provider* failure, not a harness one —
-    the provider simply produced nothing the layout task can score. It must
-    count as a genuine 0, so it is explicitly excluded from the infra set.
+    the provider simply produced nothing the layout task can score. The same
+    holds when an adapter rejects a page because the provider returned no
+    layout for it ("... requires non-empty layout_pages"). Both must count as
+    a genuine 0, so they are explicitly excluded from the infra set.
     """
     if not result.error:
         return False
-    if "not LayoutOutput" in result.error:
+    if "not LayoutOutput" in result.error or "requires non-empty layout_pages" in result.error:
         return False
     return result.error.startswith(("Worker error:", "Evaluation error:", "Task execution error:"))
 
