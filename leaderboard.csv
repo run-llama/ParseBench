@@ -1,7 +1,7 @@
 Provider,Category,Overall,Tables,Charts,Content_Faithfulness,Semantic_Formatting,Visual_Grounding,Cost_Per_Page,Cost_Charts,Cost_Tables,Cost_Text,Cost_Layout,HF_Model_ID,Verified
-LlamaParse Cost Effective,LlamaParse,76.04,85.20,72.99,87.12,78.29,56.59,0.375,,,,,,yes
-LlamaParse Agentic,LlamaParse,80.73,88.89,81.47,87.33,84.25,61.70,1.25,,,,,,yes
-LlamaParse Agentic Plus,LlamaParse,83.98,93.39,90.19,88.26,86.54,61.53,5.625,,,,,,yes
+LlamaParse Cost Effective,LlamaParse,77.68,86.72,73.98,87.32,78.14,62.22,0.375,,,,,,yes
+LlamaParse Agentic,LlamaParse,82.83,90.90,81.20,87.84,84.81,69.42,1.25,,,,,,yes
+LlamaParse Agentic Plus,LlamaParse,86.69,93.27,92.19,89.74,82.84,75.43,5.625,,,,,,yes
 OpenAI GPT-5 Mini (Reasoning Minimal),VLM - Proprietary,48.90,69.79,29.81,85.68,53.08,6.15,0.88,0.70,1.22,0.67,0.91,,yes
 OpenAI GPT-5 Mini (Reasoning Medium),VLM - Proprietary,49.86,74.53,38.90,86.12,38.05,11.69,3.05,2.93,3.43,2.67,3.15,,yes
 Anthropic Haiku 4.5 (Disable Thinking),VLM - Proprietary,49.34,77.03,12.87,85.54,65.03,6.22,1.64,0.97,2.46,1.53,1.60,,yes
