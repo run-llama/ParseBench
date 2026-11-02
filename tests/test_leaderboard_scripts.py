@@ -166,3 +166,27 @@ def test_merge_rejects_shards_from_different_runs(tmp_path: Path) -> None:
     b.write_text(json.dumps({**header, "scored_with": "d" * 40, "results": {}}))
     with pytest.raises(SystemExit):
         rescore.cmd_merge(lb_apply.argparse.Namespace(shards=[a, b], out=tmp_path / "m.json"))
+
+
+def test_ground_truth_download_retries_dropped_connections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+    import huggingface_hub
+    import rescore
+    from huggingface_hub.errors import HfHubHTTPError
+
+    calls: list[dict] = []
+
+    def flaky_snapshot_download(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            response = httpx.Response(499, request=httpx.Request("GET", "https://huggingface.co/x"))
+            raise HfHubHTTPError("Client error '499 unknown'", response=response)
+        Path(kwargs["local_dir"]).mkdir(parents=True, exist_ok=True)
+        return kwargs["local_dir"]
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", flaky_snapshot_download)
+    monkeypatch.setattr(rescore.time, "sleep", lambda _seconds: None)
+    path = rescore.ground_truth("org/data", SHA, tmp_path, None)
+    assert len(calls) == 2 and calls[0]["max_workers"] == rescore.GT_DOWNLOAD_WORKERS
+    assert (path / ".complete").read_text() == SHA
+    assert rescore.ground_truth("org/data", SHA, tmp_path, None) == path and len(calls) == 2  # cached
