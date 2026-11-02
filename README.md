@@ -23,16 +23,16 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 
 | Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
-| 1 | LlamaParse Agentic Plus | LlamaParse | 83.98 | 93.39 | 90.19 | 88.26 | 86.54 | 61.53 | 5.62¢ |
-| 2 | Pulse Ultra 2 † | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
-| 3 | LlamaParse Agentic | LlamaParse | 80.73 | 88.89 | 81.47 | 87.33 | 84.25 | 61.70 | 1.25¢ |
+| 1 | LlamaParse Agentic Plus | LlamaParse | 86.69 | 93.27 | 92.19 | 89.74 | 82.84 | 75.43 | 5.62¢ |
+| 2 | LlamaParse Agentic | LlamaParse | 82.83 | 90.90 | 81.20 | 87.84 | 84.81 | 69.42 | 1.25¢ |
+| 3 | Pulse Ultra 2 † | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
 | 4 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.63 | 89.48 | 77.50 | 87.67 | 76.68 | 71.84 | 3.00¢ |
 | 5 | anyformat (Standard) | Commercial - Startup APIs | 80.05 | 86.84 | 85.01 | 86.39 | 79.25 | 62.74 | 4.30¢ |
 | 6 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 78.80 | 94.26 | 70.89 | 91.25 | 77.06 | 60.56 | 6.13¢ |
 | 7 | oi-parser † | Commercial - Startup APIs | 78.30 | 92.62 | 78.28 | 86.17 | 66.88 | 67.53 | — |
 | 8 | Anthropic Fable 5.1 | VLM - Proprietary | 77.81 | 91.53 | 66.93 | 90.77 | 76.02 | 63.81 | 16.05¢ |
-| 9 | rakedoc-nano † | VLM - Open Weight | 77.23 | 86.44 | 64.89 | 88.84 | 71.68 | 74.28 | — |
-| 10 | Anthropic Opus 5.5 | VLM - Proprietary | 76.97 | 93.88 | 64.12 | 91.35 | 77.05 | 58.44 | 5.79¢ |
+| 9 | LlamaParse Cost Effective | LlamaParse | 77.68 | 86.72 | 73.98 | 87.32 | 78.14 | 62.22 | 0.38¢ |
+| 10 | rakedoc-nano † | VLM - Open Weight | 77.23 | 86.44 | 64.89 | 88.84 | 71.68 | 74.28 | — |
 
 † Unverified: no published outputs in [ParseBench-results](https://huggingface.co/datasets/llamaindex/ParseBench-results); scores as submitted.
 <!-- LEADERBOARD:END -->
