@@ -84,8 +84,41 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"; echo "Nothing changed since ${last:0:12}; skipping."
           fi
 
-  rescore:
+  # Fetch the ground truth once. actions/cache only saves when a job ends, so if
+  # every matrix job fetched it they would all download ~2,100 files at once and
+  # the Hub would drop connections (HTTP 499).
+  prepare:
     needs: decide
+    if: needs.decide.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.decide.outputs.sha }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - run: uv sync
+
+      - name: Cache the ground truth
+        id: gt
+        uses: actions/cache@v4
+        with:
+          path: .cache/leaderboard-gt
+          key: leaderboard-gt-${{ needs.decide.outputs.data_revision }}
+
+      - name: Download the ground truth
+        if: steps.gt.outputs.cache-hit != 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          DATA_REVISION: ${{ needs.decide.outputs.data_revision }}
+        run: uv run python scripts/leaderboard/rescore.py ground-truth --data-revision "$DATA_REVISION"
+
+  rescore:
+    needs: [decide, prepare]
     if: needs.decide.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -107,11 +140,12 @@ jobs:
       # Layout adapters import provider SDKs, so the evaluator needs the runners extra.
       - run: uv sync --extra runners --extra fast
 
-      - name: Cache the ground truth
-        uses: actions/cache@v4
+      - name: Restore the ground truth
+        uses: actions/cache/restore@v4
         with:
           path: .cache/leaderboard-gt
           key: leaderboard-gt-${{ needs.decide.outputs.data_revision }}
+          fail-on-cache-miss: true
 
       - name: Re-score ${{ matrix.pipeline }}
         env:
@@ -129,7 +163,7 @@ jobs:
           retention-days: 7
 
   apply:
-    needs: [decide, rescore]
+    needs: [decide, prepare, rescore]
     if: always() && needs.decide.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -171,6 +205,8 @@ jobs:
       - name: Open or update the re-score pull request
         uses: peter-evans/create-pull-request@v7
         with:
+          # The job checks out the decided commit, not a branch, so the base must be named.
+          base: main
           branch: leaderboard/rescore
           commit-message: Re-score leaderboard from published results
           title: >-

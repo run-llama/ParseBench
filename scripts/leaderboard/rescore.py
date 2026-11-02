@@ -10,6 +10,7 @@ once into ``--gt-cache``). Pipelines and revisions come from
     python scripts/leaderboard/rescore.py run --out rescore.json                    # every verified row
     python scripts/leaderboard/rescore.py run --pipelines a,b --out rescore.json     # selected rows
     python scripts/leaderboard/rescore.py merge shard-*.json --out rescore.json     # combine CI shards
+    python scripts/leaderboard/rescore.py ground-truth                              # only fetch the ground truth
 
 ``HF_TOKEN`` is read from the environment when the results repo is private.
 The output is what ``apply.py`` reads.
@@ -23,6 +24,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -167,17 +169,46 @@ def _count_lines(path: Path) -> int:
         return sum(1 for line in f if line.strip())
 
 
+GT_DOWNLOAD_ATTEMPTS = 5
+GT_DOWNLOAD_WORKERS = 4
+
+
 def ground_truth(data_repo: str, data_revision: str, cache: Path, token: str | None) -> Path:
-    """Ground truth at ``data_revision``, downloaded once into ``cache``."""
+    """Ground truth at ``data_revision``, downloaded once into ``cache``.
+
+    The snapshot is ~2,100 files. The Hub drops connections when many arrive at
+    once from one address (shared CI runners show up as HTTP 499/429), so the
+    download uses a few workers and retries with backoff; files already on disk
+    are skipped on each retry.
+    """
     from huggingface_hub import snapshot_download
+    from huggingface_hub.errors import HfHubHTTPError
 
     dest = cache / data_revision
     marker = dest / ".complete"
-    if not marker.exists():
-        snapshot_download(
-            repo_id=data_repo, repo_type="dataset", revision=data_revision, local_dir=str(dest), token=token
-        )
-        marker.write_text(data_revision)
+    if marker.exists():
+        return dest
+    for attempt in range(1, GT_DOWNLOAD_ATTEMPTS + 1):
+        try:
+            snapshot_download(
+                repo_id=data_repo,
+                repo_type="dataset",
+                revision=data_revision,
+                local_dir=str(dest),
+                token=token,
+                max_workers=GT_DOWNLOAD_WORKERS,
+            )
+            break
+        except (HfHubHTTPError, OSError) as exc:
+            if attempt == GT_DOWNLOAD_ATTEMPTS:
+                raise
+            wait = 15 * 2 ** (attempt - 1)
+            print(
+                f"ground truth download failed ({type(exc).__name__}: {str(exc)[:120]}); retrying in {wait}s",
+                flush=True,
+            )
+            time.sleep(wait)
+    marker.write_text(data_revision)
     return dest
 
 
@@ -240,6 +271,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ground_truth(args: argparse.Namespace) -> int:
+    rmap = load_map(args.map)
+    revision = args.data_revision or rmap.data_revision
+    path = ground_truth(rmap.data_repo, revision, args.gt_cache, os.environ.get("HF_TOKEN") or None)
+    print(f"ground truth {rmap.data_repo}@{revision[:12]} ready at {path}")
+    return 0
+
+
 def cmd_merge(args: argparse.Namespace) -> int:
     shards = [json.loads(path.read_text()) for path in args.shards]
     if not shards:
@@ -264,11 +303,15 @@ def main() -> int:
     run.add_argument("--data-revision", default="", help="score against this ground-truth revision instead")
     run.add_argument("--gt-cache", type=Path, default=Path(".cache/leaderboard-gt"))
     run.add_argument("--out", type=Path, required=True)
+    gt = sub.add_parser("ground-truth", help="download the ground truth into the cache (CI prepare step)")
+    gt.add_argument("--map", type=Path, default=MAP_PATH)
+    gt.add_argument("--data-revision", default="")
+    gt.add_argument("--gt-cache", type=Path, default=Path(".cache/leaderboard-gt"))
     merge = sub.add_parser("merge", help="combine rescore JSON shards from one run")
     merge.add_argument("shards", type=Path, nargs="+")
     merge.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    return cmd_run(args) if args.command == "run" else cmd_merge(args)
+    return {"run": cmd_run, "merge": cmd_merge, "ground-truth": cmd_ground_truth}[args.command](args)
 
 
 if __name__ == "__main__":
