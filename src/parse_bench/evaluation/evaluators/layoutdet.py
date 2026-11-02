@@ -7,7 +7,7 @@ from typing import Any, Literal
 import numpy as np
 
 from parse_bench.evaluation.evaluators.base import BaseEvaluator
-from parse_bench.evaluation.layout_adapters import create_layout_adapter_for_result
+from parse_bench.evaluation.layout_adapters import LayoutAdapter, create_layout_adapter_for_result
 from parse_bench.evaluation.layout_label_mappers import project_layout_predictions
 from parse_bench.evaluation.metrics.attribution.constants import (
     ATTRIBUTION_OVERLAP_IOA_THRESHOLD,
@@ -601,12 +601,22 @@ class LayoutDetectionEvaluator(BaseEvaluator):
             return "canonical"
         return self._evaluation_view
 
-    def evaluate(self, inference_result: InferenceResult, test_case: TestCase) -> EvaluationResult:
+    def evaluate(
+        self,
+        inference_result: InferenceResult,
+        test_case: TestCase,
+        *,
+        layout_adapter: LayoutAdapter | None = None,
+    ) -> EvaluationResult:
         """
         Evaluate a layout detection inference result against a test case.
 
         :param inference_result: The inference result to evaluate
         :param test_case: The test case with layout annotations
+        :param layout_adapter: The adapter that already produced ``inference_result.output``
+            from a PARSE result (cross-evaluation). Reusing it keeps what it read from the
+            parse output (e.g. LlamaParse-style pages for attribution); re-resolving an
+            adapter from the synthetic layout result would only see ``raw_output``.
         :return: Evaluation result with metrics
         :raises ValueError: If evaluation cannot be performed
         """
@@ -619,8 +629,12 @@ class LayoutDetectionEvaluator(BaseEvaluator):
         if not isinstance(test_case, LayoutDetectionTestCase):
             raise ValueError("Test case must be LayoutDetectionTestCase for LAYOUT_DETECTION evaluation")
 
-        adapter = create_layout_adapter_for_result(inference_result)
-        layout_output: LayoutOutput = adapter.to_layout_output(inference_result)
+        if layout_adapter is not None:
+            adapter = layout_adapter
+            layout_output: LayoutOutput = inference_result.output
+        else:
+            adapter = create_layout_adapter_for_result(inference_result)
+            layout_output = adapter.to_layout_output(inference_result)
         target_ontology = self._resolve_target_ontology(test_case)
         effective_view = self._resolve_effective_evaluation_view(target_ontology)
         predictions = self._extract_predictions(

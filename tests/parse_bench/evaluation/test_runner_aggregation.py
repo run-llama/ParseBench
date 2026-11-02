@@ -261,6 +261,24 @@ def test_unadaptable_layout_output_pads_as_genuine_failure() -> None:
     assert aggregate["min_rule_pass_rate"] == 0.0
 
 
+def test_empty_layout_pages_pads_as_genuine_failure() -> None:
+    runner = EvaluationRunner(output_dir=Path("/tmp/unused"))
+    results = [
+        _success("a", [MetricValue(metric_name="rule_pass_rate", value=0.8)]),
+        _success("b", [MetricValue(metric_name="rule_pass_rate", value=0.6)]),
+        # The provider returned no layout for this page; the adapter rejects it.
+        # A provider failure like the one above, not a harness crash.
+        _failure("c", error="Worker error: parse_with_layout adapter requires non-empty layout_pages"),
+        _failure("d", error="Evaluation error: QwenLayoutAdapter requires non-empty layout_pages"),
+    ]
+
+    aggregate = runner._aggregate_metrics(results)
+
+    # (0.8 + 0.6 + 0 + 0) / 4
+    assert aggregate["avg_rule_pass_rate"] == pytest.approx(0.35)
+    assert aggregate["min_rule_pass_rate"] == 0.0
+
+
 def test_diagnostic_count_metrics_are_not_padded() -> None:
     runner = EvaluationRunner(output_dir=Path("/tmp/unused"))
     # Count/lower-is-better values that happen to all fall in [0, 1]: a

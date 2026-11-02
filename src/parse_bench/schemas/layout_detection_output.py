@@ -317,6 +317,8 @@ class LayoutDetectionModel(StrEnum):
     GEMMA4_LAYOUT = "gemma4_layout"
     HUNYUANOCR_LAYOUT = "hunyuanocr_layout"
     NEMOTRON_PARSE_LAYOUT = "nemotron_parse_layout"
+    UNLIMITED_OCR_2_LAYOUT = "unlimited_ocr_2_layout"
+    OVISOCR3_LAYOUT = "ovisocr3_layout"
     DATABRICKS_LAYOUT = "databricks_layout"
     INFINITY_PARSER2_LAYOUT = "infinity_parser2_layout"
     OI_PARSER_LAYOUT = "oi_parser_layout"
@@ -328,6 +330,7 @@ class LayoutDetectionModel(StrEnum):
     LITEPARSE_LAYOUT = "liteparse_layout"
     HPD_PARSING_LAYOUT = "hpd_parsing_layout"
     TELEOCR_LAYOUT = "teleocr_layout"
+    MINICPM_OCR_LAYOUT = "minicpm_ocr_layout"
     FIRECRAWL_LAYOUT = "firecrawl_layout"
     ANYFORMAT_LAYOUT = "anyformat_layout"
     DOCAI_LAYOUT = "docai_layout"
@@ -474,6 +477,14 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
         "name": "Nemotron 3.5 Parse Layout",
         "hf_url": "https://huggingface.co/nvidia/Nemotron-3.5-Parse",
     },
+    LayoutDetectionModel.UNLIMITED_OCR_2_LAYOUT: {
+        "name": "Unlimited-OCR 2 Layout",
+        "hf_url": "https://huggingface.co/baidu/Unlimited-OCR-2",
+    },
+    LayoutDetectionModel.OVISOCR3_LAYOUT: {
+        "name": "OvisOCR3 Layout",
+        "hf_url": "https://huggingface.co/ATH-MaaS/OvisOCR3",
+    },
     LayoutDetectionModel.DATABRICKS_LAYOUT: {
         "name": "Databricks ai_parse_document Layout",
         "hf_url": "https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_parse_document",
@@ -497,6 +508,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.TELEOCR_LAYOUT: {
         "name": "TeleOCR Layout",
         "hf_url": "https://huggingface.co/StarDoc-AI/TeleOCR",
+    },
+    LayoutDetectionModel.MINICPM_OCR_LAYOUT: {
+        "name": "MiniCPM-OCR 1.0 Layout (PP-DocLayoutV3)",
+        "hf_url": "https://huggingface.co/openbmb/MiniCPM-OCR-1.0",
     },
     LayoutDetectionModel.FIRECRAWL_LAYOUT: {
         "name": "Firecrawl Layout",

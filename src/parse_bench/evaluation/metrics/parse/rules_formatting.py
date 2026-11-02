@@ -12,7 +12,7 @@ from parse_bench.evaluation.metrics.parse.rules_base import (
     is_degenerate_marker_text,
 )
 from parse_bench.evaluation.metrics.parse.test_types import TestType
-from parse_bench.evaluation.metrics.parse.utils import _normalize_quotes, normalize_text
+from parse_bench.evaluation.metrics.parse.utils import _TAG_REST, _normalize_quotes, normalize_text
 from parse_bench.test_cases.parse_rule_schemas import (
     ParseAbsentUnlessStrikeoutRule,
     ParseCodeBlockRule,
@@ -121,28 +121,28 @@ _STRIP_PATTERNS: dict[str, list[tuple[re.Pattern, str]]] = {
     "bold": [
         (re.compile(r"\*\*\*(.+?)\*\*\*", re.DOTALL), r"\1"),
         (re.compile(r"\*\*(.+?)\*\*", re.DOTALL), r"\1"),
-        (re.compile(r"</?(?:b|strong)>", re.IGNORECASE), ""),
+        (re.compile(rf"</?(?:b|strong){_TAG_REST}", re.IGNORECASE), ""),
     ],
     "italic": [
         (re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)"), r"\1"),
         (re.compile(r"(?<!_)_(?!_)(.+?)(?<!_)_(?!_)"), r"\1"),
-        (re.compile(r"</?(?:i|em)>", re.IGNORECASE), ""),
+        (re.compile(rf"</?(?:i|em){_TAG_REST}", re.IGNORECASE), ""),
     ],
     "underline": [
-        (re.compile(r"</?(?:u|ins)>", re.IGNORECASE), ""),
+        (re.compile(rf"</?(?:u|ins){_TAG_REST}", re.IGNORECASE), ""),
     ],
     "strikeout": [
         (re.compile(r"~~"), ""),
-        (re.compile(r"</?(?:s|del|strike)>", re.IGNORECASE), ""),
+        (re.compile(rf"</?(?:s|del|strike){_TAG_REST}", re.IGNORECASE), ""),
     ],
     "mark": [
-        (re.compile(r"</?mark\b[^>]*>", re.IGNORECASE), ""),
+        (re.compile(rf"</?mark{_TAG_REST}", re.IGNORECASE), ""),
     ],
     "sup": [
-        (re.compile(r"</?sup>", re.IGNORECASE), ""),
+        (re.compile(rf"</?sup{_TAG_REST}", re.IGNORECASE), ""),
     ],
     "sub": [
-        (re.compile(r"</?sub>", re.IGNORECASE), ""),
+        (re.compile(rf"</?sub{_TAG_REST}", re.IGNORECASE), ""),
     ],
 }
 
@@ -514,6 +514,9 @@ class MarkColorRule(ParseTestRule):
     2. The ``<mark>`` tag contains the expected color string in any of its attributes
        (e.g. ``style="background-color: yellow"``, ``background="yellow"``,
        ``backgroundColor="yellow"``).
+       When the expected color is a hue family name (``yellow``, ``green``, ...),
+       a hex, ``rgb()`` or named value in that family also passes
+       (``background-color:#ffff00``).
     """
 
     def __init__(self, rule_data: ParseMarkColorRule | dict):
@@ -533,6 +536,14 @@ class MarkColorRule(ParseTestRule):
             raise ValueError("Color field cannot be empty")
         self.color = raw_color.strip().lower()
 
+    def _attrs_carry_color(self, attrs_str: str) -> bool:
+        """True when the attributes name the expected color, or a highlight
+        (background) value is a hex, ``rgb()`` or named color in its hue family
+        (adjacent families accepted, as in ``TextColorRule``)."""
+        if self.color in attrs_str.lower():
+            return True
+        return any(_families_match(self.color, f) for f in _highlight_color_families(attrs_str))
+
     def run(self, md_content: str, normalized_content: str | None = None) -> tuple[bool, str]:
         """Check if text is inside a <mark> tag that contains the expected color."""
         escaped_query = re.escape(self.text)
@@ -549,8 +560,7 @@ class MarkColorRule(ParseTestRule):
             if not text_pattern.search(inner_text):
                 continue
 
-            # Check if the color string appears in the tag attributes
-            if self.color in attrs_str.lower():
+            if self._attrs_carry_color(attrs_str):
                 return True, ""
 
         # Fallback: strip other formatting and retry
@@ -562,7 +572,7 @@ class MarkColorRule(ParseTestRule):
             if not text_pattern.search(inner_text):
                 continue
 
-            if self.color in attrs_str.lower():
+            if self._attrs_carry_color(attrs_str):
                 return True, ""
 
         return (
@@ -782,6 +792,26 @@ def _extract_color_families(attrs_str: str) -> set[str]:
         name = m.group(1).lower()
         if name in _NAMED_COLOR_RGB:
             fam = _rgb_to_hue_family(*_NAMED_COLOR_RGB[name])
+            if fam:
+                families.add(fam)
+    return families
+
+
+# Highlight color declarations or attributes: CSS background / background-color,
+# HTML background=, React-style backgroundColor=. Foreground color is excluded.
+_HIGHLIGHT_VALUE_RE = re.compile(r"(?<![\w-])background(?:-?color)?\s*[:=]\s*[\"']?([^;\"'>]+)", re.IGNORECASE)
+
+
+def _highlight_color_families(attrs_str: str) -> set[str]:
+    """Hue families of a tag's highlight (background) colors only: hex, ``rgb()``
+    or a named color such as ``gold``. A foreground ``color`` never counts."""
+    families: set[str] = set()
+    for m in _HIGHLIGHT_VALUE_RE.finditer(attrs_str):
+        value = m.group(1)
+        families |= _extract_color_families(value)
+        for name in re.findall(r"[a-zA-Z]+", value):
+            rgb = _NAMED_COLOR_RGB.get(name.lower())
+            fam = _rgb_to_hue_family(*rgb) if rgb else None
             if fam:
                 families.add(fam)
     return families

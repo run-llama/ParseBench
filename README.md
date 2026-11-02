@@ -23,22 +23,25 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 
 | Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
-| 1 | LlamaParse Agentic Plus | LlamaParse | 90.20 | 93.37 | 94.18 | 92.25 | 87.12 | 84.09 | 5.62¢ |
-| 2 | LlamaParse Agentic | LlamaParse | 87.01 | 88.88 | 88.68 | 91.78 | 81.44 | 84.25 | 1.25¢ |
-| 3 | Pulse Ultra 2 | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
-| 4 | LlamaParse Cost Effective | LlamaParse | 80.61 | 84.19 | 77.91 | 89.87 | 67.29 | 83.77 | 0.38¢ |
-| 5 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.51 | 89.49 | 77.26 | 87.36 | 76.88 | 71.56 | 3.00¢ |
-| 6 | anyformat (Standard) | Commercial - Startup APIs | 80.30 | 86.46 | 85.56 | 87.35 | 79.04 | 63.07 | 4.30¢ |
-| 7 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 79.85 | 94.25 | 70.89 | 91.72 | 77.04 | 65.33 | 6.13¢ |
-| 8 | Anthropic Fable 5.1 | VLM - Proprietary | 78.92 | 91.52 | 67.06 | 91.19 | 76.52 | 68.3 | 16.05¢ |
-| 9 | oi-parser | Commercial - Startup APIs | 78.30 | 92.62 | 78.28 | 86.17 | 66.88 | 67.53 | — |
-| 10 | Anthropic Opus 5.5 | VLM - Proprietary | 78.01 | 93.86 | 64.12 | 91.81 | 77.04 | 63.2 | 5.79¢ |
+| 1 | LlamaParse Agentic Plus | LlamaParse | 86.69 | 93.27 | 92.19 | 89.74 | 82.84 | 75.43 | 5.62¢ |
+| 2 | LlamaParse Agentic | LlamaParse | 82.83 | 90.90 | 81.20 | 87.84 | 84.81 | 69.42 | 1.25¢ |
+| 3 | Pulse Ultra 2 † | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
+| 4 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.63 | 89.48 | 77.50 | 87.67 | 76.68 | 71.84 | 3.00¢ |
+| 5 | anyformat (Standard) | Commercial - Startup APIs | 80.05 | 86.84 | 85.01 | 86.39 | 79.25 | 62.74 | 4.30¢ |
+| 6 | KDL-Frontier-Parser-nano-v2 | VLM - Open Weight | 79.07 | 86.19 | 69.14 | 87.77 | 76.91 | 75.33 | — |
+| 7 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 78.80 | 94.26 | 70.89 | 91.25 | 77.06 | 60.56 | 6.13¢ |
+| 8 | oi-parser † | Commercial - Startup APIs | 78.30 | 92.62 | 78.28 | 86.17 | 66.88 | 67.53 | — |
+| 9 | Anthropic Fable 5.1 | VLM - Proprietary | 77.81 | 91.53 | 66.93 | 90.77 | 76.02 | 63.81 | 16.05¢ |
+| 10 | LlamaParse Cost Effective | LlamaParse | 77.68 | 86.72 | 73.98 | 87.32 | 78.14 | 62.22 | 0.38¢ |
+
+† Unverified: no published outputs in [ParseBench-results](https://huggingface.co/datasets/llamaindex/ParseBench-results); scores as submitted.
 <!-- LEADERBOARD:END -->
 
 **Inclusion criteria:**
 1. The model or API needs to be publicly accessible, either via open weights or a self-serve API that any user can sign up for.
 2. The benchmark run needs to finish within a reasonable time (roughly single-digit hours).
 3. We can adjust concurrency based on the provider's recommended settings, but providers should not require custom framework changes, so the evaluation stays fair across models.
+4. The row's per-document outputs are published to [ParseBench-results](https://huggingface.co/datasets/llamaindex/ParseBench-results). Published rows are re-scored automatically whenever the harness changes; see [leaderboard/README.md](leaderboard/README.md).
 
 ## Quick Start
 
@@ -137,6 +140,23 @@ uv run parse-bench download --test
 # Check whether the dataset has been downloaded and show summary statistics
 uv run parse-bench status
 ```
+
+### Repetition tests
+
+`repetition_overshoot` is a built-in rule that fails an output repeating anything (a dot leader, a unit, a token, a
+line, a table row, a whole table) more than the page holds. Restyling, splitting, merging or dropping a repetition
+never fails; only overshoot does. An empty answer fails too.
+
+```bash
+# Write a repetition test next to each PDF, budgeted from its text layer, then run it
+uv run parse-bench repetition make ./my_docs
+uv run parse-bench run <pipeline_name> --input_dir ./my_docs
+
+# Run any HuggingFace dataset in the ParseBench layout (downloads to ./data/<name> on first run)
+uv run parse-bench run <pipeline_name> --dataset org/name
+```
+
+See [docs/repetition-overshoot.md](docs/repetition-overshoot.md) for the rule and its budgets.
 
 ## Usage
 

@@ -61,6 +61,8 @@ uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 | Pipeline | Description | Env Var |
 |---|---|---|
 | `openai_gpt_6_1_sol_reasoning_low_parse_with_layout_file` | GPT-6.1 Sol, low reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
+| `openai_gpt_6_1_terra_reasoning_low_parse_with_layout_file` | GPT-6.1 Terra, low reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
+| `openai_gpt_6_1_terra_reasoning_med_parse_with_layout_file` | GPT-6.1 Terra, medium reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_medium_parse` | GPT-5 Mini, medium reasoning, image mode | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_medium_parse_file` | GPT-5 Mini, medium reasoning, PDF file mode | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_minimal_parse` | GPT-5 Mini, minimal reasoning | `OPENAI_API_KEY` |
@@ -374,6 +376,24 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 |---|---|---|
 | `nemotron_parse_3_5_sdk` | Nemotron 3.5 Parse SDK server (triple pass: full page + detection + Table/Chart crops; layout) | `NEMOTRON_PARSE_3_5_SERVER_URL` |
 
+### MiniCPM-OCR 1.0
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `minicpm_ocr_sdk` | MiniCPM-OCR 1.0 `minicpmvocr` SDK server (PP-DocLayoutV3 regions recognized per label; layout) | `MINICPM_OCR_SERVER_URL` |
+
+### Unlimited-OCR 2
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `unlimitedocr2` | Unlimited-OCR 2 on its official SGLang server (whole document per request; layout) | `UNLIMITEDOCR2_SERVER_URL` |
+
+### OvisOCR3
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `ovisocr3_vllm` | OvisOCR3 on vLLM with the model card settings (official structured parse plus a chart-parsing pass per chart region; layout) | `OVISOCR3_SERVER_URL` |
+
 ### Surya OCR 2
 
 | Pipeline | Description | Env Var |
@@ -422,8 +442,8 @@ These run entirely locally and do not require API keys.
 | `tesseract_eng` | Tesseract OCR (English) | `tesseract` installed |
 | `tesseract_fast` | Tesseract OCR (fast) | `tesseract` installed |
 | `tesseract_high_quality` | Tesseract OCR (high quality) | `tesseract` installed |
-| `infinity_parser2_flash` | Infinity-Parser2-Flash (vLLM server, JSON layout) | `infinity_parser2`, running vLLM server |
-| `infinity_parser2_pro` | Infinity-Parser2-Pro (vLLM server, JSON layout) | `infinity_parser2`, running vLLM server |
+| `infinity_parser2_flash` | Infinity-Parser2-Flash (vLLM server, JSON layout) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
+| `infinity_parser2_pro` | Infinity-Parser2-Pro (vLLM server, JSON layout) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
 
 Create the isolated Python environment for `pymupdf4llm_markdown` with
 `uv sync --python 3.12 --extra pymupdf4llm`, then run it with

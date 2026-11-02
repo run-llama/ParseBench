@@ -286,6 +286,7 @@ class PyMuPDF4LLMLabelMapper(LayoutLabelMapper):
     "model:openai_layout",
     "model:anthropic_layout",
     "model:gemma4_layout",
+    "model:openai_compatible_vlm_layout",
     "model:surya_layout",
     "model:chandra",
     "model:layout_v3",
@@ -305,6 +306,9 @@ class IndexedLayoutModelMapper(LayoutLabelMapper):
         LayoutDetectionModel.OPENAI_LAYOUT: Qwen3VLLayoutDetLabelAdapter(),
         LayoutDetectionModel.ANTHROPIC_LAYOUT: Qwen3VLLayoutDetLabelAdapter(),
         LayoutDetectionModel.GEMMA4_LAYOUT: Qwen3VLLayoutDetLabelAdapter(),
+        # DeepSeek and other OpenAI-compatible VLM parse providers emit the same
+        # div-wrapped labels, projected to Qwen3-VL indices by the shared adapter.
+        LayoutDetectionModel.OPENAI_COMPATIBLE_VLM_LAYOUT: Qwen3VLLayoutDetLabelAdapter(),
         LayoutDetectionModel.SURYA_LAYOUT: SuryaLayoutDetLabelAdapter(),
         LayoutDetectionModel.CHANDRA: ChandraLayoutDetLabelAdapter(),
         LayoutDetectionModel.LAYOUT_V3: LayoutV3LabelAdapter(),
@@ -387,8 +391,10 @@ class DotsOcrLabelMapper(LayoutLabelMapper):
 @register_layout_label_mapper(
     "liteparse",
     "hpd_parsing",
+    "minicpm_ocr",
     "model:liteparse_layout",
     "model:hpd_parsing_layout",
+    "model:minicpm_ocr_layout",
     priority=90,
 )
 class LiteParseLabelMapper(LayoutLabelMapper):
@@ -430,6 +436,9 @@ class UpstageLabelMapper(LayoutLabelMapper):
         "equation": CanonicalLabel.FORMULA,
         "code": CanonicalLabel.CODE,
     }
+    # Normalized layout pages may already carry canonical labels (``Page-header``,
+    # ``Text``) instead of Upstage categories; those map to themselves.
+    _CANONICAL: dict[str, CanonicalLabel] = {label.value.lower(): label for label in CanonicalLabel}
 
     def to_canonical(
         self,
@@ -438,7 +447,8 @@ class UpstageLabelMapper(LayoutLabelMapper):
         context: MappingContext,
     ) -> CanonicalLabel:
         del prediction, context
-        try:
-            return self._MAPPING[label.lower()]
-        except KeyError as exc:
-            raise UnknownRawLayoutLabelError(f"Unknown Upstage category: {label!r}") from exc
+        key = label.strip().lower()
+        canonical = self._MAPPING.get(key) or self._CANONICAL.get(key)
+        if canonical is None:
+            raise UnknownRawLayoutLabelError(f"Unknown Upstage category: {label!r}")
+        return canonical

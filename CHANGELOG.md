@@ -13,6 +13,42 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+### Scoring (changes evaluation numbers)
+- Visual Grounding attribution for PARSE results no longer depends on whether the raw provider response is
+  present. Cross-evaluation evaluated a synthetic layout result and re-resolved its adapter from it, which only
+  sees `raw_output`; LlamaParse-style adapters then lost the pages read from `ParseOutput.layout_pages` and fell
+  back to prediction-level blocks that drop chart and table content. The runner now passes the adapter that
+  produced the layout to the evaluator. Published results carry no raw response, so Visual Grounding rises for
+  providers read through the LlamaParse adapter (on LlamaParse Agentic, 57.77 -> 69.42 for the same outputs,
+  matching a local run that kept the raw response).
+- A layout page the provider returned no layout for ("<adapter> requires non-empty layout_pages") now counts as 0
+  in the aggregate, like output that cannot be adapted to a `LayoutOutput` already did. It was treated as a harness
+  error and silently dropped from the denominator, so a pipeline that returned nothing on its hardest pages scored
+  as if those pages did not exist. Visual Grounding drops for affected pipelines (median 3 of 500 pages; up to 78
+  for some lightweight models).
+- Layout adapters read `layout_pages` whose boxes are 0-1 fractions of the page, which `LayoutSegmentIR` allows
+  alongside page units. Fractional pages are scaled to page units before projection, for detection and attribution
+  alike. Without it, providers without a dedicated adapter (Surya, MinerU, Unlimited-OCR, Qianfan, LightOnOCR, GLM,
+  Mistral OCR, Nova) and Nutrient DWS localized nothing and scored 0 Visual Grounding.
+- The LlamaParse layout adapter reads `raw_output["pages"]` only when it is LlamaParse's own page payload (items with
+  `bBox`/`layoutAwareBbox`). Providers that keep a native `pages` list (Mistral OCR, GLM, Nova) now fall through to
+  their normalized `layout_pages` instead of yielding no boxes.
+- The Upstage label mapper accepts canonical labels (`Page-header`, `Text`) as well as Upstage categories, and
+  `openai_compatible_vlm_layout` (DeepSeek parse-with-layout) maps through the Qwen3-VL label indices like the other
+  parse-with-layout VLMs. Both previously raised on every page.
+
+### Added
+- Leaderboard accountability: `leaderboard/results.yaml` ties every `leaderboard.csv` row to its published outputs
+  in `llamaindex/ParseBench-results`, `leaderboard.csv` gains a `Verified` column, and `scripts/leaderboard/`
+  re-scores rows from those outputs. Two workflows use it: *Leaderboard verification* checks
+  leaderboard PRs against a re-score, and *Leaderboard re-score* re-scores every verified row daily when the harness
+  changes and opens a PR. See `leaderboard/README.md`.
+- `repetition_overshoot`, a built-in rule that fails an output repeating anything (a leader, a unit, a token, a line,
+  a table row, a whole table) more than the page holds. `parse-bench repetition make <dir>` writes this test next to
+  each of your own PDFs, budgeted from its text layer. See `docs/repetition-overshoot.md`.
+- `--dataset` on `download`, `status` and `run` accepts any HuggingFace dataset repo id (`org/name`) in the ParseBench
+  layout, downloaded to `./data/<name>`.
+
 ### Fixed
 - Layout attribution no longer crashes on layout rules without an `ro_index`.
   `LayoutDetectionEvaluator` dumps rules with `ro_index=None`, which
@@ -27,6 +63,14 @@ All notable changes to `parse-bench` are recorded here. The format follows
   is what lets the reference resolve in the first place.
 
 ### Added
+- `ovisocr3_vllm` pipeline and `ovisocr3` provider for OvisOCR3
+  (`OVISOCR3_SERVER_URL`). Sends the official structured-parsing prompt, re-reads
+  each chart region with the official chart-parsing prompt, and scores layout
+  through `LayoutDetectionModel.OVISOCR3_LAYOUT`.
+- `unlimitedocr2` pipeline and provider for Unlimited-OCR 2
+  (`UNLIMITEDOCR2_SERVER_URL`). Converts the model's layout-block output with
+  Baidu's official converter (vendored) and scores layout through
+  `LayoutDetectionModel.UNLIMITED_OCR_2_LAYOUT`.
 - `nemotron_parse_3_5_sdk` pipeline and `nemotron_parse_3_5` provider for
   Nemotron 3.5 Parse, driven by an SDK server that runs the model repository's
   triple-pass pipeline (`NEMOTRON_PARSE_3_5_SERVER_URL`). Its layout adapter
@@ -34,6 +78,11 @@ All notable changes to `parse-bench` are recorded here. The format follows
   `LayoutDetectionModel.NEMOTRON_PARSE_LAYOUT` (with a `LAYOUT_MODEL_INFO`
   entry), and a passthrough label mapper resolves them, so Visual Grounding is
   scored instead of raising `UnknownRawLayoutLabelError`.
+- `minicpm_ocr_sdk` pipeline and `minicpm_ocr` provider for MiniCPM-OCR 1.0,
+  driven by a server running the official `minicpmvocr` SDK
+  (`MINICPM_OCR_SERVER_URL`). PP-DocLayoutV3 regions are mapped to canonical
+  labels and scored for Visual Grounding under the new
+  `LayoutDetectionModel.MINICPM_OCR_LAYOUT` (with a `LAYOUT_MODEL_INFO` entry).
 - `register_reference_thumbnailer` (exported from `parse_bench.extensions`):
   how a rule's `reference_image` is rendered into the detailed report. parse-bench
   keeps no image stack in its core dependencies, so it ships no default and
@@ -46,6 +95,13 @@ All notable changes to `parse-bench` are recorded here. The format follows
   now computed with a small numpy implementation that matches
   `sklearn.metrics.average_precision_score` (including tied-score handling),
   so evaluation numbers are unchanged. `scipy` remains a core dependency.
+- Built-in providers now register on the first `create_provider` call instead
+  of when `parse_bench.inference.providers` (or any module under it) is
+  imported. Importing `parse_bench.extensions` or the layout adapter and label
+  mapper registries no longer loads every provider and its SDK: about 0.4 s
+  instead of about 4.8 s in a full install. The provider subpackages expose
+  `load_providers()` and the registry `load_builtin_providers()`; code that
+  read `_PROVIDER_REGISTRY` directly should call the latter first.
 
 ## [1.0.2] - 2026-09-04
 
