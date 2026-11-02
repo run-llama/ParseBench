@@ -2741,6 +2741,22 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # KDLAI/KDL-Frontier-Parser-nano-v2: new weights, same pipeline and prompts.
+    # Serve them under this name (vLLM flags as for v1).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="kdl_frontier_nano_v2",
+            provider_name="kdl_frontier_nano",
+            product_type=ProductType.PARSE,
+            config={
+                "endpoint_url": "",  # via KDL_NANO_ENDPOINT_URL
+                "model": "kdl-frontier-parser-nano-v2",
+                "dpi": 144,
+                "timeout": 900,
+            },
+        )
+    )
+
     # =========================================================================
     # florin-parser-nano (florin-inc/florin-parser-nano, fine-tune of
     # KDLAI/KDL-Frontier-Parser-nano; same serving requirements)

@@ -28,11 +28,11 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | 3 | Pulse Ultra 2 † | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
 | 4 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.63 | 89.48 | 77.50 | 87.67 | 76.68 | 71.84 | 3.00¢ |
 | 5 | anyformat (Standard) | Commercial - Startup APIs | 80.05 | 86.84 | 85.01 | 86.39 | 79.25 | 62.74 | 4.30¢ |
-| 6 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 78.80 | 94.26 | 70.89 | 91.25 | 77.06 | 60.56 | 6.13¢ |
-| 7 | oi-parser † | Commercial - Startup APIs | 78.30 | 92.62 | 78.28 | 86.17 | 66.88 | 67.53 | — |
-| 8 | Anthropic Fable 5.1 | VLM - Proprietary | 77.81 | 91.53 | 66.93 | 90.77 | 76.02 | 63.81 | 16.05¢ |
-| 9 | LlamaParse Cost Effective | LlamaParse | 77.68 | 86.72 | 73.98 | 87.32 | 78.14 | 62.22 | 0.38¢ |
-| 10 | rakedoc-nano † | VLM - Open Weight | 77.23 | 86.44 | 64.89 | 88.84 | 71.68 | 74.28 | — |
+| 6 | KDL-Frontier-Parser-nano-v2 | VLM - Open Weight | 79.07 | 86.19 | 69.14 | 87.77 | 76.91 | 75.33 | — |
+| 7 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 78.80 | 94.26 | 70.89 | 91.25 | 77.06 | 60.56 | 6.13¢ |
+| 8 | oi-parser † | Commercial - Startup APIs | 78.30 | 92.62 | 78.28 | 86.17 | 66.88 | 67.53 | — |
+| 9 | Anthropic Fable 5.1 | VLM - Proprietary | 77.81 | 91.53 | 66.93 | 90.77 | 76.02 | 63.81 | 16.05¢ |
+| 10 | LlamaParse Cost Effective | LlamaParse | 77.68 | 86.72 | 73.98 | 87.32 | 78.14 | 62.22 | 0.38¢ |
 
 † Unverified: no published outputs in [ParseBench-results](https://huggingface.co/datasets/llamaindex/ParseBench-results); scores as submitted.
 <!-- LEADERBOARD:END -->

@@ -599,6 +599,10 @@ rows:
 - provider: aeddix-alpine-ocr (KDL pipeline)
   status: unverified
   note: no published outputs in the results repo
+- provider: KDL-Frontier-Parser-nano-v2
+  status: verified
+  pipeline: kdl_frontier_nano_v2
+  results_revision: 548810f2411399701357beb7bbb1111683ce6226
 - provider: DeepSeek V4.1 Flash (Thinking High)
   status: verified
   pipeline: deepseek_v4_1_flash_parse_with_layout
