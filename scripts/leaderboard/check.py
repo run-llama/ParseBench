@@ -8,6 +8,10 @@ Static checks (no network):
 With ``--hf``: each verified pipeline folder exists in the results repo at its
 pinned revision (needs a token with read access while the repo is private).
 
+With ``--base-map``: the map's header (results repo, data repo, data revision)
+must match the base branch's, so a pull request cannot point verification at
+another repository or ground truth. The scheduled re-score moves the data revision.
+
 With ``--base-csv``: rows added or changed relative to that csv must be
 verified. The changed verified pipelines are printed and, under GitHub Actions,
 written to ``$GITHUB_OUTPUT`` as ``pipelines`` for re-scoring.
@@ -137,6 +141,7 @@ def main() -> int:
     parser.add_argument("--map", type=Path, default=MAP_PATH)
     parser.add_argument("--hf", action="store_true", help="check verified folders exist in the results repo")
     parser.add_argument("--base-csv", type=Path, default=None, help="leaderboard.csv of the PR base")
+    parser.add_argument("--base-map", type=Path, default=None, help="results.yaml of the PR base")
     parser.add_argument("--fix", action="store_true", help="rewrite the Verified column from the map")
     args = parser.parse_args()
 
@@ -149,6 +154,11 @@ def main() -> int:
         fieldnames, rows = load_csv(args.csv)
 
     errors = static_errors(rows, rmap) + verified_column_errors(rows, rmap)
+    if args.base_map:
+        base_map = load_map(args.base_map)
+        for field in ("results_repo", "data_repo", "data_revision"):
+            if getattr(rmap, field) != getattr(base_map, field):
+                errors.append(f"{field} must stay {getattr(base_map, field)!r} (got {getattr(rmap, field)!r})")
     if args.hf and not errors:
         errors += hf_errors(rmap)
 

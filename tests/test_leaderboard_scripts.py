@@ -142,3 +142,27 @@ def test_rows_missing_more_than_one_percent_are_incomplete() -> None:
     assert lb_apply._incomplete({"coverage": {"Tables": (501, 503)}}) is False  # 2 pages: scored 0, still verified
     assert lb_apply._incomplete({"coverage": {"Content_Faithfulness": (85, 506)}}) is True
     assert lb_apply._incomplete({"coverage": {}}) is False
+
+
+def test_merge_combines_shards_from_one_run(tmp_path: Path) -> None:
+    import rescore
+
+    header = {"scored_with": "c" * 40, "data_repo": "org/data", "data_revision": SHA, "results_repo": "org/results"}
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    a.write_text(json.dumps({**header, "results": {"pb": {"scores": {}}}}))
+    b.write_text(json.dumps({**header, "results": {"pa": {"error": "boom"}}}))
+    out = tmp_path / "merged.json"
+    assert rescore.cmd_merge(lb_apply.argparse.Namespace(shards=[a, b], out=out)) == 0
+    merged = json.loads(out.read_text())
+    assert list(merged["results"]) == ["pa", "pb"] and merged["scored_with"] == "c" * 40
+
+
+def test_merge_rejects_shards_from_different_runs(tmp_path: Path) -> None:
+    import rescore
+
+    header = {"scored_with": "c" * 40, "data_repo": "org/data", "data_revision": SHA, "results_repo": "org/results"}
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    a.write_text(json.dumps({**header, "results": {}}))
+    b.write_text(json.dumps({**header, "scored_with": "d" * 40, "results": {}}))
+    with pytest.raises(SystemExit):
+        rescore.cmd_merge(lb_apply.argparse.Namespace(shards=[a, b], out=tmp_path / "m.json"))

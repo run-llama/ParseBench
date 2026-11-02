@@ -33,7 +33,7 @@ All notable changes to `parse-bench` are recorded here. The format follows
 ### Added
 - Leaderboard accountability: `leaderboard/results.yaml` ties every `leaderboard.csv` row to its published outputs
   in `llamaindex/ParseBench-results`, `leaderboard.csv` gains a `Verified` column, and `scripts/leaderboard/`
-  re-scores rows from those outputs (locally or on Modal). Two workflows use it: *Leaderboard verification* checks
+  re-scores rows from those outputs. Two workflows use it: *Leaderboard verification* checks
   leaderboard PRs against a re-score, and *Leaderboard re-score* re-scores every verified row daily when the harness
   changes and opens a PR. See `leaderboard/README.md`.
 - `repetition_overshoot`, a built-in rule that fails an output repeating anything (a leader, a unit, a token, a line,

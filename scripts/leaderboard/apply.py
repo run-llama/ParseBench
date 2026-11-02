@@ -1,6 +1,6 @@
 """Apply or verify re-scored leaderboard numbers.
 
-``apply``: write the scores from a rescore JSON (scripts/leaderboard/modal_app.py)
+``apply``: write the scores from a rescore JSON (scripts/leaderboard/rescore.py)
 into leaderboard.csv for the verified rows it covers, record the ParseBench
 commit in the results map, and write a Markdown report of every change. Rows
 whose re-score errored keep their old values and are listed in the report.

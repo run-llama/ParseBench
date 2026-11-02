@@ -1,10 +1,10 @@
 name: Leaderboard re-score
 
 # Daily: if the scoring harness (or the ground truth) changed since the verified
-# rows were last scored, re-score every verified row on Modal from its published
-# outputs and open a pull request with the new numbers. Changes of at least
-# THRESHOLD points are flagged in the report and labelled large-score-change.
-# Quiet days cost nothing: the job exits after the change check.
+# rows were last scored, re-score every verified row from its published outputs
+# (one job per pipeline) and open a pull request with the new numbers. Changes of
+# at least THRESHOLD points are flagged in the report and labelled
+# large-score-change. Quiet days cost nothing: the job exits after the change check.
 
 on:
   schedule:
@@ -28,9 +28,14 @@ env:
   THRESHOLD: "2"
 
 jobs:
-  rescore:
+  decide:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      reason: ${{ steps.decide.outputs.reason }}
+      sha: ${{ steps.decide.outputs.sha }}
+      data_revision: ${{ steps.decide.outputs.data_revision }}
+      pipelines: ${{ steps.decide.outputs.pipelines }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,6 +55,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           FORCE: ${{ inputs.force }}
         run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           read -r last data_repo data_rev < <(uv run python - <<'EOF'
           import sys
           sys.path.insert(0, "scripts/leaderboard")
@@ -60,6 +66,12 @@ jobs:
           )
           latest_rev=$(uv run python -c "from huggingface_hub import HfApi; print(HfApi().dataset_info('$data_repo').sha)")
           echo "data_revision=$latest_rev" >> "$GITHUB_OUTPUT"
+          uv run python - >> "$GITHUB_OUTPUT" <<'EOF'
+          import json, sys
+          sys.path.insert(0, "scripts/leaderboard")
+          from common import load_map
+          print("pipelines=" + json.dumps([e.pipeline for e in load_map().verified() if e.pipeline]))
+          EOF
           reason=""
           if [ "$FORCE" = "true" ]; then reason="manual run"
           elif [ "$last" = "-" ] || ! git cat-file -e "$last^{commit}" 2>/dev/null; then reason="no recorded re-score"
@@ -72,27 +84,91 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"; echo "Nothing changed since ${last:0:12}; skipping."
           fi
 
-      - name: Re-score every verified row on Modal
-        if: steps.decide.outputs.run == 'true'
+  rescore:
+    needs: decide
+    if: needs.decide.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        pipeline: ${{ fromJSON(needs.decide.outputs.pipelines) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.decide.outputs.sha }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      # Layout adapters import provider SDKs, so the evaluator needs the runners extra.
+      - run: uv sync --extra runners --extra fast
+
+      - name: Cache the ground truth
+        uses: actions/cache@v4
+        with:
+          path: .cache/leaderboard-gt
+          key: leaderboard-gt-${{ needs.decide.outputs.data_revision }}
+
+      - name: Re-score ${{ matrix.pipeline }}
         env:
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-          DATA_REVISION: ${{ steps.decide.outputs.data_revision }}
-        run: uv run --with modal modal run scripts/leaderboard/modal_app.py --data-revision "$DATA_REVISION" --out rescore.json
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          PIPELINE: ${{ matrix.pipeline }}
+          DATA_REVISION: ${{ needs.decide.outputs.data_revision }}
+        run: |
+          uv run python scripts/leaderboard/rescore.py run --pipelines "$PIPELINE" \
+            --data-revision "$DATA_REVISION" --out "shard-$PIPELINE.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.pipeline }}
+          path: shard-${{ matrix.pipeline }}.json
+          retention-days: 7
+
+  apply:
+    needs: [decide, rescore]
+    if: always() && needs.decide.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.decide.outputs.sha }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - run: uv sync
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shard-*
+          path: shards
+          merge-multiple: true
 
       - name: Apply the new scores
         id: apply
-        if: steps.decide.outputs.run == 'true'
         env:
-          REASON: ${{ steps.decide.outputs.reason }}
+          REASON: ${{ needs.decide.outputs.reason }}
+          PIPELINES: ${{ needs.decide.outputs.pipelines }}
         run: |
+          uv run python scripts/leaderboard/rescore.py merge shards/*.json --out rescore.json
           uv run python scripts/leaderboard/apply.py apply rescore.json --threshold "$THRESHOLD" --report report.md
           uv run python scripts/update_readme.py
-          { echo "Triggered by: $REASON."; echo; cat report.md; } > pr_body.md
+          missing=$(uv run python -c "import json,os; done=set(json.load(open('rescore.json'))['results']); print(', '.join(p for p in json.loads(os.environ['PIPELINES']) if p not in done))")
+          {
+            echo "Triggered by: $REASON."
+            echo
+            if [ -n "$missing" ]; then echo "⚠️ No result from these jobs (values left unchanged): $missing"; echo; fi
+            cat report.md
+          } > pr_body.md
           cat pr_body.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Open or update the re-score pull request
-        if: steps.decide.outputs.run == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
           branch: leaderboard/rescore

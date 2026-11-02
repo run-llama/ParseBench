@@ -29,8 +29,8 @@ re-score it and the numbers stay current as the harness improves.
    ```
    Then run `python scripts/leaderboard/check.py --fix` to set the `Verified` column.
 3. The **Leaderboard verification** workflow checks that every row is mapped, that the folder exists, and
-   re-scores the added or changed rows on Modal. It fails if a submitted value differs from the re-score by
-   more than 0.5 points, and posts the comparison on the PR.
+   re-scores the added or changed rows (about 20 minutes per row). It fails if a submitted value differs from the
+   re-score by more than 0.5 points, and posts the comparison on the PR.
 
 The verification scores with the **base branch's** harness and reads only `leaderboard.csv` and `results.yaml`
 from the PR, so it is safe for fork PRs. If your PR also changes scoring code, land that first.
@@ -38,8 +38,8 @@ from the PR, so it is safe for fork PRs. If your PR also changes scoring code, l
 ## Scheduled re-score
 
 The **Leaderboard re-score** workflow runs daily. If `src/parse_bench` or `scripts/leaderboard` (or the ground truth
-revision) changed since `scored_with` in `results.yaml`, it re-scores every verified row on Modal and opens or updates
-the `leaderboard/rescore` pull request with the new numbers. Changes of 2 points or more are flagged ⚠️ and labelled
+revision) changed since `scored_with` in `results.yaml`, it re-scores every verified row (one job per pipeline, 20
+at a time) and opens or updates the `leaderboard/rescore` pull request with the new numbers. Changes of 2 points or more are flagged ⚠️ and labelled
 `large-score-change`. Run it by hand with *Run workflow* (tick **force** to re-score without a change).
 Pull requests opened with the default `GITHUB_TOKEN` do not trigger other workflows, so CI does not run on the
 re-score PR on its own; push an empty commit or re-run CI from the PR if you want it.
@@ -48,20 +48,16 @@ re-score PR on its own; push an empty commit or re-run CI from the PR if you wan
 
 ```bash
 python scripts/leaderboard/check.py                     # map / csv consistency
-python scripts/leaderboard/check.py --hf                # also check the HF folders (needs HF_TOKEN)
-modal run scripts/leaderboard/modal_app.py --pipelines llamaparse_agentic --out rescore.json
+python scripts/leaderboard/check.py --hf                # also check the HF folders
+python scripts/leaderboard/rescore.py run --pipelines llamaparse_agentic --out rescore.json   # or omit --pipelines
 python scripts/leaderboard/apply.py apply rescore.json --report report.md   # write new scores
 python scripts/leaderboard/apply.py compare rescore.json                    # check without writing
-python scripts/leaderboard/rescore.py --pipeline llamaparse_agentic --data-dir data   # no Modal
 ```
+
+`rescore.py run` downloads the ground truth at `data_revision` once into `.cache/leaderboard-gt/`.
 
 ## Repository setup
 
-| Secret | Used by | Purpose |
-|---|---|---|
-| `HF_TOKEN` | both workflows | read the private results repo (and list ground-truth revisions) |
-| `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` | both workflows | run the re-score on Modal |
-
-The Modal workspace also needs a secret named `huggingface-secret` holding `HF_TOKEN` (override the name with
-`LEADERBOARD_HF_SECRET`). Create the `leaderboard-rescore` and `large-score-change` labels, and allow GitHub
-Actions to create pull requests (*Settings → Actions → General*).
+No secrets are needed once `llamaindex/ParseBench-results` is public. While it is private, add an `HF_TOKEN`
+secret with read access; both workflows pass it through when present. Create the `leaderboard-rescore` and
+`large-score-change` labels, and allow GitHub Actions to create pull requests (*Settings → Actions → General*).
