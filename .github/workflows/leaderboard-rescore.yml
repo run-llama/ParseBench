@@ -205,6 +205,8 @@ jobs:
       - name: Open or update the re-score pull request
         uses: peter-evans/create-pull-request@v7
         with:
+          # The job checks out the decided commit, not a branch, so the base must be named.
+          base: main
           branch: leaderboard/rescore
           commit-message: Re-score leaderboard from published results
           title: >-
