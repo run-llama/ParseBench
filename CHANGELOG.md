@@ -14,6 +14,13 @@ All notable changes to `parse-bench` are recorded here. The format follows
 ## [Unreleased]
 
 ### Scoring (changes evaluation numbers)
+- Visual Grounding attribution for PARSE results no longer depends on whether the raw provider response is
+  present. Cross-evaluation evaluated a synthetic layout result and re-resolved its adapter from it, which only
+  sees `raw_output`; LlamaParse-style adapters then lost the pages read from `ParseOutput.layout_pages` and fell
+  back to prediction-level blocks that drop chart and table content. The runner now passes the adapter that
+  produced the layout to the evaluator. Published results carry no raw response, so Visual Grounding rises for
+  providers read through the LlamaParse adapter (on LlamaParse Agentic, 57.77 -> 69.42 for the same outputs,
+  matching a local run that kept the raw response).
 - A layout page the provider returned no layout for ("<adapter> requires non-empty layout_pages") now counts as 0
   in the aggregate, like output that cannot be adapted to a `LayoutOutput` already did. It was treated as a harness
   error and silently dropped from the denominator, so a pipeline that returned nothing on its hardest pages scored
