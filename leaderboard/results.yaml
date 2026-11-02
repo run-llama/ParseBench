@@ -17,15 +17,15 @@ rows:
 - provider: LlamaParse Cost Effective
   status: verified
   pipeline: llamaparse_cost_effective
-  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  results_revision: 0b3c8332ad0141d05aa1323f68085dc2afb862de
 - provider: LlamaParse Agentic
   status: verified
   pipeline: llamaparse_agentic
-  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  results_revision: 0b3c8332ad0141d05aa1323f68085dc2afb862de
 - provider: LlamaParse Agentic Plus
   status: verified
   pipeline: llamaparse_agentic_plus
-  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  results_revision: 0b3c8332ad0141d05aa1323f68085dc2afb862de
 - provider: OpenAI GPT-5 Mini (Reasoning Minimal)
   status: verified
   pipeline: openai_gpt5_mini_reasoning_minimal_parse_with_layout_file
