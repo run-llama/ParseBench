@@ -41,6 +41,7 @@ _PROVIDER_MODULES = [
     "markitdown",
     "opendataloader",
     "pdf_inspector",
+    "providus_vlm_mini",
     "pymupdf4llm",
     "rakedoc_nano",
     "llamaparse",
