@@ -24,8 +24,8 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
 | 1 | LlamaParse Agentic Plus | LlamaParse | 86.69 | 93.27 | 92.19 | 89.74 | 82.84 | 75.43 | 5.62¢ |
-| 2 | Nutrient DWS (Agentic) † | Commercial - IDP | 82.86 | 86.08 | 86.43 | 88.60 | 73.01 | 80.19 | 1.80¢ |
-| 3 | LlamaParse Agentic | LlamaParse | 82.83 | 90.90 | 81.20 | 87.84 | 84.81 | 69.42 | 1.25¢ |
+| 2 | LlamaParse Agentic | LlamaParse | 82.83 | 90.90 | 81.20 | 87.84 | 84.81 | 69.42 | 1.25¢ |
+| 3 | Nutrient DWS (Agentic) | Commercial - IDP | 82.78 | 86.14 | 85.93 | 88.57 | 73.09 | 80.17 | 1.80¢ |
 | 4 | Pulse Ultra 2 † | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
 | 5 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.64 | 89.48 | 77.50 | 87.68 | 76.68 | 71.84 | 3.00¢ |
 | 6 | anyformat (Standard) | Commercial - Startup APIs | 80.05 | 86.84 | 85.01 | 86.39 | 79.25 | 62.74 | 4.30¢ |
