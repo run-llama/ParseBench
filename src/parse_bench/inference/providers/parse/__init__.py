@@ -55,6 +55,7 @@ _PROVIDER_MODULES = [
     "nutrient_dws",
     "openai",
     "ovisocr2",
+    "ovisocr3",
     "paddleocr",
     "pulse",
     "pymupdf",
@@ -74,8 +75,15 @@ _PROVIDER_MODULES = [
     "oi_parser",
 ]
 
-for _mod in _PROVIDER_MODULES:
-    try:
-        importlib.import_module(f"parse_bench.inference.providers.parse.{_mod}")
-    except ImportError:
-        logger.debug("Skipping parse provider %s (missing dependency)", _mod)
+
+def load_providers() -> None:
+    """Import each provider module so it registers itself; skip ones whose SDK is missing.
+
+    Called by ``registry.load_builtin_providers`` on first use rather than on package
+    import, so helpers under this package (such as label adapters) stay cheap to import.
+    """
+    for module in _PROVIDER_MODULES:
+        try:
+            importlib.import_module(f"parse_bench.inference.providers.parse.{module}")
+        except ImportError:
+            logger.debug("Skipping parse provider %s (missing dependency)", module)

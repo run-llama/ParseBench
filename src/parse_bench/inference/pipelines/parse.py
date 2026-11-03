@@ -1279,6 +1279,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # OvisOCR3 (ATH-MaaS/OvisOCR3): official structured parse (JSON regions with
+    # bbox/category/content) -> markdown + layout; each chart region is re-read
+    # with the official chart_parsing prompt (OVISOCR3_SERVER_URL).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="ovisocr3_vllm",
+            provider_name="ovisocr3",
+            product_type=ProductType.PARSE,
+            config={
+                "server_url": "",  # Set via OVISOCR3_SERVER_URL or override
+            },
+        )
+    )
+
     # =========================================================================
     # LightOnOCR-3 (grounding prompt: one pass gives markdown and layout)
     # =========================================================================
@@ -2721,6 +2735,22 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             config={
                 "endpoint_url": "",  # via KDL_NANO_ENDPOINT_URL
                 "model": "",  # via KDL_NANO_MODEL (default kdl-frontier-parser-nano)
+                "dpi": 144,
+                "timeout": 900,
+            },
+        )
+    )
+
+    # KDLAI/KDL-Frontier-Parser-nano-v2: new weights, same pipeline and prompts.
+    # Serve them under this name (vLLM flags as for v1).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="kdl_frontier_nano_v2",
+            provider_name="kdl_frontier_nano",
+            product_type=ProductType.PARSE,
+            config={
+                "endpoint_url": "",  # via KDL_NANO_ENDPOINT_URL
+                "model": "kdl-frontier-parser-nano-v2",
                 "dpi": 144,
                 "timeout": 900,
             },
