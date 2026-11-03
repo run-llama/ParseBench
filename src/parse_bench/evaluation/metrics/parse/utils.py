@@ -211,14 +211,19 @@ def _normalize_quotes(text: str) -> str:
 # Formatting / markup patterns stripped by normalize_cell_text()
 # ---------------------------------------------------------------------------
 
+# Rest of a formatting tag after its name: whitespace plus attributes, or nothing.
+# Quoted values may hold ">" (title="A > B"); requiring whitespace, "/" or ">" after
+# the name keeps custom elements such as <mark-down> intact.
+_TAG_REST = r"""(?:\s(?:"[^"]*"|'[^']*'|[^"'>])*)?/?>"""
+
 # HTML formatting tags to strip (same set as header_accuracy_metric._FORMATTING_RE)
 _HTML_FORMATTING_RE = re.compile(
-    r"</?(?:b|i|u|s|em|strong|del|strike|mark|ins)>",
+    rf"</?(?:b|i|u|s|em|strong|del|strike|mark|ins){_TAG_REST}",
     re.IGNORECASE,
 )
 
 # <span> tags (with optional attributes like style, color) — strip tag, keep content
-_HTML_SPAN_RE = re.compile(r"</?span\b[^>]*>", re.IGNORECASE)
+_HTML_SPAN_RE = re.compile(rf"</?span{_TAG_REST}", re.IGNORECASE)
 
 # Inline styling markers that ``normalize_text`` deletes while keeping their
 # content: the content-preserving HTML tags plus markdown ``~~``. ``<sup>`` and
@@ -700,8 +705,8 @@ def normalize_text(md_content: str | None) -> str:
     # Remove markdown bold formatting (** or __ for bold)
     md_content = re.sub(r"\*\*(.*?)\*\*", r"\1", md_content)
     md_content = re.sub(r"__(.*?)__", r"\1", md_content)
-    md_content = re.sub(r"</?b>", "", md_content)  # Remove <b> tags if they exist
-    md_content = re.sub(r"</?i>", "", md_content)  # Remove <i> tags if they exist
+    md_content = re.sub(rf"</?b{_TAG_REST}", "", md_content)  # Remove <b> tags if they exist
+    md_content = re.sub(rf"</?i{_TAG_REST}", "", md_content)  # Remove <i> tags if they exist
 
     # Remove markdown italics formatting (* or _ for italics)
     md_content = re.sub(r"\*(.*?)\*", r"\1", md_content)
@@ -741,13 +746,7 @@ def normalize_text(md_content: str | None) -> str:
     replacements = {
         "＿": "_",
         "…": "...",
-        "<ins>": "",
-        "</ins>": "",
-        "<u>": "",
-        "</u>": "",
         "~~": "",
-        "<mark>": "",
-        "</mark>": "",
         "<br/>": " ",
         "<br />": " ",
         "\n": " ",
@@ -762,8 +761,9 @@ def normalize_text(md_content: str | None) -> str:
     # Normalize Unicode symbol variants (bullets, circled-x, etc.)
     md_content = _normalize_unicode_symbols(md_content)
 
-    # Strip <s>, <del>, <strike> tags (keep content) — equivalent to ~~ stripping above
-    md_content = re.sub(r"</?(?:s|del|strike)>", "", md_content, flags=re.IGNORECASE)
+    # Strip <s>/<del>/<strike>/<u>/<ins>/<mark> tags with any attributes (keep content);
+    # parsers emit e.g. <mark style="background-color:#ffff00">.
+    md_content = re.sub(rf"</?(?:s|del|strike|u|ins|mark){_TAG_REST}", "", md_content, flags=re.IGNORECASE)
 
     # Strip <span> tags with any attributes (keep content)
     # e.g. <span color="red">text</span> → text

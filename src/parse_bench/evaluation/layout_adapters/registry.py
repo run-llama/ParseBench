@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TypeVar
 
+from parse_bench.evaluation._registration import updated_registrations
 from parse_bench.evaluation.layout_adapters.base import LayoutAdapter
 from parse_bench.inference.pipelines import get_pipeline
 from parse_bench.schemas.pipeline import PipelineSpec
@@ -22,27 +24,23 @@ class _LayoutAdapterRegistration:
 
 _LAYOUT_ADAPTER_REGISTRY: list[_LayoutAdapterRegistration] = []
 
+# Bound to the concrete class so the decorator hands back that class, not ``type[LayoutAdapter]``.
+LayoutAdapterT = TypeVar("LayoutAdapterT", bound=type[LayoutAdapter])
+
 
 def register_layout_adapter(
     *provider_keys: str,
     priority: int = 0,
-) -> Callable[[type[LayoutAdapter]], type[LayoutAdapter]]:
+    _DANGEROUSLY_OVERRIDE: bool = False,
+) -> Callable[[LayoutAdapterT], LayoutAdapterT]:
     """Register a layout adapter class for one or more provider keys."""
     if not provider_keys:
         raise ValueError("register_layout_adapter requires at least one provider key")
 
-    def decorator(cls: type[LayoutAdapter]) -> type[LayoutAdapter]:
-        existing_keys = {key for entry in _LAYOUT_ADAPTER_REGISTRY for key in entry.keys}
-        for key in provider_keys:
-            if key in existing_keys:
-                raise ValueError(f"Layout adapter already registered for provider key '{key}'")
-
-        _LAYOUT_ADAPTER_REGISTRY.append(
-            _LayoutAdapterRegistration(
-                keys=tuple(provider_keys),
-                priority=priority,
-                adapter_cls=cls,
-            )
+    def decorator(cls: LayoutAdapterT) -> LayoutAdapterT:
+        replacement = _LayoutAdapterRegistration(keys=tuple(provider_keys), priority=priority, adapter_cls=cls)
+        _LAYOUT_ADAPTER_REGISTRY[:] = updated_registrations(
+            _LAYOUT_ADAPTER_REGISTRY, replacement, dangerous_override=_DANGEROUSLY_OVERRIDE
         )
         return cls
 

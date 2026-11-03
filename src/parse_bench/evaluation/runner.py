@@ -77,12 +77,14 @@ def _is_infra_failure(result: EvaluationResult) -> bool:
     Exception: a worker error whose cause is that the provider's output could
     not be adapted to a ``LayoutOutput`` (raised in the layout adapters /
     layout-detection evaluator) is a *provider* failure, not a harness one —
-    the provider simply produced nothing the layout task can score. It must
-    count as a genuine 0, so it is explicitly excluded from the infra set.
+    the provider simply produced nothing the layout task can score. The same
+    holds when an adapter rejects a page because the provider returned no
+    layout for it ("... requires non-empty layout_pages"). Both must count as
+    a genuine 0, so they are explicitly excluded from the infra set.
     """
     if not result.error:
         return False
-    if "not LayoutOutput" in result.error:
+    if "not LayoutOutput" in result.error or "requires non-empty layout_pages" in result.error:
         return False
     return result.error.startswith(("Worker error:", "Evaluation error:", "Task execution error:"))
 
@@ -238,7 +240,7 @@ def _evaluate_single_worker(
                 latency_in_ms=inference_result.latency_in_ms,
             )
             layout_evaluator = evaluators["layout_detection"]
-            result = layout_evaluator.evaluate(layout_inference_result, test_case)
+            result = layout_evaluator.evaluate(layout_inference_result, test_case, layout_adapter=adapter)
             return result.model_dump()
         else:
             # Normal evaluation
@@ -570,7 +572,9 @@ class EvaluationRunner:
                     completed_at=inference_result.completed_at,
                     latency_in_ms=inference_result.latency_in_ms,
                 )
-                return evaluator.evaluate(layout_inference_result, test_case)  # type: ignore[no-any-return]
+                return evaluator.evaluate(  # type: ignore[no-any-return]
+                    layout_inference_result, test_case, layout_adapter=adapter
+                )
             else:
                 return evaluator.evaluate(inference_result, test_case)  # type: ignore[no-any-return]
         except Exception as e:
@@ -1728,7 +1732,9 @@ class EvaluationRunner:
                             completed_at=inference_result.completed_at,
                             latency_in_ms=inference_result.latency_in_ms,
                         )
-                        layout_result = layout_evaluator.evaluate(layout_inference_result, temp_layout_test_case)
+                        layout_result = layout_evaluator.evaluate(
+                            layout_inference_result, temp_layout_test_case, layout_adapter=adapter
+                        )
                         all_metrics.extend(layout_result.metrics)
                     except Exception as e:
                         errors.append(f"Layout evaluation error: {e}")
