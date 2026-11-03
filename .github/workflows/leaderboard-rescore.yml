@@ -1,0 +1,222 @@
+name: Leaderboard re-score
+
+# Daily: if the scoring harness (or the ground truth) changed since the verified
+# rows were last scored, re-score every verified row from its published outputs
+# (one job per pipeline) and open a pull request with the new numbers. Changes of
+# at least THRESHOLD points are flagged in the report and labelled
+# large-score-change. Quiet days cost nothing: the job exits after the change check.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Re-score even if nothing changed
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: leaderboard-rescore
+  cancel-in-progress: false
+
+env:
+  THRESHOLD: "2"
+
+jobs:
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      reason: ${{ steps.decide.outputs.reason }}
+      sha: ${{ steps.decide.outputs.sha }}
+      data_revision: ${{ steps.decide.outputs.data_revision }}
+      pipelines: ${{ steps.decide.outputs.pipelines }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - run: uv sync
+
+      - name: Decide whether anything changed
+        id: decide
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          read -r last data_repo data_rev < <(uv run python - <<'EOF'
+          import sys
+          sys.path.insert(0, "scripts/leaderboard")
+          from common import load_map
+          m = load_map()
+          print(m.scored_with or "-", m.data_repo, m.data_revision)
+          EOF
+          )
+          latest_rev=$(uv run python -c "from huggingface_hub import HfApi; print(HfApi().dataset_info('$data_repo').sha)")
+          echo "data_revision=$latest_rev" >> "$GITHUB_OUTPUT"
+          uv run python - >> "$GITHUB_OUTPUT" <<'EOF'
+          import json, sys
+          sys.path.insert(0, "scripts/leaderboard")
+          from common import load_map
+          print("pipelines=" + json.dumps([e.pipeline for e in load_map().verified() if e.pipeline]))
+          EOF
+          reason=""
+          if [ "$FORCE" = "true" ]; then reason="manual run"
+          elif [ "$last" = "-" ] || ! git cat-file -e "$last^{commit}" 2>/dev/null; then reason="no recorded re-score"
+          elif ! git diff --quiet "$last" HEAD -- src/parse_bench scripts/leaderboard pyproject.toml uv.lock; then reason="harness changed since ${last:0:12}"
+          elif [ "$latest_rev" != "$data_rev" ]; then reason="ground truth moved to ${latest_rev:0:12}"
+          fi
+          if [ -n "$reason" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "reason=$reason" >> "$GITHUB_OUTPUT"; echo "Re-scoring: $reason"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "Nothing changed since ${last:0:12}; skipping."
+          fi
+
+  # Fetch the ground truth once. actions/cache only saves when a job ends, so if
+  # every matrix job fetched it they would all download ~2,100 files at once and
+  # the Hub would drop connections (HTTP 499).
+  prepare:
+    needs: decide
+    if: needs.decide.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.decide.outputs.sha }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - run: uv sync
+
+      - name: Cache the ground truth
+        id: gt
+        uses: actions/cache@v4
+        with:
+          path: .cache/leaderboard-gt
+          key: leaderboard-gt-${{ needs.decide.outputs.data_revision }}
+
+      - name: Download the ground truth
+        if: steps.gt.outputs.cache-hit != 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          DATA_REVISION: ${{ needs.decide.outputs.data_revision }}
+        run: uv run python scripts/leaderboard/rescore.py ground-truth --data-revision "$DATA_REVISION"
+
+  rescore:
+    needs: [decide, prepare]
+    if: needs.decide.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        pipeline: ${{ fromJSON(needs.decide.outputs.pipelines) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.decide.outputs.sha }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      # Layout adapters import provider SDKs, so the evaluator needs the runners extra.
+      - run: uv sync --extra runners --extra fast
+
+      - name: Restore the ground truth
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/leaderboard-gt
+          key: leaderboard-gt-${{ needs.decide.outputs.data_revision }}
+          fail-on-cache-miss: true
+
+      - name: Re-score ${{ matrix.pipeline }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          PIPELINE: ${{ matrix.pipeline }}
+          DATA_REVISION: ${{ needs.decide.outputs.data_revision }}
+        run: |
+          uv run python scripts/leaderboard/rescore.py run --pipelines "$PIPELINE" \
+            --data-revision "$DATA_REVISION" --out "shard-$PIPELINE.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.pipeline }}
+          path: shard-${{ matrix.pipeline }}.json
+          retention-days: 7
+
+  apply:
+    needs: [decide, prepare, rescore]
+    if: always() && needs.decide.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.decide.outputs.sha }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - run: uv sync
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shard-*
+          path: shards
+          merge-multiple: true
+
+      - name: Apply the new scores
+        id: apply
+        env:
+          REASON: ${{ needs.decide.outputs.reason }}
+          PIPELINES: ${{ needs.decide.outputs.pipelines }}
+        run: |
+          uv run python scripts/leaderboard/rescore.py merge shards/*.json --out rescore.json
+          uv run python scripts/leaderboard/apply.py apply rescore.json --threshold "$THRESHOLD" --report report.md
+          uv run python scripts/update_readme.py
+          missing=$(uv run python -c "import json,os; done=set(json.load(open('rescore.json'))['results']); print(', '.join(p for p in json.loads(os.environ['PIPELINES']) if p not in done))")
+          {
+            echo "Triggered by: $REASON."
+            echo
+            if [ -n "$missing" ]; then echo "⚠️ No result from these jobs (values left unchanged): $missing"; echo; fi
+            cat report.md
+          } > pr_body.md
+          cat pr_body.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update the re-score pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          # The job checks out the decided commit, not a branch, so the base must be named.
+          base: main
+          branch: leaderboard/rescore
+          commit-message: Re-score leaderboard from published results
+          title: >-
+            ${{ steps.apply.outputs.large_changes != '0' && '⚠️ ' || '' }}Re-score leaderboard
+            (${{ steps.apply.outputs.changed }} changed, ${{ steps.apply.outputs.large_changes }} ≥ ${{ env.THRESHOLD }} pt)
+          body-path: pr_body.md
+          add-paths: |
+            leaderboard.csv
+            leaderboard/results.yaml
+            README.md
+          labels: >-
+            leaderboard-rescore${{ steps.apply.outputs.large_changes != '0' && ',large-score-change' || '' }}
+          delete-branch: true

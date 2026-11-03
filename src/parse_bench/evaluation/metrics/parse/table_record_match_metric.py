@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -132,85 +134,55 @@ def _normalize_trm_table_text(text: str) -> str:
     return _normalize_trm_cell_text(text)
 
 
-def normalize_table(table: TableData) -> TableData:
-    """Normalize all cell text in a table for comparison.
+def _normalize_table_text(table: TableData) -> TableData:
+    normalized = np.empty_like(table.data)
+    for row in range(table.data.shape[0]):
+        for col in range(table.data.shape[1]):
+            normalized[row, col] = _normalize_trm_table_text(str(table.data[row, col]))
+    return replace(
+        table,
+        data=normalized,
+        col_headers={
+            col: [(row, _normalize_trm_table_text(text)) for row, text in entries]
+            for col, entries in table.col_headers.items()
+        },
+        row_headers={
+            row: [(col, _normalize_trm_table_text(text)) for col, text in entries]
+            for row, entries in table.row_headers.items()
+        },
+    )
 
-    Applies normalize_text() + _normalize_trm_cell_text() to every cell in
-    table.data and to col_headers text, producing a new TableData with
-    normalized values throughout. Columns whose data cells AND header
-    entries are all empty strings after normalization are dropped, and
-    remaining column indices are renumbered to stay contiguous.
-    """
+
+def _select_table_columns(table: TableData, columns: Sequence[int]) -> TableData:
+    old_to_new = {old: new for new, old in enumerate(columns)}
+    return replace(
+        table,
+        data=table.data[:, list(columns)],
+        header_cols={old_to_new[col] for col in table.header_cols if col in old_to_new},
+        col_headers={old_to_new[col]: entries for col, entries in table.col_headers.items() if col in old_to_new},
+        row_headers={
+            row: [(old_to_new[col], text) for col, text in entries if col in old_to_new]
+            for row, entries in table.row_headers.items()
+        },
+        header_cells={(row, old_to_new[col]) for row, col in table.header_cells if col in old_to_new},
+        spanned_cells={(row, old_to_new[col]) for row, col in table.spanned_cells if col in old_to_new},
+    )
+
+
+def normalize_table(table: TableData, *, preserve_text: bool = False) -> TableData:
+    """Drop normalized-empty columns, returning normalized or original text."""
     if table.data.size == 0:
         return table
-    n_rows, n_cols = table.data.shape
-    normalized = np.empty_like(table.data)
-    for r in range(n_rows):
-        for c in range(n_cols):
-            normalized[r, c] = _normalize_trm_table_text(str(table.data[r, c]))
-    # Normalize col_headers and row_headers metadata to match data cell normalization
-    normalized_col_headers: dict[int, list[tuple[int, str]]] = {}
-    for col_idx, entries in table.col_headers.items():
-        normalized_col_headers[col_idx] = [(row_idx, _normalize_trm_table_text(text)) for row_idx, text in entries]
-    normalized_row_headers: dict[int, list[tuple[int, str]]] = {}
-    for row_idx, entries in table.row_headers.items():
-        normalized_row_headers[row_idx] = [(col_idx, _normalize_trm_table_text(text)) for col_idx, text in entries]
-
-    # Drop columns whose data cells AND header entries are all literally
-    # empty strings after normalization. Such columns add noise to header
-    # alignment and inflate the union denominator used by _record_similarity
-    # without contributing any signal. Sentinel values like "-" or "n/a"
-    # count as real content and are NOT dropped.
-    #
-    # This runs independently on GT and pred, so the two normalized tables
-    # may end up with *different* column counts when (say) GT has an empty
-    # column 2 but pred has real content there. That's intentional: record
-    # matching is content-driven — ``_record_similarity`` compares columns
-    # via the ``column_mapping`` keyed by header text, not by positional
-    # index, so differing shapes are fine and the unmapped column on the
-    # longer side penalizes the score via ``max(n_gt_cols, n_pred_cols)``.
-    def _col_is_empty(c: int) -> bool:
-        for r in range(n_rows):
-            if str(normalized[r, c]) != "":
-                return False
-        for _row_idx, text in normalized_col_headers.get(c, []):
-            if text != "":
-                return False
-        return True
-
-    keep_cols = [c for c in range(n_cols) if not _col_is_empty(c)]
-    if len(keep_cols) != n_cols:
-        old_to_new = {old: new for new, old in enumerate(keep_cols)}
-        normalized = normalized[:, keep_cols]
-        normalized_col_headers = {
-            old_to_new[c]: normalized_col_headers[c] for c in keep_cols if c in normalized_col_headers
-        }
-        header_cols = {old_to_new[c] for c in table.header_cols if c in old_to_new}
-        header_cells = {(r, old_to_new[c]) for (r, c) in table.header_cells if c in old_to_new}
-        normalized_row_headers = {
-            row_idx: [(old_to_new[c], text) for c, text in entries if c in old_to_new]
-            for row_idx, entries in normalized_row_headers.items()
-        }
-    else:
-        header_cols = table.header_cols
-        header_cells = table.header_cells
-
-    return TableData(
-        data=normalized,
-        header_rows=table.header_rows,
-        header_cols=header_cols,
-        col_headers=normalized_col_headers,
-        row_headers=normalized_row_headers,
-        header_cells=header_cells,
-        thead_rows=table.thead_rows,
-        tbody_rows=table.tbody_rows,
-        tfoot_rows=table.tfoot_rows,
-        column_scope_rows=table.column_scope_rows,
-        row_scope_rows=table.row_scope_rows,
-        caption=table.caption,
-        context_before=table.context_before,
-        context_after=table.context_after,
-    )
+    normalized = _normalize_table_text(table)
+    # Both representations use normalized emptiness, including header text.
+    # Sentinel values such as "-" and "n/a" remain real content.
+    columns = [
+        col
+        for col in range(normalized.data.shape[1])
+        if any(value != "" for value in normalized.data[:, col])
+        or any(text != "" for _, text in normalized.col_headers.get(col, []))
+    ]
+    return _select_table_columns(table if preserve_text else normalized, columns)
 
 
 def cell_score(expected: str, actual: str) -> float:

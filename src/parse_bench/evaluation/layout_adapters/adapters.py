@@ -222,7 +222,9 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
 
     def to_granular_pages(self, inference_result: InferenceResult) -> list[_GranularPage]:
         if isinstance(inference_result.output, ParseOutput):
-            normalized_pages = _build_normalized_granular_pages(inference_result.output.layout_pages)
+            normalized_pages = _build_normalized_granular_pages(
+                layout_pages_in_page_units(inference_result.output.layout_pages)
+            )
             if normalized_pages:
                 return normalized_pages
             if inference_result.output.grounded_pages:
@@ -294,6 +296,72 @@ class WarpIngestLayoutAdapter(LayoutAdapter):
             content=content,
             provider_metadata=provider_metadata,
         )
+
+
+def _page_segments(page: Any) -> list[Any]:
+    segments: list[Any] = []
+    for item in page.items:
+        if item.bbox is not None:
+            segments.append(item.bbox)
+        segments.extend(item.layout_segments)
+        segments.extend(region.bbox for region in item.regions if region.bbox is not None)
+    return segments
+
+
+def _is_fractional_page(page: Any) -> bool:
+    """True when a page's boxes are 0-1 fractions of the page rather than page units.
+
+    ``LayoutSegmentIR`` allows either convention: boxes in the page's own units
+    (``width`` x ``height``) or normalized to [0, 1]. A page that declares a real
+    size but whose every box fits inside the unit square uses fractions.
+    """
+    if not page.width or not page.height or page.width <= 2 or page.height <= 2:
+        return False
+    segments = _page_segments(page)
+    eps = 1e-6
+    return bool(segments) and all(
+        s.x >= -eps and s.y >= -eps and s.x + s.w <= 1 + eps and s.y + s.h <= 1 + eps for s in segments
+    )
+
+
+def layout_pages_in_page_units(layout_pages: list[Any]) -> list[Any]:
+    """Return ``layout_pages`` with fractional boxes scaled to page units.
+
+    Adapters below read boxes in page units, the convention most normalizers
+    use. Pages that store fractions (several providers, and normalizers that
+    canonicalize layout before publishing) would otherwise be read as boxes a
+    few units wide in the page's corner and localize nothing. Item boxes,
+    layout segments, regions and granular text units are scaled together so
+    detection and attribution stay in one coordinate space.
+    """
+    converted = []
+    for page in layout_pages:
+        if not _is_fractional_page(page):
+            converted.append(page)
+            continue
+        sx, sy = float(page.width), float(page.height)
+
+        def scale(seg: Any, sx: float = sx, sy: float = sy) -> Any:
+            if seg is None:
+                return None
+            return seg.model_copy(update={"x": seg.x * sx, "y": seg.y * sy, "w": seg.w * sx, "h": seg.h * sy})
+
+        items = [
+            item.model_copy(
+                update={
+                    "bbox": scale(item.bbox),
+                    "layout_segments": [scale(s) for s in item.layout_segments],
+                    "regions": [r.model_copy(update={"bbox": scale(r.bbox)}) for r in item.regions],
+                }
+            )
+            for item in page.items
+        ]
+        layers = [
+            layer.model_copy(update={"units": [u.model_copy(update={"bbox": scale(u.bbox)}) for u in layer.units]})
+            for layer in page.granular_layers
+        ]
+        converted.append(page.model_copy(update={"items": items, "granular_layers": layers}))
+    return converted
 
 
 def _build_normalized_granular_pages(layout_pages: list[Any]) -> list[_GranularPage]:
@@ -2991,7 +3059,11 @@ def _resolve_llamaparse_pages(
     raw_output = inference_result.raw_output
     if isinstance(raw_output, dict):
         raw_pages = raw_output.get("pages")
-        if isinstance(raw_pages, list):
+        # Only LlamaParse's legacy page payload (pages carrying ``items``). Other
+        # providers also keep a native ``pages`` list in their raw output (Mistral
+        # OCR, Nova, LightOnOCR); reading that as LlamaParse pages yields no boxes,
+        # so those fall through to the normalized ``layout_pages`` below.
+        if isinstance(raw_pages, list) and _looks_like_llamaparse_pages(raw_pages):
             return [page for page in raw_pages if isinstance(page, dict)]
 
         # CLI2 local provider stores items under v2_items instead of pages.
@@ -3020,7 +3092,7 @@ def _resolve_llamaparse_pages(
 
     if isinstance(inference_result.output, ParseOutput):
         if len(inference_result.output.layout_pages) > 0:
-            layout_pages = inference_result.output.layout_pages
+            layout_pages = layout_pages_in_page_units(inference_result.output.layout_pages)
             legacy_pages = layout_pages_to_legacy_pages_payload(layout_pages)
             if include_bbox_segment_fallback:
                 return legacy_pages
@@ -3030,6 +3102,20 @@ def _resolve_llamaparse_pages(
             return _strip_bbox_fallback_segments(legacy_pages, layout_pages)
 
     return []
+
+
+def _looks_like_llamaparse_pages(pages: list[Any]) -> bool:
+    """True for LlamaParse's legacy page payload: pages whose items carry ``bBox``/``layoutAwareBbox``.
+
+    Other providers keep native ``pages`` lists with their own item shape
+    (e.g. ``{"bbox", "label", "text"}``). Pages with no items at all keep the
+    historical behavior of being read as LlamaParse pages.
+    """
+    dict_pages = [page for page in pages if isinstance(page, dict)]
+    items = [item for page in dict_pages for item in (page.get("items") or []) if isinstance(item, dict)]
+    if not items:
+        return bool(dict_pages) and all(isinstance(page.get("items"), list) for page in dict_pages)
+    return any("bBox" in item or "layoutAwareBbox" in item for item in items)
 
 
 def _find_page_payload(
@@ -3935,7 +4021,7 @@ class NutrientDwsLayoutAdapter(LayoutAdapter):
         if not isinstance(out, ParseOutput):
             raise ValueError("NutrientDwsLayoutAdapter requires ParseOutput or LayoutOutput")
 
-        layout_pages = out.layout_pages
+        layout_pages = layout_pages_in_page_units(out.layout_pages)
         if not layout_pages:
             raise ValueError("NutrientDwsLayoutAdapter requires non-empty layout_pages")
 

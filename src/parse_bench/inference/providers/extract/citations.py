@@ -193,7 +193,9 @@ def _normalize_citation(
     if not citation_map:
         return []
 
-    page = _extract_page(citation_map) or default_page or 1
+    page = _extract_page(citation_map)
+    if page is None:
+        page = default_page
     dimensions = _extract_dimensions(citation_map) or default_dimensions
     polygon = _extract_polygon(citation_map)
     reference_text = _extract_reference_text(citation_map)
