@@ -379,6 +379,9 @@ rows:
 - provider: X2Knowledge
   status: unverified
   note: no published outputs in the results repo
+- provider: X2Knowledge-Fast
+  status: unverified
+  note: no published outputs in the results repo
 - provider: Mistral OCR 4 (Annotation)
   status: unverified
   pipeline: mistral_ocr_4_annotation
