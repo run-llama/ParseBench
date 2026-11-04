@@ -339,6 +339,34 @@ def test_missing_api_key_is_a_config_error(monkeypatch: pytest.MonkeyPatch) -> N
         X2KnowledgeProvider("x2knowledge", {})
 
 
+def test_api_key_env_does_not_fall_back_to_the_default_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("X2KNOWLEDGE_FAST_API_KEY", raising=False)  # X2KNOWLEDGE_API_KEY stays set
+    monkeypatch.setenv("X2KNOWLEDGE_BASE_URL", "https://api.example.test/v1")
+    with pytest.raises(ProviderConfigError, match=r"Set X2KNOWLEDGE_FAST_API_KEY\.$"):
+        X2KnowledgeProvider("x2knowledge", {"api_key_env": "X2KNOWLEDGE_FAST_API_KEY"})
+
+
+def test_fast_pipeline_sends_the_key_from_its_own_variable(
+    x2knowledge_api: MockX2KnowledgeAPI, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("X2KNOWLEDGE_FAST_API_KEY", "fast-key")
+    provider = _provider(monkeypatch, x2knowledge_api, "ok", **get_pipeline("x2knowledge_fast_v1").config)
+    _run(provider, _file(tmp_path, "page.png", _PNG))
+
+    [request] = x2knowledge_api.requests
+    assert request.headers["authorization"] == "Bearer fast-key"
+    assert request.body["model"] == "x2knowledge-parse-v1"
+
+
+def test_rejected_key_names_the_variable_it_came_from(
+    x2knowledge_api: MockX2KnowledgeAPI, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("X2KNOWLEDGE_FAST_API_KEY", "fast-key")
+    provider = _provider(monkeypatch, x2knowledge_api, "e401", api_key_env="X2KNOWLEDGE_FAST_API_KEY")
+    with pytest.raises(ProviderConfigError, match="check X2KNOWLEDGE_FAST_API_KEY, X2KNOWLEDGE_BASE_URL"):
+        _run(provider, _file(tmp_path, "page.png", _PNG))
+
+
 @pytest.mark.parametrize(
     "base_url",
     [
@@ -365,7 +393,7 @@ def test_without_a_base_url_the_public_entry_is_used(monkeypatch: pytest.MonkeyP
     else:
         monkeypatch.setenv("X2KNOWLEDGE_BASE_URL", "")
     provider = X2KnowledgeProvider("x2knowledge", {})
-    assert provider._base_url == "https://103.118.252.103/v1"
+    assert provider._base_url == "https://38.246.236.105/v1"
 
 
 def test_pipeline_base_url_wins_over_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -465,7 +493,7 @@ def test_requests_use_tcp_keepalive(
         ({}, None),
         ({"HTTPS_PROXY": "http://proxy.example.test:3128"}, "http://proxy.example.test:3128"),
         ({"ALL_PROXY": "proxy.example.test:3128"}, "http://proxy.example.test:3128"),
-        ({"HTTPS_PROXY": "http://proxy.example.test:3128", "NO_PROXY": "localhost, 103.118.252.103"}, None),
+        ({"HTTPS_PROXY": "http://proxy.example.test:3128", "NO_PROXY": "localhost, 38.246.236.105"}, None),
         ({"HTTPS_PROXY": "http://proxy.example.test:3128", "NO_PROXY": "*"}, None),
     ],
     ids=["none", "https", "all-without-scheme", "no-proxy-host", "no-proxy-star"],
@@ -481,7 +509,7 @@ def test_proxy_from_the_environment_still_applies(
         monkeypatch.delenv(name, raising=False)
     for name, value in environment.items():
         monkeypatch.setenv(name, value)
-    assert x2knowledge_module._environment_proxy("https://103.118.252.103/v1/chat/completions") == proxy
+    assert x2knowledge_module._environment_proxy("https://38.246.236.105/v1/chat/completions") == proxy
 
 
 def test_single_page_pdf_is_sent_unchanged(

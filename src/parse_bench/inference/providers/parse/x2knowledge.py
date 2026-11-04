@@ -36,8 +36,9 @@ and, for tables, an optional ``html`` that is used when present.
   missing price never shows up as a zero cost; ``recompute_cost`` re-prices saved runs.
 
 Config: ``base_url`` (else ``X2KNOWLEDGE_BASE_URL``, else the public API root
-``https://103.118.252.103/v1``), ``model``, ``timeout_s``, ``page_workers``,
-``price_per_page_usd``. API key: ``X2KNOWLEDGE_API_KEY`` (sign up at ``https://103.118.252.103/register``).
+``https://38.246.236.105/v1``), ``model``, ``timeout_s``, ``page_workers``,
+``price_per_page_usd``, ``api_key_env``. The API key is read from the environment variable that
+``api_key_env`` names: ``X2KNOWLEDGE_API_KEY`` by default, ``X2KNOWLEDGE_FAST_API_KEY`` for ``x2knowledge_fast_v1``.
 Needs ``httpx`` and ``pypdf`` (the ``runners`` extra, or ``local`` plus ``anyformat``).
 Recommended ``--max_concurrent``: **30**.
 """
@@ -85,8 +86,10 @@ from parse_bench.schemas.pipeline_io import (
 from parse_bench.schemas.product import ProductType
 
 # The public API root; the pipeline's ``base_url`` or X2KNOWLEDGE_BASE_URL override it.
-_DEFAULT_BASE_URL = "https://103.118.252.103/v1"
+_DEFAULT_BASE_URL = "https://38.246.236.105/v1"
 _DEFAULT_MODEL = "x2knowledge-parse-v1"
+# The environment variable that holds the API key; a pipeline's ``api_key_env`` names another one.
+_DEFAULT_API_KEY_ENV = "X2KNOWLEDGE_API_KEY"
 _DEFAULT_TIMEOUT_S = 1860.0
 _DEFAULT_PAGE_WORKERS = 4
 _MAX_PAGE_WORKERS = 8
@@ -145,7 +148,7 @@ def _validated_base_url(value: Any) -> str:
     if not valid:
         raise ProviderConfigError(
             "Set X2KNOWLEDGE_BASE_URL (or the pipeline's base_url) to the API root, "
-            "e.g. https://103.118.252.103/v1: an http(s) URL with a host and no credentials, query or fragment."
+            "e.g. https://38.246.236.105/v1: an http(s) URL with a host and no credentials, query or fragment."
         )
     return url
 
@@ -259,7 +262,7 @@ def _error_detail(response: Any) -> str:
     return ", ".join(detail)
 
 
-def _raise_for_status(response: Any) -> NoReturn:
+def _raise_for_status(response: Any, api_key_env: str = _DEFAULT_API_KEY_ENV) -> NoReturn:
     """Map a non-200 reply onto the error taxonomy the runner retries on."""
     status = response.status_code
     detail = _error_detail(response)
@@ -275,8 +278,7 @@ def _raise_for_status(response: Any) -> NoReturn:
         )
     if status in (401, 404):
         raise ProviderConfigError(
-            f"X2Knowledge rejected the request ({detail}); "
-            "check X2KNOWLEDGE_API_KEY, X2KNOWLEDGE_BASE_URL and the model"
+            f"X2Knowledge rejected the request ({detail}); check {api_key_env}, X2KNOWLEDGE_BASE_URL and the model"
         )
     if status >= 400:
         raise ProviderPermanentError(f"X2Knowledge rejected the page ({detail})")
@@ -379,9 +381,10 @@ class X2KnowledgeProvider(Provider):
         except ImportError as e:
             raise ProviderConfigError(f"X2Knowledge needs {e.name}: {_INSTALL_HINT}") from e
 
-        self._api_key = os.environ.get("X2KNOWLEDGE_API_KEY", "").strip()
+        self._api_key_env = str(self.base_config.get("api_key_env") or _DEFAULT_API_KEY_ENV)
+        self._api_key = os.environ.get(self._api_key_env, "").strip()
         if not self._api_key:
-            raise ProviderConfigError("X2Knowledge API key is required. Set X2KNOWLEDGE_API_KEY.")
+            raise ProviderConfigError(f"X2Knowledge API key is required. Set {self._api_key_env}.")
         self._base_url = _validated_base_url(
             self.base_config.get("base_url") or os.environ.get("X2KNOWLEDGE_BASE_URL") or _DEFAULT_BASE_URL
         )
@@ -428,7 +431,7 @@ class X2KnowledgeProvider(Provider):
             raise ProviderConfigError("X2Knowledge base URL is not a valid URL; check X2KNOWLEDGE_BASE_URL") from e
 
         if response.status_code != 200:
-            _raise_for_status(response)
+            _raise_for_status(response, self._api_key_env)
         try:
             content = response.json()["choices"][0]["message"]["content"]
             if not isinstance(content, str):

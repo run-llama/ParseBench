@@ -3157,3 +3157,19 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             per_file_timeout=3600.0,
         )
     )
+    # X2Knowledge-Fast: the same API, model and settings, with the key issued for the Fast entry.
+    register_fn(
+        PipelineSpec(
+            pipeline_name="x2knowledge_fast_v1",
+            provider_name="x2knowledge",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "x2knowledge-parse-v1",
+                "timeout_s": 1860,
+                "page_workers": 4,
+                "price_per_page_usd": 0.0,
+                "api_key_env": "X2KNOWLEDGE_FAST_API_KEY",
+            },
+            per_file_timeout=3600.0,
+        )
+    )

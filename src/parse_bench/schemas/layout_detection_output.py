@@ -404,7 +404,7 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     },
     LayoutDetectionModel.X2KNOWLEDGE_LAYOUT: {
         "name": "X2Knowledge",
-        "hf_url": "https://103.118.252.103/",
+        "hf_url": "https://38.246.236.105/",
     },
     LayoutDetectionModel.CHECKBOX_DETECTOR_YOLOV8: {
         "name": "YOLOv8 Checkbox Detector (mark-scope)",
