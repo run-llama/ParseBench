@@ -530,7 +530,7 @@ def parse_gt_elements(test_rules: list[dict]) -> list[GTElement]:
                 text=raw_text,
                 normalized_text=normalized,
                 tokens=tokens,
-                ro_index=rule.get("ro_index", 0),
+                ro_index=rule.get("ro_index") or 0,
                 content_type=content_type,
                 html=html,
             )

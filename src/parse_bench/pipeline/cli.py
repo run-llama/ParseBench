@@ -60,6 +60,7 @@ class PipelineCLI:
         open_report: bool = True,
         skip_inference: bool = False,
         test: bool = False,
+        dataset: str = "parsebench",
     ) -> int:
         """
         Run the full benchmark pipeline: inference -> evaluation -> report -> open browser.
@@ -79,11 +80,13 @@ class PipelineCLI:
             open_report: Open the HTML report in browser when done (default: True)
             skip_inference: Skip inference step, only run evaluation and report (default: False)
             test: Download and run on the small test dataset (3 files per category)
+            dataset: Which dataset: 'parsebench' (default) or a HuggingFace repo id (org/name) in the same layout
 
         Returns:
             Exit code (0 for success, non-zero for failure)
 
         Example:
+            parse-bench run llamaparse_agentic --dataset acme/MyBench
             parse-bench run llamaparse_agentic
             parse-bench run llamaparse_agentic_plus --max_concurrent 10
             parse-bench run llamaparse_agentic --skip_inference
@@ -112,18 +115,18 @@ class PipelineCLI:
             # silently scribble HuggingFace files into the user's directory.
             input_dir_explicit = input_dir is not None
             if input_dir is None:
-                input_dir = default_data_dir(test=test)
+                input_dir = default_data_dir(test=test, dataset=dataset)
 
             input_path = Path(input_dir)
             output_base = Path(output_dir) if output_dir else Path("./output")
             pipeline_output_dir = output_base / pipeline
 
             # Auto-download dataset only when using the default location.
-            if not input_dir_explicit and not is_dataset_ready(input_path):
+            if not input_dir_explicit and not is_dataset_ready(input_path, dataset):
                 label = "test dataset" if test else "dataset"
                 print(f"{label.capitalize()} not found at {input_path}, downloading from HuggingFace...")
                 try:
-                    download_dataset(data_dir=input_path, test=test)
+                    download_dataset(data_dir=input_path, test=test, dataset=dataset)
                 except Exception as e:
                     print(f"Error downloading dataset: {e}", file=sys.stderr)
                     return 1

@@ -17,6 +17,7 @@ from parse_bench.schemas.layout_detection_output import (
     LayoutTableContent,
     LayoutTextContent,
 )
+from parse_bench.schemas.layout_ontology import CanonicalLabel
 from parse_bench.schemas.parse_output import LayoutItemIR, LayoutSegmentIR, ParseLayoutPageIR
 
 logger = logging.getLogger(__name__)
@@ -232,10 +233,7 @@ def _extract_page_predictions(
             if not isinstance(label, str):
                 continue
 
-            map_llamaparse_raw_label_to_canonical(
-                label,
-                label_version=label_version,
-            )
+            _canonical_label(label, label_version=label_version)
 
             if _should_skip_duplicate_checkbox_prediction(
                 item_type=item_type,
@@ -331,15 +329,25 @@ def _checkbox_key(raw_label: str, bbox_data: dict[str, Any]) -> tuple[str, float
     )
 
 
+def _canonical_label(label: str, *, label_version: str) -> CanonicalLabel:
+    """Accept normalized labels while retaining strict raw-label validation.
+
+    Stored ParseOutput layouts can be adapted back to the legacy page format.
+    Their canonical labels must not be interpreted as raw LlamaParse labels.
+    """
+    try:
+        return CanonicalLabel(label)
+    except ValueError:
+        canonical, _ = map_llamaparse_raw_label_to_canonical(label, label_version=label_version)
+        return canonical
+
+
 def _prediction_to_layout_item(
     prediction: LayoutPrediction,
     *,
     label_version: str,
 ) -> LayoutItemIR:
-    canonical_label, _ = map_llamaparse_raw_label_to_canonical(
-        prediction.label,
-        label_version=label_version,
-    )
+    canonical_label = _canonical_label(prediction.label, label_version=label_version)
     x1, y1, x2, y2 = prediction.bbox
     segment = LayoutSegmentIR(
         x=x1,

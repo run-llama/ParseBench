@@ -641,6 +641,32 @@ class ParseWatermarkRemovalRule(ParseRuleBase):
         return self
 
 
+class ParseRepetitionOvershootRule(ParseRuleBase):
+    """The output repeats nothing more than the page holds.
+
+    Budgets come from the page: ``reference_text`` for units and lines, ``page_fill_runs`` (the length in characters
+    of every leader, rule or blank on the page, including those a symbol font writes as another character) for fill.
+    A page with no text layer sets ``reference_text`` empty and ``skip_units_absent_from_reference`` false: every
+    unit then has a budget of zero copies plus the slack.
+    """
+
+    type: Literal[TestType.REPETITION_OVERSHOOT.value]
+    reference_text: str = ""
+    page_fill_runs: list[int] = Field(default_factory=list)
+    page_lines: int = Field(default=0, ge=0, description="Non-empty text lines on the page")
+    factor: float = Field(default=2.0, ge=1.0)
+    unit_slack: int = Field(default=20, ge=0)
+    line_slack: int = Field(default=40, ge=0)
+    fill_slack: int = Field(default=40, ge=0)
+    line_cap: int = Field(default=250, ge=0, description="Fill characters one line of the page can hold")
+    max_chars: int | None = Field(default=None, ge=1, description="Optional cap on alphanumeric output characters")
+    skip_units_absent_from_reference: bool = Field(
+        default=True,
+        description="Text-layer pages: a unit the text layer lacks (chart values, images) is not budgeted. False when"
+        " reference_text is exact (generated pages) or empty (a scan that repeats nothing)",
+    )
+
+
 class ParseDiagramGraphRule(ParseRuleBase):
     """One diagram the parser must render as a mermaid block whose *graph* matches ``graph``.
 
@@ -813,6 +839,7 @@ type ParseRule = (
     | ParseDiagramEdgeRule
     | ParseDiagramCountRule
     | ParsePageDecorationRule
+    | ParseRepetitionOvershootRule
 )
 
 # Any registered rule model (built-in or extension) or its raw dict payload.
@@ -892,6 +919,7 @@ _RULE_TYPE_TO_MODEL: dict[str, type[ParseRuleBase]] = {
     TestType.BAG_OF_DIGIT_PERCENT.value: ParseBagOfDigitPercentRule,
     TestType.ROTATE_CHECK.value: ParseRotateCheckRule,
     TestType.WATERMARK_REMOVAL.value: ParseWatermarkRemovalRule,
+    TestType.REPETITION_OVERSHOOT.value: ParseRepetitionOvershootRule,
     TestType.DIAGRAM_GRAPH.value: ParseDiagramGraphRule,
     TestType.DIAGRAM_EDGE.value: ParseDiagramEdgeRule,
     TestType.DIAGRAM_COUNT.value: ParseDiagramCountRule,
@@ -1014,19 +1042,25 @@ def rule_to_dict(rule: ParseRuleInput | Any) -> dict[str, Any]:
     raise TypeError(f"Expected ParseRule or dict, got {type(rule)!r}")
 
 
-def register_parse_rule_model(rule_type: str, model: type[ParseRuleBase]) -> None:
+def register_parse_rule_model(
+    rule_type: str, model: type[ParseRuleBase], *, _DANGEROUSLY_OVERRIDE: bool = False
+) -> None:
     """Register the pydantic schema for an additional rule ``type``.
 
     Extensions pair this with ``rules_base.register_rule_class`` (or call
-    ``parse_bench.extensions.register_rule_type`` which does both). Built-in
-    rule types cannot be replaced.
+    ``parse_bench.extensions.register_rule_type`` which does both).
     """
     if not isinstance(rule_type, str) or not rule_type:
         raise ValueError("rule_type must be a non-empty string")
     if not (isinstance(model, type) and issubclass(model, ParseRuleBase)):
         raise TypeError("model must subclass ParseRuleBase")
     existing = _RULE_TYPE_TO_MODEL.get(rule_type)
-    if existing is not None and existing is not model and rule_type in _BUILTIN_RULE_TYPES:
+    if (
+        existing is not None
+        and existing is not model
+        and rule_type in _BUILTIN_RULE_TYPES
+        and not _DANGEROUSLY_OVERRIDE
+    ):
         raise ValueError(f"{rule_type!r} is a built-in rule type and cannot be replaced")
     _RULE_TYPE_TO_MODEL[rule_type] = model
 

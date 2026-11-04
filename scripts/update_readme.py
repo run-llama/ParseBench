@@ -42,7 +42,7 @@ def build_table(rows: list[dict]) -> str:
             + " | ".join(
                 [
                     str(i),
-                    r["Provider"],
+                    r["Provider"] + (" †" if r.get("Verified") == "no" else ""),
                     r["Category"],
                     fmt_score(r["Overall"]),
                     fmt_score(r["Tables"]),
@@ -63,6 +63,11 @@ def main() -> None:
         rows = [r for r in csv.DictReader(f) if r.get("Provider")]
 
     table = build_table(rows)
+    if any(r.get("Verified") == "no" for r in sorted(rows, key=lambda r: float(r["Overall"]), reverse=True)[:TOP_N]):
+        table += (
+            "\n\n† Unverified: no published outputs in "
+            "[ParseBench-results](https://huggingface.co/datasets/llamaindex/ParseBench-results); scores as submitted."
+        )
     block = (
         f"{START_MARKER}\n"
         f"_Top {TOP_N} by Overall score. For the full sortable, filterable leaderboard, "

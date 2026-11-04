@@ -71,7 +71,7 @@ def _raw_output_page_field_is_list(raw_output: Any, field: str) -> bool:
     representation, so once create_layout_adapter_for_result's shape-matcher
     fallback is running (registry.py), the type alone cannot tell them apart.
     The raw payload still can: kdl_frontier_nano (and its florin_parser_nano /
-    rakedoc_nano forks) emit `{"pages": [{"elements": [...]}]}`, distinct from
+    rakedoc_nano / aeddix_alpine_ocr_kdl forks) emit `{"pages": [{"elements": [...]}]}`, distinct from
     LlamaParse's `{"pages": [{"items": [...]}]}`.
     """
     if not isinstance(raw_output, dict):
@@ -222,7 +222,9 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
 
     def to_granular_pages(self, inference_result: InferenceResult) -> list[_GranularPage]:
         if isinstance(inference_result.output, ParseOutput):
-            normalized_pages = _build_normalized_granular_pages(inference_result.output.layout_pages)
+            normalized_pages = _build_normalized_granular_pages(
+                layout_pages_in_page_units(inference_result.output.layout_pages)
+            )
             if normalized_pages:
                 return normalized_pages
             if inference_result.output.grounded_pages:
@@ -294,6 +296,72 @@ class WarpIngestLayoutAdapter(LayoutAdapter):
             content=content,
             provider_metadata=provider_metadata,
         )
+
+
+def _page_segments(page: Any) -> list[Any]:
+    segments: list[Any] = []
+    for item in page.items:
+        if item.bbox is not None:
+            segments.append(item.bbox)
+        segments.extend(item.layout_segments)
+        segments.extend(region.bbox for region in item.regions if region.bbox is not None)
+    return segments
+
+
+def _is_fractional_page(page: Any) -> bool:
+    """True when a page's boxes are 0-1 fractions of the page rather than page units.
+
+    ``LayoutSegmentIR`` allows either convention: boxes in the page's own units
+    (``width`` x ``height``) or normalized to [0, 1]. A page that declares a real
+    size but whose every box fits inside the unit square uses fractions.
+    """
+    if not page.width or not page.height or page.width <= 2 or page.height <= 2:
+        return False
+    segments = _page_segments(page)
+    eps = 1e-6
+    return bool(segments) and all(
+        s.x >= -eps and s.y >= -eps and s.x + s.w <= 1 + eps and s.y + s.h <= 1 + eps for s in segments
+    )
+
+
+def layout_pages_in_page_units(layout_pages: list[Any]) -> list[Any]:
+    """Return ``layout_pages`` with fractional boxes scaled to page units.
+
+    Adapters below read boxes in page units, the convention most normalizers
+    use. Pages that store fractions (several providers, and normalizers that
+    canonicalize layout before publishing) would otherwise be read as boxes a
+    few units wide in the page's corner and localize nothing. Item boxes,
+    layout segments, regions and granular text units are scaled together so
+    detection and attribution stay in one coordinate space.
+    """
+    converted = []
+    for page in layout_pages:
+        if not _is_fractional_page(page):
+            converted.append(page)
+            continue
+        sx, sy = float(page.width), float(page.height)
+
+        def scale(seg: Any, sx: float = sx, sy: float = sy) -> Any:
+            if seg is None:
+                return None
+            return seg.model_copy(update={"x": seg.x * sx, "y": seg.y * sy, "w": seg.w * sx, "h": seg.h * sy})
+
+        items = [
+            item.model_copy(
+                update={
+                    "bbox": scale(item.bbox),
+                    "layout_segments": [scale(s) for s in item.layout_segments],
+                    "regions": [r.model_copy(update={"bbox": scale(r.bbox)}) for r in item.regions],
+                }
+            )
+            for item in page.items
+        ]
+        layers = [
+            layer.model_copy(update={"units": [u.model_copy(update={"bbox": scale(u.bbox)}) for u in layer.units]})
+            for layer in page.granular_layers
+        ]
+        converted.append(page.model_copy(update={"items": items, "granular_layers": layers}))
+    return converted
 
 
 def _build_normalized_granular_pages(layout_pages: list[Any]) -> list[_GranularPage]:
@@ -1446,6 +1514,72 @@ class DeepSeekLayoutAdapter(LayoutAdapter):
         )
 
 
+@register_layout_adapter("nemotron_parse_3_5", priority=90)
+class NemotronParse35LayoutAdapter(HunyuanOcrLayoutAdapter):
+    """Project Nemotron 3.5 Parse ``layout_pages`` like HunyuanOCR: Canonical17 labels kept as strings.
+
+    Resolved by provider key only. Without it, attribution falls back to the
+    LlamaParse adapter, which rejects the model's labels.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        return False
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        layout_output = super().to_layout_output(inference_result, page_filter=page_filter)
+        return layout_output.model_copy(update={"model": LayoutDetectionModel.NEMOTRON_PARSE_LAYOUT})
+
+
+@register_layout_adapter("unlimitedocr2", priority=90)
+class UnlimitedOcr2LayoutAdapter(HunyuanOcrLayoutAdapter):
+    """Project Unlimited-OCR 2 ``layout_pages`` like HunyuanOCR: Canonical17 labels kept as strings.
+
+    Resolved by provider key only. Without it, attribution falls back to the
+    LlamaParse adapter, which reads the normalized boxes as pixels.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        return False
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        layout_output = super().to_layout_output(inference_result, page_filter=page_filter)
+        return layout_output.model_copy(update={"model": LayoutDetectionModel.UNLIMITED_OCR_2_LAYOUT})
+
+
+@register_layout_adapter("ovisocr3", priority=90)
+class OvisOcr3LayoutAdapter(HunyuanOcrLayoutAdapter):
+    """Project OvisOCR3 ``layout_pages`` like HunyuanOCR: Canonical17 labels kept as strings.
+
+    Resolved by provider key only. Without it, attribution falls back to the
+    LlamaParse adapter, which reads the normalized boxes as pixels.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        return False
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        layout_output = super().to_layout_output(inference_result, page_filter=page_filter)
+        return layout_output.model_copy(update={"model": LayoutDetectionModel.OVISOCR3_LAYOUT})
+
+
 @register_layout_adapter("openai", priority=90)
 class OpenAILayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from OpenAI ParseOutput.layout_pages.
@@ -1854,7 +1988,9 @@ class DatabricksAiParseLayoutAdapter(LayoutAdapter):
                     x2 = (seg.x + seg.w) * page_w
                     y2 = (seg.y + seg.h) * page_h
 
-                    content = _build_vendor_content(label, item.value)
+                    content = (
+                        LayoutTableContent(html=item.html) if item.html else _build_vendor_content(label, item.value)
+                    )
 
                     predictions.append(
                         LayoutPrediction(
@@ -2890,7 +3026,11 @@ def _resolve_llamaparse_pages(
     raw_output = inference_result.raw_output
     if isinstance(raw_output, dict):
         raw_pages = raw_output.get("pages")
-        if isinstance(raw_pages, list):
+        # Only LlamaParse's legacy page payload (pages carrying ``items``). Other
+        # providers also keep a native ``pages`` list in their raw output (Mistral
+        # OCR, Nova, LightOnOCR); reading that as LlamaParse pages yields no boxes,
+        # so those fall through to the normalized ``layout_pages`` below.
+        if isinstance(raw_pages, list) and _looks_like_llamaparse_pages(raw_pages):
             return [page for page in raw_pages if isinstance(page, dict)]
 
         # CLI2 local provider stores items under v2_items instead of pages.
@@ -2919,7 +3059,7 @@ def _resolve_llamaparse_pages(
 
     if isinstance(inference_result.output, ParseOutput):
         if len(inference_result.output.layout_pages) > 0:
-            layout_pages = inference_result.output.layout_pages
+            layout_pages = layout_pages_in_page_units(inference_result.output.layout_pages)
             legacy_pages = layout_pages_to_legacy_pages_payload(layout_pages)
             if include_bbox_segment_fallback:
                 return legacy_pages
@@ -2929,6 +3069,20 @@ def _resolve_llamaparse_pages(
             return _strip_bbox_fallback_segments(legacy_pages, layout_pages)
 
     return []
+
+
+def _looks_like_llamaparse_pages(pages: list[Any]) -> bool:
+    """True for LlamaParse's legacy page payload: pages whose items carry ``bBox``/``layoutAwareBbox``.
+
+    Other providers keep native ``pages`` lists with their own item shape
+    (e.g. ``{"bbox", "label", "text"}``). Pages with no items at all keep the
+    historical behavior of being read as LlamaParse pages.
+    """
+    dict_pages = [page for page in pages if isinstance(page, dict)]
+    items = [item for page in dict_pages for item in (page.get("items") or []) if isinstance(item, dict)]
+    if not items:
+        return bool(dict_pages) and all(isinstance(page.get("items"), list) for page in dict_pages)
+    return any("bBox" in item or "layoutAwareBbox" in item for item in items)
 
 
 def _find_page_payload(
@@ -3037,7 +3191,7 @@ class DatalabLayoutAdapter(LayoutAdapter):
         )
 
 
-@register_layout_adapter("qwen3_5", "qwen3_8", priority=90)
+@register_layout_adapter("qwen3_5", "qwen3_8", "lightonocr-3", priority=90)
 class QwenLayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from Qwen ParseOutput.layout_pages.
 
@@ -3233,7 +3387,9 @@ _NANO_LAYOUT_LABEL_TO_CANONICAL = {
 }
 
 
-@register_layout_adapter("kdl_frontier_nano", "florin_parser_nano", "rakedoc_nano", priority=90)
+@register_layout_adapter(
+    "kdl_frontier_nano", "florin_parser_nano", "rakedoc_nano", "aeddix_alpine_ocr_kdl", priority=90
+)
 class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
     """Extract LayoutOutput from the kdl_frontier_nano provider's
     ParseOutput.layout_pages.
@@ -3687,6 +3843,33 @@ class HpdParsingLayoutAdapter(LiteParseLayoutAdapter):
         return layout_output.model_copy(update={"model": LayoutDetectionModel.HPD_PARSING_LAYOUT})
 
 
+@register_layout_adapter("minicpm_ocr", priority=90)
+class MiniCPMOCRLayoutAdapter(LiteParseLayoutAdapter):
+    """Convert MiniCPM-OCR's normalized ``layout_pages`` (PP-DocLayoutV3 regions) to layout output."""
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput) or not inference_result.output.layout_pages:
+            return False
+        page_results = inference_result.raw_output.get("page_results")
+        return (
+            isinstance(page_results, list)
+            and bool(page_results)
+            and isinstance(page_results[0], dict)
+            and "blocks" in page_results[0]
+            and "page_index" in page_results[0]
+        )
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        layout_output = super().to_layout_output(inference_result, page_filter=page_filter)
+        return layout_output.model_copy(update={"model": LayoutDetectionModel.MINICPM_OCR_LAYOUT})
+
+
 @register_layout_adapter("teleocr", priority=90)
 class TeleOCRLayoutAdapter(LayoutAdapter):
     """Project normalized segments into each page's physical coordinate frame."""
@@ -3805,7 +3988,7 @@ class NutrientDwsLayoutAdapter(LayoutAdapter):
         if not isinstance(out, ParseOutput):
             raise ValueError("NutrientDwsLayoutAdapter requires ParseOutput or LayoutOutput")
 
-        layout_pages = out.layout_pages
+        layout_pages = layout_pages_in_page_units(out.layout_pages)
         if not layout_pages:
             raise ValueError("NutrientDwsLayoutAdapter requires non-empty layout_pages")
 
@@ -3855,6 +4038,70 @@ class NutrientDwsLayoutAdapter(LayoutAdapter):
             image_height=out_h,
             predictions=predictions,
             markdown="\n\n".join(markdown_parts),
+        )
+
+
+@register_layout_adapter("upstage", priority=90)
+class UpstageLayoutAdapter(LayoutAdapter):
+    """Convert Upstage's normalized element coordinates to layout predictions."""
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        return isinstance(inference_result.output, ParseOutput) and inference_result.pipeline_name.startswith(
+            "upstage_"
+        )
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            if page_filter is None:
+                return inference_result.output
+            predictions = [p for p in inference_result.output.predictions if p.page == page_filter]
+            return inference_result.output.model_copy(update={"predictions": predictions})
+
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("UpstageLayoutAdapter requires ParseOutput or LayoutOutput")
+
+        predictions: list[LayoutPrediction] = []
+        for page in inference_result.output.layout_pages:
+            if page_filter is not None and page.page_number != page_filter:
+                continue
+            for item in page.items:
+                for segment in item.layout_segments:
+                    content = (
+                        LayoutTableContent(html=item.html)
+                        if item.type == "table"
+                        else LayoutTextContent(text=item.value)
+                    )
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[
+                                segment.x * page.width,
+                                segment.y * page.height,
+                                (segment.x + segment.w) * page.width,
+                                (segment.y + segment.h) * page.height,
+                            ],
+                            score=float(segment.confidence or 1.0),
+                            label=segment.label or item.type,
+                            page=page.page_number,
+                            content=content,
+                            provider_metadata={"order_index": len(predictions)},
+                        )
+                    )
+
+        first_page = inference_result.output.layout_pages[0] if inference_result.output.layout_pages else None
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.UPSTAGE_LAYOUT,
+            image_width=max(int(first_page.width if first_page else 1), 1),
+            image_height=max(int(first_page.height if first_page else 1), 1),
+            predictions=predictions,
         )
 
 

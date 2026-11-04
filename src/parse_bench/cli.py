@@ -9,6 +9,7 @@ from dotenv import find_dotenv, load_dotenv
 from parse_bench import __version__
 from parse_bench.analysis.cli import AnalysisCLI
 from parse_bench.data.cli import DataCLI
+from parse_bench.data.repetition import RepetitionCLI
 from parse_bench.evaluation.cli import EvaluationCLI
 from parse_bench.inference.cli import InferenceCLI
 from parse_bench.pipeline.cli import PipelineCLI
@@ -56,6 +57,7 @@ class BenchCLI:
         analysis     Generate reports, dashboards, comparisons
         pipeline     End-to-end pipeline (same as 'run')
         data         Dataset management (same as 'download'/'status')
+        repetition   Repetition tests for your own PDFs ('parse-bench repetition make <dir>')
     """
 
     def __init__(self) -> None:
@@ -64,6 +66,7 @@ class BenchCLI:
         self.analysis = AnalysisCLI()
         self.pipeline = PipelineCLI()
         self.data = DataCLI()
+        self.repetition = RepetitionCLI()
 
     # ── Top-level convenience commands ──────────────────────────────
 
@@ -85,6 +88,7 @@ class BenchCLI:
         open_report: bool = True,
         skip_inference: bool = False,
         test: bool = False,
+        dataset: str = "parsebench",
     ) -> int:
         """Run end-to-end benchmark: inference -> evaluation -> report.
 
@@ -101,9 +105,11 @@ class BenchCLI:
             open_report: Open HTML report in browser (default: True)
             skip_inference: Skip inference, only re-evaluate (default: False)
             test: Download and run on the small test dataset (3 files per category)
+            dataset: Which dataset: 'parsebench' (default) or a HuggingFace repo id (org/name) in the same layout
 
         Example:
             parse-bench run llamaparse_agentic
+            parse-bench run llamaparse_agentic --dataset acme/MyBench
             parse-bench run llamaparse_agentic --group chart
             parse-bench run llamaparse_agentic --skip_inference
             parse-bench run llamaparse_agentic --test
@@ -121,6 +127,7 @@ class BenchCLI:
             open_report=open_report,
             skip_inference=skip_inference,
             test=test,
+            dataset=dataset,
         )
 
     def download(
@@ -128,6 +135,7 @@ class BenchCLI:
         data_dir: str | Path | None = None,
         force: bool = False,
         test: bool = False,
+        dataset: str = "parsebench",
     ) -> int:
         """Download the benchmark dataset from HuggingFace.
 
@@ -135,17 +143,20 @@ class BenchCLI:
             data_dir: Directory to store dataset (default: ./data)
             force: Force re-download even if data exists
             test: Download the small test dataset (3 files per category)
+            dataset: Which dataset: 'parsebench' (default) or a HuggingFace repo id (org/name) in the same layout
 
         Example:
             parse-bench download
             parse-bench download --test
+            parse-bench download --dataset acme/MyBench
         """
-        return self.data.download(data_dir=data_dir, force=force, test=test)
+        return self.data.download(data_dir=data_dir, force=force, test=test, dataset=dataset)
 
     def status(
         self,
         data_dir: str | Path | None = None,
         test: bool = False,
+        dataset: str = "parsebench",
     ) -> int:
         """Check if the benchmark dataset is downloaded and ready.
 
@@ -153,13 +164,15 @@ class BenchCLI:
             data_dir: Data directory to check
                 (default: ./data, or ./data/test when --test is set)
             test: Check the small test dataset instead of the full dataset
+            dataset: Which dataset: 'parsebench' (default) or a HuggingFace repo id (org/name) in the same layout
 
         Example:
             parse-bench status
             parse-bench status --test
+            parse-bench status --dataset acme/MyBench
             parse-bench status data/
         """
-        return self.data.status(data_dir=data_dir, test=test)
+        return self.data.status(data_dir=data_dir, test=test, dataset=dataset)
 
     def pipelines(self) -> None:
         """List all available pipeline configurations."""

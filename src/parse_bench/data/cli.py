@@ -14,6 +14,7 @@ class DataCLI:
         data_dir: str | Path | None = None,
         force: bool = False,
         test: bool = False,
+        dataset: str = "parsebench",
     ) -> int:
         """Download the parse-bench dataset from HuggingFace.
 
@@ -22,13 +23,14 @@ class DataCLI:
                 (default: ./data, or ./data/test when --test is set)
             force: Force re-download even if data already exists
             test: Download the small test dataset (3 files per category)
+            dataset: Which dataset: 'parsebench' (default) or a HuggingFace repo id (org/name) in the same layout
 
         Returns:
             Exit code (0 for success, non-zero for failure)
         """
         try:
-            data_path = Path(data_dir) if data_dir else default_data_dir(test=test)
-            download_dataset(data_dir=data_path, force=force, test=test)
+            data_path = Path(data_dir) if data_dir else default_data_dir(test=test, dataset=dataset)
+            download_dataset(data_dir=data_path, force=force, test=test, dataset=dataset)
             return 0
         except Exception as e:
             print(f"Error downloading dataset: {e}", file=sys.stderr)
@@ -41,6 +43,7 @@ class DataCLI:
         self,
         data_dir: str | Path | None = None,
         test: bool = False,
+        dataset: str = "parsebench",
     ) -> int:
         """Check if the dataset is downloaded and show summary statistics.
 
@@ -48,18 +51,24 @@ class DataCLI:
             data_dir: Data directory to check
                 (default: ./data, or ./data/test when --test is set)
             test: Check the small test dataset instead of the full dataset
+            dataset: Which dataset: 'parsebench' (default) or a HuggingFace repo id (org/name) in the same layout
 
         Returns:
             Exit code (0 if ready, 1 if not)
         """
         import json
 
-        data_path = Path(data_dir) if data_dir else Path.cwd() / default_data_dir(test=test)
-        ready = is_dataset_ready(data_path)
+        try:
+            data_path = Path(data_dir) if data_dir else Path.cwd() / default_data_dir(test=test, dataset=dataset)
+            ready = is_dataset_ready(data_path, dataset)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
         if not ready:
             print(f"Dataset is NOT ready at: {data_path}")
-            print("Run 'parse-bench download' to download it.")
+            flag = "" if dataset == "parsebench" else f" --dataset {dataset}"
+            print(f"Run 'parse-bench download{flag}' to download it.")
             return 1
 
         print(f"Dataset: {data_path}")

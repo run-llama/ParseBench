@@ -85,6 +85,7 @@ from parse_bench.evaluation.metrics.parse.rules_formatting import (  # noqa: F40
 from parse_bench.evaluation.metrics.parse.rules_list import (  # noqa: F401
     ListLevelRule,
 )
+from parse_bench.evaluation.metrics.parse.rules_repetition import RepetitionOvershootRule  # noqa: F401
 
 # Table rules
 from parse_bench.evaluation.metrics.parse.rules_table import (  # noqa: F401

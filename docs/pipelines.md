@@ -28,6 +28,26 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 
 **Bold** pipelines are baselines evaluated in the [ParseBench paper](https://arxiv.org/abs/2604.08538). The name used in the paper is shown in parentheses.
 
+### Upstage
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `upstage_dpe_v2` | Document Parse 2 (Enhanced), snapshot 260930 | `UPSTAGE_API_KEY` |
+
+Install with `uv sync --extra upstage`. PDFs are uploaded unchanged.
+Native images smaller than a 2000px short edge
+are proportionally upscaled; larger images retain their dimensions. The pipeline
+requests HTML, Markdown, text and coordinates. PDF rendering uses API defaults.
+The provider uses API Markdown for body text, retaining HTML for tables,
+charts, figures and lists. It preserves OCR text and authored table captions,
+removes generated image narration and transport attributes from evaluable
+markup, and converts closed HTML code blocks to fences. Literal code, table
+spans and layout coordinates are preserved.
+
+```bash
+uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
+```
+
 ### LlamaParse
 
 | Pipeline | Description | Env Var |
@@ -40,6 +60,9 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 
 | Pipeline | Description | Env Var |
 |---|---|---|
+| `openai_gpt_6_1_sol_reasoning_low_parse_with_layout_file` | GPT-6.1 Sol, low reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
+| `openai_gpt_6_1_terra_reasoning_low_parse_with_layout_file` | GPT-6.1 Terra, low reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
+| `openai_gpt_6_1_terra_reasoning_med_parse_with_layout_file` | GPT-6.1 Terra, medium reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_medium_parse` | GPT-5 Mini, medium reasoning, image mode | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_medium_parse_file` | GPT-5 Mini, medium reasoning, PDF file mode | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_minimal_parse` | GPT-5 Mini, minimal reasoning | `OPENAI_API_KEY` |
@@ -58,6 +81,7 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 
 | Pipeline | Description | Env Var |
 |---|---|---|
+| `anthropic_haiku_5_5_parse_with_layout_file` | Claude Haiku 5.5, adaptive thinking + layout, PDF file mode | `ANTHROPIC_API_KEY` |
 | `anthropic_haiku_parse` | Claude Haiku 4.5, image mode | `ANTHROPIC_API_KEY` |
 | `anthropic_haiku_parse_file` | Claude Haiku 4.5, PDF file mode | `ANTHROPIC_API_KEY` |
 | `anthropic_haiku_parse_with_layout` | Claude Haiku 4.5, parse + layout | `ANTHROPIC_API_KEY` |
@@ -300,6 +324,12 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 | `qwen3_8_flash_next_parse_with_layout` | Qwen3.8-Flash-Next-FP8, parse + layout | `QWEN3_8_FLASH_NEXT_SERVER_URL` |
 | `qwen3_8_flash_next_thinking_parse_with_layout` | Qwen3.8-Flash-Next-FP8, parse + layout with thinking | `QWEN3_8_FLASH_NEXT_SERVER_URL` |
 
+### LightOnOCR-3
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `lightonocr_3_vllm_parse` | LightOnOCR-3 grounding prompt, parse + layout from one pass (400 DPI, 5M pixel cap) | `LIGHTONOCR_3_SERVER_URL` |
+
 ### Chandra OCR 2
 
 | Pipeline | Description | Env Var |
@@ -365,6 +395,30 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 | `nemotron_omni_30b_vllm` | Nemotron-3-Nano-Omni 30B-A3B Reasoning, thinking disabled | `NEMOTRON_OMNI_SERVER_URL` |
 | `nemotron_omni_30b_vllm_thinking` | Nemotron-3-Nano-Omni 30B-A3B Reasoning, thinking enabled | `NEMOTRON_OMNI_SERVER_URL` |
 
+### Nemotron 3.5 Parse
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `nemotron_parse_3_5_sdk` | Nemotron 3.5 Parse SDK server (triple pass: full page + detection + Table/Chart crops; layout) | `NEMOTRON_PARSE_3_5_SERVER_URL` |
+
+### MiniCPM-OCR 1.0
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `minicpm_ocr_sdk` | MiniCPM-OCR 1.0 `minicpmvocr` SDK server (PP-DocLayoutV3 regions recognized per label; layout) | `MINICPM_OCR_SERVER_URL` |
+
+### Unlimited-OCR 2
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `unlimitedocr2` | Unlimited-OCR 2 on its official SGLang server (whole document per request; layout) | `UNLIMITEDOCR2_SERVER_URL` |
+
+### OvisOCR3
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `ovisocr3_vllm` | OvisOCR3 on vLLM with the model card settings (official structured parse plus a chart-parsing pass per chart region; layout) | `OVISOCR3_SERVER_URL` |
+
 ### Surya OCR 2
 
 | Pipeline | Description | Env Var |
@@ -387,6 +441,14 @@ Fine-tune of florin-parser-nano ([cloudraker/rakedoc-nano](https://huggingface.c
 |---|---|---|
 | `rakedoc_nano` | vLLM OpenAI-compatible endpoint (layout + per-region recognition) | `RAKEDOC_NANO_ENDPOINT_URL` |
 
+### aeddix-alpine-ocr (KDL pipeline)
+
+Fine-tune of MinerU2.5-Pro-2605-1.2B ([aeddix-labs/aeddix-alpine-ocr](https://huggingface.co/aeddix-labs/aeddix-alpine-ocr), tag `v0.1`); served identically to KDL-Frontier-Parser-nano and driven by the unchanged `kdl_frontier_nano` two-stage pipeline and markdown emission (see the provider module docstring for the exact `vllm serve` command).
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `aeddix_alpine_ocr_kdl` | vLLM OpenAI-compatible endpoint (layout + per-region recognition) | `AEDDIX_ALPINE_OCR_KDL_ENDPOINT_URL` |
+
 ---
 
 ## Local Pipelines (No API key needed)
@@ -405,8 +467,8 @@ These run entirely locally and do not require API keys.
 | `tesseract_eng` | Tesseract OCR (English) | `tesseract` installed |
 | `tesseract_fast` | Tesseract OCR (fast) | `tesseract` installed |
 | `tesseract_high_quality` | Tesseract OCR (high quality) | `tesseract` installed |
-| `infinity_parser2_flash` | Infinity-Parser2-Flash (vLLM server, JSON layout) | `infinity_parser2`, running vLLM server |
-| `infinity_parser2_pro` | Infinity-Parser2-Pro (vLLM server, JSON layout) | `infinity_parser2`, running vLLM server |
+| `infinity_parser2_flash` | Infinity-Parser2-Flash (vLLM server, JSON layout) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
+| `infinity_parser2_pro` | Infinity-Parser2-Pro (vLLM server, JSON layout) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
 
 Create the isolated Python environment for `pymupdf4llm_markdown` with
 `uv sync --python 3.12 --extra pymupdf4llm`, then run it with
