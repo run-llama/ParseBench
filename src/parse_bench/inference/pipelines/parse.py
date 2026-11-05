@@ -3137,3 +3137,17 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             },
         )
     )
+
+    # =========================================================================
+    # Loamist Parse (hosted API, one page per request, layout blocks)
+    # =========================================================================
+    register_fn(
+        PipelineSpec(
+            pipeline_name="loamist_parse",
+            provider_name="loamist_parse",
+            product_type=ProductType.PARSE,
+            config={
+                "timeout": 1200,  # a dense page can take up to 10 minutes
+            },
+        )
+    )
