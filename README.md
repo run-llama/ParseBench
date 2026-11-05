@@ -23,7 +23,7 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 
 | Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
-| 1 | Sangfor Agentic OCR | Commercial - Startup APIs | 88.72 | 92.79 | 88.91 | 91.72 | 85.12 | 85.06 | 0.00¢ |
+| 1 | Sangfor Agentic OCR | Commercial - Startup APIs | 90.69 | 95.25 | 90.36 | 92.71 | 89.20 | 85.95 | 0.00¢ |
 | 2 | Sangfor Agentic OCR Fast | Commercial - Startup APIs | 87.73 | 91.99 | 83.51 | 92.03 | 85.76 | 85.34 | 0.00¢ |
 | 3 | LlamaParse Agentic Plus | LlamaParse | 86.69 | 93.27 | 92.19 | 89.74 | 82.84 | 75.43 | 5.62¢ |
 | 4 | LlamaParse Agentic | LlamaParse | 82.83 | 90.90 | 81.20 | 87.84 | 84.81 | 69.42 | 1.25¢ |
