@@ -1199,6 +1199,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # r-1-mini: Reducto's lower-cost r-1 variant. Same config as reducto_r1.
+    register_fn(
+        PipelineSpec(
+            pipeline_name="reducto_r1_mini",
+            provider_name="reducto",
+            product_type=ProductType.PARSE,
+            config={
+                "ocr_system": "standard",
+                "agentic": False,
+                "table_output_format": "html",
+                "model": "r-1-mini",
+            },
+        )
+    )
+
     # =========================================================================
     # DeepSeek-OCR-2
     # =========================================================================
