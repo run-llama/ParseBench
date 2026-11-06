@@ -14,6 +14,7 @@ from parse_bench.inference.providers.parse.reducto import (
     ReductoProvider,
     _build_pages,
     _coerce_chunks,
+    _r1_mini_cost_usd,
 )
 from parse_bench.schemas.pipeline import PipelineSpec
 from parse_bench.schemas.pipeline_io import InferenceRequest, RawInferenceResult
@@ -97,3 +98,20 @@ def test_normalize_rejects_bad_result_shapes() -> None:
         _provider().normalize(_raw_result({"result": ["chunks"]}))
     with pytest.raises(ProviderPermanentError, match="usable 'url'"):
         _provider().normalize(_raw_result({"result": {"type": "url", "url": ""}}))
+
+
+def _r1_mini_usage(**breakdown: object) -> dict:
+    return {"num_pages": 1, "credits": None, "usage_breakdown": {"parse_model": "R-1 Mini", **breakdown}}
+
+
+def test_r1_mini_pages_are_priced_at_a_tenth_of_a_cent_per_page() -> None:
+    """Reducto returns no cost for r-1-mini, so unpriced pages would show no cost."""
+    assert _r1_mini_cost_usd(_r1_mini_usage(parse_pages=1)) == pytest.approx(0.001)
+    assert _r1_mini_cost_usd(_r1_mini_usage(parse_pages=3, parse_native_pages=1)) == pytest.approx(0.004)
+
+
+def test_r1_page_counts_are_not_priced_at_the_r1_mini_rate() -> None:
+    usage = _r1_mini_usage(parse_pages=1)
+    usage["usage_breakdown"]["parse_model"] = "R-1"
+    assert _r1_mini_cost_usd(usage) is None
+    assert _r1_mini_cost_usd(_r1_mini_usage(parse_pages=0)) is None

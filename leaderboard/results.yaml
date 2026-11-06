@@ -1,0 +1,650 @@
+# Maps every leaderboard.csv row to the published outputs it was scored from.
+#
+#   provider          exact `Provider` value of the leaderboard.csv row
+#   status            verified   -> outputs are in `results_repo` and the row is re-scored from them
+#                     unverified -> no published outputs; scores are kept as submitted
+#   pipeline          folder under results/ in `results_repo` (verified rows only)
+#   results_revision  `results_repo` commit (or refs/pr/N for a pending submission)
+#
+# `scored_with` is the ParseBench commit the verified rows were last re-scored at.
+# Maintained by scripts/leaderboard/; see leaderboard/README.md.
+
+results_repo: llamaindex/ParseBench-results
+data_repo: llamaindex/ParseBench
+data_revision: 2805a1d940f95a203e0ae4b88be9934f7765b3fc
+scored_with: c38085d2ccd7f717900037e361806d22c51bc33b
+rows:
+- provider: LlamaParse Cost Effective
+  status: verified
+  pipeline: llamaparse_cost_effective
+  results_revision: 0b3c8332ad0141d05aa1323f68085dc2afb862de
+- provider: LlamaParse Agentic
+  status: verified
+  pipeline: llamaparse_agentic
+  results_revision: 0b3c8332ad0141d05aa1323f68085dc2afb862de
+- provider: LlamaParse Agentic Plus
+  status: verified
+  pipeline: llamaparse_agentic_plus
+  results_revision: 0b3c8332ad0141d05aa1323f68085dc2afb862de
+- provider: OpenAI GPT-5 Mini (Reasoning Minimal)
+  status: verified
+  pipeline: openai_gpt5_mini_reasoning_minimal_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5 Mini (Reasoning Medium)
+  status: verified
+  pipeline: openai_gpt5_mini_reasoning_medium_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Anthropic Haiku 4.5 (Disable Thinking)
+  status: verified
+  pipeline: anthropic_haiku_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Anthropic Haiku 4.5 (Thinking)
+  status: verified
+  pipeline: anthropic_haiku_thinking_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3 Flash (Thinking Minimal)
+  status: verified
+  pipeline: google_gemini_3_flash_thinking_minimal_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3 Flash (Thinking High)
+  status: verified
+  pipeline: google_gemini_3_flash_thinking_high_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3 Flash (Thinking Medium)
+  status: verified
+  pipeline: google_gemini_3_flash_thinking_medium_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: GLM-5.3 Flash
+  status: verified
+  pipeline: glm_5_3_flash_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-6.1 Sol (Reasoning Low)
+  status: verified
+  pipeline: openai_gpt_6_1_sol_reasoning_low_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-6.1 Terra (Reasoning Medium)
+  status: unverified
+  note: no published outputs in the results repo
+- provider: OpenAI GPT-6.1 Terra (Reasoning Low)
+  status: unverified
+  note: no published outputs in the results repo
+- provider: Google Gemini 3.5 Flash (Thinking Medium)
+  status: verified
+  pipeline: google_gemini_3_5_flash_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.5 Flash (Thinking Minimal)
+  status: verified
+  pipeline: google_gemini_3_5_flash_no_thinking_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.5 Flash (Thinking High)
+  status: verified
+  pipeline: google_gemini_3_5_flash_thinking_high_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.6 Flash (Thinking Medium)
+  status: verified
+  pipeline: google_gemini_3_6_flash_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.6 Flash (Thinking Minimal)
+  status: verified
+  pipeline: google_gemini_3_6_flash_no_thinking_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.6 Flash (Thinking High)
+  status: verified
+  pipeline: google_gemini_3_6_flash_thinking_high_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.7 Flash (Thinking High)
+  status: verified
+  pipeline: google_gemini_3_7_flash_thinking_high_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.7 Flash (Thinking Medium)
+  status: verified
+  pipeline: google_gemini_3_7_flash_thinking_medium_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.7 Flash (Thinking Low)
+  status: verified
+  pipeline: google_gemini_3_7_flash_thinking_low_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.8 Flash (Thinking High)
+  status: verified
+  pipeline: google_gemini_3_8_flash_thinking_high_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.8 Flash (Thinking Low)
+  status: verified
+  pipeline: google_gemini_3_8_flash_thinking_low_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.8 Flash (Thinking Medium)
+  status: verified
+  pipeline: google_gemini_3_8_flash_thinking_medium_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Anthropic Opus 4.6
+  status: verified
+  pipeline: anthropic_opus_4_6_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Anthropic Opus 4.7
+  status: unverified
+  pipeline: anthropic_opus_4_7_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: grounding 458/500'
+- provider: Anthropic Opus 4.8
+  status: unverified
+  pipeline: anthropic_opus_4_8_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: grounding 458/500'
+- provider: Anthropic Opus 5.5 (Effort High)
+  status: verified
+  pipeline: anthropic_opus_5_5_effort_high_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Anthropic Opus 5.5
+  status: verified
+  pipeline: anthropic_opus_5_5_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Anthropic Opus 5.5 (Effort Low)
+  status: verified
+  pipeline: anthropic_opus_5_5_effort_low_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Anthropic Fable 5
+  status: unverified
+  pipeline: anthropic_fable_5_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: tables 0/503'
+- provider: Anthropic Fable 5.1
+  status: verified
+  pipeline: anthropic_fable_5_1_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Anthropic Sonnet 5
+  status: unverified
+  pipeline: anthropic_sonnet_5_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: charts 110/568, content 85/506, formatting 85/476, grounding 118/500'
+- provider: Anthropic Sonnet 5.5
+  status: verified
+  pipeline: anthropic_sonnet_5_5_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.1 Pro
+  status: verified
+  pipeline: google_gemini_3_1_pro_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.1 Pro (Thinking Low)
+  status: verified
+  pipeline: google_gemini_3_1_pro_thinking_low_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.1 Flash Lite
+  status: verified
+  pipeline: google_gemini_3_1_flash_lite_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.1 Flash Lite (Thinking Medium)
+  status: verified
+  pipeline: google_gemini_3_1_flash_lite_thinking_medium_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Anthropic Haiku 5.5
+  status: verified
+  pipeline: anthropic_haiku_5_5_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.1 Flash Lite (Thinking High)
+  status: verified
+  pipeline: google_gemini_3_1_flash_lite_thinking_high_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.5 Flash Lite
+  status: verified
+  pipeline: google_gemini_3_5_flash_lite_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.5 Flash Lite (Thinking High)
+  status: verified
+  pipeline: google_gemini_3_5_flash_lite_thinking_high_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Gemini 3.5 Flash Lite (Thinking Medium)
+  status: verified
+  pipeline: google_gemini_3_5_flash_lite_thinking_medium_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.4 (Reasoning None)
+  status: verified
+  pipeline: openai_gpt_5_4_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.5 (Reasoning Medium)
+  status: verified
+  pipeline: openai_gpt_5_5_reasoning_medium_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.5 (Reasoning None)
+  status: verified
+  pipeline: openai_gpt_5_5_reasoning_none_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.6 Terra (Reasoning Medium)
+  status: verified
+  pipeline: openai_gpt_5_6_terra_reasoning_med_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.6 Terra (Reasoning Low)
+  status: verified
+  pipeline: openai_gpt_5_6_terra_reasoning_low_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.6 Terra (Reasoning None)
+  status: verified
+  pipeline: openai_gpt_5_6_terra_reasoning_none_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.6 Sol (Reasoning High)
+  status: verified
+  pipeline: openai_gpt_5_6_sol_reasoning_high_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.6 Sol (Reasoning None)
+  status: verified
+  pipeline: openai_gpt_5_6_sol_reasoning_none_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.6 Luna (Reasoning Max)
+  status: verified
+  pipeline: openai_gpt_5_6_luna_reasoning_max_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.6 Luna (Reasoning XHigh)
+  status: verified
+  pipeline: openai_gpt_5_6_luna_reasoning_xhigh_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.6 Luna (Reasoning High)
+  status: verified
+  pipeline: openai_gpt_5_6_luna_reasoning_high_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.6 Luna (Reasoning Medium)
+  status: verified
+  pipeline: openai_gpt_5_6_luna_reasoning_med_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.6 Luna (Reasoning Low)
+  status: verified
+  pipeline: openai_gpt_5_6_luna_reasoning_low_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.6 Luna (Reasoning None)
+  status: verified
+  pipeline: openai_gpt_5_6_luna_reasoning_none_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-6 Astra (Reasoning Low)
+  status: verified
+  pipeline: openai_gpt_6_astra_reasoning_low_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-6 Sol (Reasoning High)
+  status: verified
+  pipeline: openai_gpt_6_sol_reasoning_high_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-6 Sol (Reasoning Medium)
+  status: verified
+  pipeline: openai_gpt_6_sol_reasoning_med_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-6 Sol (Reasoning None)
+  status: verified
+  pipeline: openai_gpt_6_sol_reasoning_none_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-6 Luna (Reasoning Max)
+  status: verified
+  pipeline: openai_gpt_6_luna_reasoning_max_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-6 Luna (Reasoning XHigh)
+  status: verified
+  pipeline: openai_gpt_6_luna_reasoning_xhigh_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-6 Luna (Reasoning High)
+  status: verified
+  pipeline: openai_gpt_6_luna_reasoning_high_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-6 Luna (Reasoning Medium)
+  status: verified
+  pipeline: openai_gpt_6_luna_reasoning_med_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-6 Luna (Reasoning Low)
+  status: verified
+  pipeline: openai_gpt_6_luna_reasoning_low_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-6 Luna (Reasoning None)
+  status: verified
+  pipeline: openai_gpt_6_luna_reasoning_none_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OpenAI GPT-5.4 Nano
+  status: verified
+  pipeline: openai_gpt_5_4_nano_parse_with_layout_file
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Amazon Nova 2 Lite
+  status: unverified
+  pipeline: amazon_nova_2_lite_parse_with_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: charts 555/568, content 495/506, grounding 492/500'
+- provider: AWS Textract
+  status: verified
+  pipeline: aws_textract
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Google Cloud Document AI
+  status: verified
+  pipeline: google_docai_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Azure Document Intelligence (Layout)
+  status: verified
+  pipeline: azure_di_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: anyformat (Standard)
+  status: verified
+  pipeline: anyformat_standard
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Reducto (Agentic)
+  status: verified
+  pipeline: reducto_agentic
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Pulse Ultra 2
+  status: unverified
+  pipeline: pulse_ultra_2
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: grounding 495/500'
+- provider: Datalab Accurate
+  status: verified
+  pipeline: datalab_accurate
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Datalab Balanced
+  status: verified
+  pipeline: datalab_balanced
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Datalab Fast
+  status: verified
+  pipeline: datalab_fast
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Reducto
+  status: unverified
+  note: no published outputs in the results repo
+- provider: Reducto (r-1-mini)
+  status: verified
+  pipeline: reducto_r1_mini
+  results_revision: refs/pr/8
+- provider: Reducto (r-1)
+  status: verified
+  pipeline: reducto_r1
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Extend
+  status: unverified
+  pipeline: extend_parse
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: content 60/506, formatting 60/476'
+- provider: Extend (2.0)
+  status: verified
+  pipeline: extend_parse_2
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Extend Light (1.0)
+  status: verified
+  pipeline: extend_parse_light
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: LandingAI
+  status: unverified
+  pipeline: landingai_parse
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: charts 177/568'
+- provider: Firecrawl
+  status: unverified
+  note: no published outputs in the results repo
+- provider: oi-parser
+  status: unverified
+  pipeline: oi_parser
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: tables 492/503'
+- provider: DocAI
+  status: unverified
+  pipeline: docai_default
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: content 0/506, formatting 0/476, grounding 0/500'
+- provider: Mistral OCR 4 (Annotation)
+  status: unverified
+  pipeline: mistral_ocr_4_annotation
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: tables 0/503, content 0/506, formatting 0/476'
+- provider: Mistral OCR 4
+  status: verified
+  pipeline: mistral_ocr_4
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Databricks AI Parse
+  status: verified
+  pipeline: databricks_ai_parse
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Nutrient DWS (Agentic)
+  status: unverified
+  pipeline: nutrient_dws_agentic
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: charts 0/568, content 0/506, formatting 0/476'
+- provider: Infinity-Parser2-Pro
+  status: verified
+  pipeline: infinity_parser2_pro
+  results_revision: f3ab4cd819627561a8d0609081576a1bd6dda5c5
+- provider: Infinity-Parser2-Flash
+  status: verified
+  pipeline: infinity_parser2_flash
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: OvisOCR3
+  status: unverified
+  note: no published outputs in the results repo
+- provider: Qwen3-VL-8B-Instruct
+  status: unverified
+  pipeline: qwen3vl_parse
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: grounding 0/500'
+- provider: MiniCPM-OCR 1.0
+  status: unverified
+  note: no published outputs in the results repo
+- provider: Qwen 3.8 27B
+  status: verified
+  pipeline: qwen3_8_27b_parse_with_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Qwen 3.8 27B (Thinking)
+  status: verified
+  pipeline: qwen3_8_27b_thinking_parse_with_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Unlimited-OCR-2
+  status: unverified
+  note: no published outputs in the results repo
+- provider: Dots.mocr
+  status: verified
+  pipeline: dots_ocr_1_5_parse
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: HPD-Parsing
+  status: verified
+  pipeline: hpd_parsing_vllm_parse
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Falcon-OCR
+  status: unverified
+  pipeline: falconocr_pipeline
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: tables 480/503, charts 559/568, content 487/506, grounding 490/500'
+- provider: Docling-models
+  status: unverified
+  pipeline: docling_parse
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: tables 484/503, charts 119/568, content 477/506, grounding 487/500'
+- provider: Chandra-ocr-2
+  status: verified
+  pipeline: chandra2_vllm
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: PaddleOCR-VL-1.6
+  status: verified
+  pipeline: paddleocr_vl_1_6_pipeline
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: PaddleOCR-VL-1.5
+  status: verified
+  pipeline: paddleocr_vl_1_5_pipeline
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Surya OCR 2
+  status: verified
+  pipeline: surya2_sdk
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: HunyuanOCR 1.5
+  status: verified
+  pipeline: hunyuanocr_1_5
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Gemma-4-31B-it
+  status: unverified
+  pipeline: gemma4_31b_vllm_with_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: tables 428/503, charts 539/568, content 457/506, formatting 457/476, grounding 441/500'
+- provider: TeleOCR
+  status: verified
+  pipeline: teleocr_vllm
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Gemma-4-26B-A4B-it
+  status: unverified
+  pipeline: gemma4_26b_vllm_with_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: content 466/506, formatting 466/476, grounding 387/500'
+- provider: Nemotron-3-Nano-Omni-30B-A3B (Thinking)
+  status: unverified
+  pipeline: nemotron_omni_30b_vllm_thinking
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: tables 492/503, charts 560/568, content 492/506, grounding 491/500'
+- provider: LightOnOCR-2-1B
+  status: unverified
+  pipeline: lightonocr_vllm
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: grounding 0/500'
+- provider: Nemotron-3.5-Parse
+  status: verified
+  pipeline: nemotron_parse_3_5_sdk
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: LightOnOCR-3-4B
+  status: verified
+  pipeline: lightonocr3_4b_vllm
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: LightOnOCR-3-0.8B
+  status: verified
+  pipeline: lightonocr3_0_8b_vllm
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: LightOnOCR-3-1B
+  status: verified
+  pipeline: lightonocr3_1b_vllm
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Qianfan-OCR
+  status: verified
+  pipeline: qfocr_vllm_thinking
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: MinerU2.5-Pro-2605-1.2B
+  status: verified
+  pipeline: mineru2605pro_vllm
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Unlimited-OCR
+  status: verified
+  pipeline: unlimitedocr
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Jina-OCR-v1
+  status: verified
+  pipeline: jinaocr_vllm
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: MinerU2.5-2509-1.2B
+  status: verified
+  pipeline: mineru25_vllm
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Qwen3.6-35B-A3B
+  status: verified
+  pipeline: qwen3_6_35b_a3b_fp8_vllm_parse_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: MinerU-Diffusion-V1-0320-2.5B
+  status: verified
+  pipeline: mineru_diffusion
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: DeepSeek-OCR-2
+  status: unverified
+  pipeline: deepseekocr2_vllm
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: grounding 494/500'
+- provider: PaddleOCR-VL
+  status: unverified
+  pipeline: paddleocr_vl_pipeline
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: grounding 0/500'
+- provider: OvisOCR2
+  status: unverified
+  pipeline: ovisocr2_vllm
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: grounding 0/500'
+- provider: Gemma-4-E4B-it
+  status: verified
+  pipeline: gemma4_e4b_vllm_with_layout
+  results_revision: f3ab4cd819627561a8d0609081576a1bd6dda5c5
+- provider: Granite Vision 4.1 4B
+  status: unverified
+  pipeline: granite_vision_4_1_4b
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: grounding 0/500'
+- provider: WeVisDoc-2B
+  status: verified
+  pipeline: wevisdoc_2b_vllm
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: WeVisDoc-4B
+  status: verified
+  pipeline: wevisdoc_4b_vllm
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Qwen3.5-4B
+  status: verified
+  pipeline: qwen3_5_4b_vllm_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Qwen3.5-9B
+  status: unverified
+  pipeline: qwen3_5_9b_vllm_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: charts 561/568, grounding 0/500'
+- provider: Qwen3.5-0.8B
+  status: unverified
+  pipeline: qwen3_5_0_8b_vllm_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: tables 487/503, content 499/506, grounding 0/500'
+- provider: Qwen3.5-2B
+  status: unverified
+  pipeline: qwen3_5_2b_vllm_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: grounding 0/500'
+- provider: GLM-OCR
+  status: unverified
+  pipeline: glmocr_pipeline
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+  note: 'incomplete published outputs: charts 555/568, content 466/506, formatting 466/476, grounding 0/500'
+- provider: KDL-Frontier-Parser-nano
+  status: verified
+  pipeline: kdl_frontier_nano
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: florin-parser-nano
+  status: unverified
+  note: no published outputs in the results repo
+- provider: rakedoc-nano
+  status: unverified
+  note: no published outputs in the results repo
+- provider: aeddix-alpine-ocr (KDL pipeline)
+  status: unverified
+  note: no published outputs in the results repo
+- provider: KDL-Frontier-Parser-nano-v2
+  status: verified
+  pipeline: kdl_frontier_nano_v2
+  results_revision: 548810f2411399701357beb7bbb1111683ce6226
+- provider: DeepSeek V4.1 Flash (Thinking High)
+  status: verified
+  pipeline: deepseek_v4_1_flash_parse_with_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: DeepSeek V4.1 Flash (No Thinking)
+  status: verified
+  pipeline: deepseek_v4_1_flash_no_thinking_parse_with_layout
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: MarkItDown
+  status: unverified
+  note: no published outputs in the results repo
+- provider: OpenDataLoader
+  status: unverified
+  note: no published outputs in the results repo
+- provider: PyMuPDF4LLM
+  status: verified
+  pipeline: pymupdf4llm_markdown
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: PyMuPDF (Text)
+  status: unverified
+  note: no published outputs in the results repo
+- provider: PyMuPDF (HTML)
+  status: unverified
+  note: no published outputs in the results repo
+- provider: pypdf
+  status: unverified
+  note: no published outputs in the results repo
+- provider: pdf-inspector
+  status: unverified
+  note: no published outputs in the results repo
+- provider: LiteParse (no OCR)
+  status: unverified
+  note: no published outputs in the results repo
+- provider: Warp Ingest
+  status: verified
+  pipeline: warp_ingest
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
+- provider: Upstage Document Parse 2 (Enhanced)
+  status: verified
+  pipeline: upstage_dpe_v2
+  results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59

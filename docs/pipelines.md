@@ -442,8 +442,8 @@ These run entirely locally and do not require API keys.
 | `tesseract_eng` | Tesseract OCR (English) | `tesseract` installed |
 | `tesseract_fast` | Tesseract OCR (fast) | `tesseract` installed |
 | `tesseract_high_quality` | Tesseract OCR (high quality) | `tesseract` installed |
-| `infinity_parser2_flash` | Infinity-Parser2-Flash (vLLM server, JSON layout) | `infinity_parser2`, running vLLM server |
-| `infinity_parser2_pro` | Infinity-Parser2-Pro (vLLM server, JSON layout) | `infinity_parser2`, running vLLM server |
+| `infinity_parser2_flash` | Infinity-Parser2-Flash (vLLM server, JSON layout) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
+| `infinity_parser2_pro` | Infinity-Parser2-Pro (vLLM server, JSON layout) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
 
 Create the isolated Python environment for `pymupdf4llm_markdown` with
 `uv sync --python 3.12 --extra pymupdf4llm`, then run it with

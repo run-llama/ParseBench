@@ -1,0 +1,94 @@
+name: Leaderboard verification
+
+# Every pull request that touches the leaderboard must tie each added or changed
+# row to published outputs in the HF results repo, and the submitted numbers must
+# match a re-score of those outputs with the base branch's harness.
+#
+# Runs on pull_request_target so it can comment on fork PRs (and read HF_TOKEN
+# while the results repo is private). That is safe only because no code from the
+# PR is executed: the job checks out the base branch and reads the PR's
+# leaderboard.csv and leaderboard/results.yaml as data.
+
+on:
+  pull_request_target:
+    paths:
+      - leaderboard.csv
+      - leaderboard/results.yaml
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: leaderboard-verify-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    # The scheduled re-score PR's numbers are the re-score itself.
+    if: github.event.pull_request.head.ref != 'leaderboard/rescore'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Check out the base branch (trusted code only)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Take the PR's leaderboard data files
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:pr-head"
+          cp leaderboard.csv "$RUNNER_TEMP/base_leaderboard.csv"
+          cp leaderboard/results.yaml "$RUNNER_TEMP/base_results.yaml"
+          git show pr-head:leaderboard.csv > leaderboard.csv
+          git show pr-head:leaderboard/results.yaml > leaderboard/results.yaml
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      # Layout adapters import provider SDKs, so the evaluator needs the runners extra.
+      - run: uv sync --extra runners --extra fast
+
+      - name: Check every row is mapped to published outputs
+        id: check
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          uv run python scripts/leaderboard/check.py --hf \
+            --base-csv "$RUNNER_TEMP/base_leaderboard.csv" --base-map "$RUNNER_TEMP/base_results.yaml"
+          echo "data_revision=$(grep -m1 '^data_revision:' leaderboard/results.yaml | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the ground truth
+        if: steps.check.outputs.pipelines != ''
+        uses: actions/cache@v4
+        with:
+          path: .cache/leaderboard-gt
+          key: leaderboard-gt-${{ steps.check.outputs.data_revision }}
+
+      - name: Re-score changed rows
+        if: steps.check.outputs.pipelines != ''
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          PIPELINES: ${{ steps.check.outputs.pipelines }}
+        run: uv run python scripts/leaderboard/rescore.py run --pipelines "$PIPELINES" --out rescore.json
+
+      - name: Compare submitted values with the re-score
+        id: compare
+        if: steps.check.outputs.pipelines != ''
+        run: uv run python scripts/leaderboard/apply.py compare rescore.json --tolerance 0.5 --report report.md
+
+      - name: Post the report on the pull request
+        if: always() && hashFiles('report.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file report.md --edit-last \
+            || gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file report.md

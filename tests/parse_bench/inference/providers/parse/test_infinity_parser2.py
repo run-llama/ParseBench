@@ -186,6 +186,22 @@ def test_infinity_parser2_default_timeout_is_900(monkeypatch) -> None:
     assert provider._timeout == 900
 
 
+def test_infinity_parser2_reads_server_from_environment(monkeypatch) -> None:
+    monkeypatch.setenv("INFINITY_PARSER2_API_URL", "https://example.invalid/v1/chat/completions")
+    monkeypatch.setenv("VLLM_API_KEY", "secret-from-env")
+    provider = _infinity_provider(monkeypatch, _FakeParser())
+    assert provider._api_url == "https://example.invalid/v1/chat/completions"
+    assert provider._api_key == "secret-from-env"
+
+
+def test_infinity_parser2_server_defaults_without_environment(monkeypatch) -> None:
+    monkeypatch.delenv("INFINITY_PARSER2_API_URL", raising=False)
+    monkeypatch.delenv("VLLM_API_KEY", raising=False)
+    provider = _infinity_provider(monkeypatch, _FakeParser())
+    assert provider._api_url == "http://localhost:8000/v1/chat/completions"
+    assert provider._api_key == "EMPTY"
+
+
 def test_infinity_parser2_runs_pdf_pages_in_order_and_normalizes_each_page(tmp_path, monkeypatch) -> None:
     import parse_bench.inference.providers.parse.infinity_parser2 as mod
     from parse_bench.schemas.pipeline import PipelineSpec
