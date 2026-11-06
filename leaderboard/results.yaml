@@ -22,6 +22,10 @@ rows:
   status: verified
   pipeline: llamaparse_agentic
   results_revision: 0b3c8332ad0141d05aa1323f68085dc2afb862de
+- provider: Loamist Parse
+  status: verified
+  pipeline: loamist_parse
+  results_revision: refs/pr/6
 - provider: LlamaParse Agentic Plus
   status: verified
   pipeline: llamaparse_agentic_plus
