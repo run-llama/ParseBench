@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from parse_bench.evaluation.metrics.parse.table_next import key_sim, score_table_next
 
 REF = (
@@ -29,3 +31,21 @@ def test_different_label_still_scores_zero() -> None:
     assert key_sim("zentrol (alphacide)", "mirovax(alphacide)") == 0.0
     assert key_sim("item 1 2", "item 12") == 0.0  # digits regrouped are a different label
     assert score_table_next(REF, _out("Kortiva(gammacide)")).score == 0.0
+
+
+@pytest.mark.parametrize(
+    ("expected", "equivalent", "wrong"),
+    [
+        ("Loss ($ billion)", "Loss ($billion)", "Loss ($million)"),
+        ("Region (1)", "Region<sup>(1)</sup>", "Region<sup>(2)</sup>"),
+        ("Programs (1)", "Programs(1)", "Programs(2)"),
+        ("Loss (£ million)", "Loss (£million)", "Loss ($million)"),
+    ],
+)
+def test_label_typography_preserves_units_markers_words_and_values(expected: str, equivalent: str, wrong: str) -> None:
+    """Spacing at currency and parenthesized markers must not incur a relabel penalty."""
+    ref = f"| Label | Amount |\n|---|---|\n| {expected} | 47 |\n| Other | 83 |"
+    assert score_table_next(ref, ref.replace(expected, equivalent)).score == 1.0
+    for changed in (wrong, "Different words"):
+        assert score_table_next(ref, ref.replace(expected, changed)).score < 1.0
+    assert score_table_next(ref, ref.replace(expected, equivalent).replace("47", "48")).score < 1.0

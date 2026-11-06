@@ -55,3 +55,109 @@ def test_printed_line_above_a_blank_field_does_not_excuse_an_invented_value():
     ref = _ref(_field("Name", "Ada"), _field("Remarks", None))
     got = score_forms(ref, "Name: Ada\n\nSee the notes overleaf before you sign\nRemarks: 20")
     assert [(e.label, e.cls) for e in got.events] == [("Remarks", "critical")]
+
+
+COSTS = reference_from_tree(
+    [
+        {
+            "page_number": 1,
+            "items": [
+                {"type": "section", "label": "If yes, interest from", "items": []},
+                {"type": "field", "field": "text", "label": "(day)", "value": "2009-05-01"},
+                {"type": "field", "field": "text", "label": "(event)", "isEmpty": True},
+            ],
+        }
+    ]
+)
+
+
+def _costs(md: str) -> list[tuple[str, str]]:
+    return [(e.label, e.expected) for e in score_forms(COSTS, md).events if e.charged]
+
+
+def test_a_value_after_a_box_on_the_line_above_its_caption_is_read():
+    assert _costs("If yes, interest from:\n[x] 2009-05-01\n(day)\n\n(event)\n") == []
+
+
+def test_a_wrong_value_after_a_box_above_its_caption_is_still_charged():
+    assert ("(day)", "2009-05-01") in _costs("If yes, interest from:\n[x] 2009-06-01\n(day)\n\n(event)\n")
+
+
+PASSES = reference_from_tree(
+    [
+        {
+            "page_number": 1,
+            "items": [
+                {"type": "field", "field": "text", "label": "Principal passes-C", "value": "3"},
+                {"type": "field", "field": "text", "label": "Subsidiary passes-R", "value": "2"},
+                {"type": "field", "field": "text", "label": "Mode of study", "value": "Full-Time"},
+            ],
+        }
+    ]
+)
+PASSES_MD = (
+    '**Mode of study:** Full-Time\n\n<table><tr><td rowspan="2">Number of passes</td><td>{c}</td>'
+    "<td>Principal passes-C</td></tr><tr><td>2</td><td>Subsidiary passes-R</td></tr></table>\n"
+)
+
+
+def test_a_value_in_the_cell_left_of_its_caption_is_read():
+    assert [e for e in score_forms(PASSES, PASSES_MD.format(c="3")).events if e.charged] == []
+
+
+def test_a_wrong_value_left_of_its_caption_is_still_charged():
+    charged = [(e.label, e.expected) for e in score_forms(PASSES, PASSES_MD.format(c="5")).events if e.charged]
+    assert ("Principal passes-C", "3") in charged
+
+
+def test_a_row_number_left_of_a_caption_with_its_own_value_does_not_mask_it():
+    md = "**Mode of study:** Full-Time\n\n| 3 | Principal passes-C: 5 |\n|---|---|\n| 2 | Subsidiary passes-R |\n"
+    charged = [(e.label, e.expected) for e in score_forms(PASSES, md).events if e.charged]
+    assert ("Principal passes-C", "3") in charged
+
+
+SIGNER = reference_from_tree(
+    [
+        {
+            "page_number": 1,
+            "items": [
+                {"type": "field", "field": "text", "label": "Name (please print)", "value": "Noor Okafor"},
+                {"type": "field", "field": "text", "label": "Date", "value": "01/02/2020"},
+            ],
+        }
+    ]
+)
+
+
+def test_a_value_before_its_caption_inside_a_table_cell_is_read():
+    md = "| 12 | Noor Okafor **Name (please print)** |\n|---|---|\n| 13 | **Date:** 01/02/2020 |\n"
+    assert [e for e in score_forms(SIGNER, md).events if e.charged] == []
+
+
+def test_a_wrong_value_before_its_caption_inside_a_table_cell_is_still_charged():
+    md = "| 12 | Nora Okafor **Name (please print)** |\n|---|---|\n| 13 | **Date:** 01/02/2020 |\n"
+    charged = [(e.label, e.expected) for e in score_forms(SIGNER, md).events if e.charged]
+    assert ("Name (please print)", "Noor Okafor") in charged
+
+
+QUANTITY = reference_from_tree(
+    [
+        {
+            "page_number": 1,
+            "items": [
+                {"type": "field", "field": "text", "label": "Item", "value": "Bolts"},
+                {"type": "field", "field": "text", "id": "12", "label": "Quantity", "value": "12"},
+            ],
+        }
+    ]
+)
+
+
+def test_a_printed_id_before_its_caption_in_a_table_cell_is_not_the_value():
+    md = "| Item | Bolts |\n|---|---|\n| 12 Quantity | |\n"
+    assert ("Quantity", "12") in [(e.label, e.expected) for e in score_forms(QUANTITY, md).events if e.charged]
+
+
+def test_a_value_equal_to_the_printed_id_in_the_cell_to_the_left_is_read():
+    md = "| Item | Bolts |\n|---|---|\n| 12 | Quantity |\n"
+    assert [e.kind for e in score_forms(QUANTITY, md).events if e.charged and e.lane == "filled"] == []

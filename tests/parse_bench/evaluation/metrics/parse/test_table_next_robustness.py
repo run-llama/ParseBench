@@ -56,11 +56,11 @@ def regroup(sep: str, rows: list[list[str]] = ROWS) -> str:
     return md(HEAD, [[r[0], *(v.replace(",", sep) for v in r[1:])] for r in rows])
 
 
-def test_space_and_apostrophe_thousands_read_like_a_dropped_comma() -> None:
-    plain = score_table_next(REF, regroup("")).score  # "1200" for "1,200": number format changed
+def test_space_and_apostrophe_thousands_are_a_number_format_change() -> None:
+    assert score_table_next(REF, regroup("")).score == 1.0  # "1200" for "1,200": separator dropped
 
     for sep in (" ", "\xa0", " ", " ", "'"):
-        assert score_table_next(REF, regroup(sep)).score == plain > 0.85
+        assert round(score_table_next(REF, regroup(sep)).score, 9) == 0.9  # "1 200": changed, 0.9 per cell
 
 
 def test_space_grouped_number_with_a_wrong_digit_is_still_wrong() -> None:
@@ -83,6 +83,13 @@ def test_footnote_digit_glued_to_a_number_is_a_format_slip() -> None:
         html(HEAD, [[r[0], r[1].replace("1,200", "1,200<sup>1</sup>"), r[2]] for r in ROWS]),
     ):
         assert score_table_next(REF, out).score >= 0.95
+
+
+def test_latex_superscript_reads_like_a_sup_marker() -> None:
+    lettered = html(HEAD, [[r[0], r[1] + "<sup>ab</sup>", r[2]] for r in ROWS])
+    assert score_table_next(lettered, html(HEAD, [[r[0], r[1] + "^{ab}", r[2]] for r in ROWS])).score == 1.0
+    assert score_table_next(REF, REF.replace("1,200", "1,200^{1}")).score >= 0.95
+    assert score_table_next(REF, REF.replace("1,200", "1,200$^{1}$")).score >= 0.95
 
 
 def test_power_of_ten_exponent_is_not_a_footnote() -> None:

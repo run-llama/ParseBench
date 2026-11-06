@@ -90,6 +90,37 @@ def test_reference_rendered_scores_one():
     assert res.atoms == sum(1 for it in REF.items if it.kind != "anchor")
 
 
+def _lived_with_you(n: int) -> dict[str, Any]:
+    """A 1040-style Dependents table: each dependent's cell holds two boxes with printed ids a and b."""
+    cell = {
+        "items": [
+            {"type": "field", "field": "checkbox", "id": "a", "label": "Yes", "value": False},
+            {"type": "field", "field": "checkbox", "id": "b", "label": "And in the U.S.", "value": n == 1},
+        ]
+    }
+    return {
+        "type": "section",
+        "label": "Dependents",
+        "items": [
+            {
+                "type": "table",
+                "columns": ["", *[f"Dependent {i}" for i in range(1, n + 1)]],
+                "rows": [
+                    ["(1) First name", *[None] * n],
+                    ["(5) Check if lived with you more than half of 2025", *[cell] * n],
+                ],
+            }
+        ],
+    }
+
+
+def test_reference_rendered_with_printed_ids_in_table_cells_scores_one():
+    ref = reference_from_tree([{"page_number": 1, "items": [_lived_with_you(4)]}])
+    res = score_forms(ref, render_reference(ref))
+    assert [e.kind for e in res.events if e.charged] == []
+    assert res.score == 1.0
+
+
 def test_lanes_are_emitted():
     names = [m.metric_name for m in forms_v2_metrics(REF, PERFECT)]
     assert names == [
@@ -172,6 +203,35 @@ def test_wrong_digit_is_critical():
     md = PERFECT.replace("28,898.28", "28,898.26")
     assert "wrong value" in kinds(md)
     assert drop(md) >= 10
+
+
+@pytest.mark.parametrize(
+    ("expected", "written"),
+    [("125000", "12500"), ("12500", "125000"), ("45402", "4540"), ("1HGCM82633A004352", "1HGCM82633A00435")],
+)
+def test_dropped_or_added_digit_is_critical(expected: str, written: str):
+    ref = reference_from_tree([{"page_number": 1, "items": [_text("Units", expected), _text("City", "Dayton")]}])
+    res = score_forms(ref, render_reference(ref).replace(f": {expected}", f": {written}"))
+    assert [e.kind for e in res.events if e.charged] == ["wrong value"]
+
+
+def test_value_cut_after_whole_words_is_still_truncated():
+    ref = reference_from_tree([{"page_number": 1, "items": [_text("Policy", "PL-4471-2093"), _text("City", "Dayton")]}])
+    res = score_forms(ref, render_reference(ref).replace("PL-4471-2093", "PL-4471"))
+    assert [e.kind for e in res.events if e.charged] == ["value truncated"]
+
+
+def test_contradicting_copy_is_charged_whatever_the_order():
+    wrong = "- **City**: Akron\n"
+    after = score_forms(REF, PERFECT + "\n" + wrong)
+    before = score_forms(REF, PERFECT.replace("Dayton", "Akron") + "\n- **City**: Dayton\n")
+    assert [e.kind for e in after.events if e.charged] == ["contradicting copy"]
+    assert after.score < 1.0
+    assert after.score == pytest.approx(before.score)
+
+
+def test_identical_copy_is_free():
+    assert score(PERFECT + "\n- **City**: Dayton\n") == pytest.approx(1.0)
 
 
 def test_swapped_values_are_critical():
@@ -489,6 +549,15 @@ def test_box_states_as_words(on: str, off: str):
     assert score(md) == pytest.approx(1.0), kinds(md)
 
 
+def test_bracketed_state_words_are_boxes():
+    before = PERFECT.replace("[x]", "[checked]").replace("[ ]", "[unchecked]")
+    assert score(before) == pytest.approx(1.0), kinds(before)
+    after = PERFECT.replace("- [x] Full time", "- Full time [Checked]").replace(
+        "- [ ] Seasonal work", "- Seasonal work [not selected]"
+    )
+    assert score(after) == pytest.approx(1.0), kinds(after)
+
+
 def test_next_captions_printed_id_is_not_part_of_the_value():
     md = PERFECT.replace(
         "- **Date of birth**: 1997-09-18\n- **3 Annual income**:",
@@ -669,3 +738,251 @@ def test_dropped_blank_rows_do_not_cap_coverage():
     res = score_forms(ref, "**Named insured**: Johnson LLC")
     assert {e.kind.split(" (")[0] for e in res.events if e.charged} == {"empty field omitted"}
     assert res.score >= 1 - FLOOR["minor_cap"] - 1e-9
+
+
+def _dated(label: str, value: str, other: tuple[str, str] | None = None) -> Any:
+    fields = [_text(label, value), *([_text(*other)] if other else []), _text("Policy number", "PN-558213")]
+    return _page(*fields)
+
+
+@pytest.mark.parametrize(
+    ("label", "other", "written", "wrong"),
+    [
+        ("Date of loss (MM/DD/YYYY)", None, "04/03/2025", True),
+        ("Date of loss (MM/DD/YYYY)", None, "2025-04-03", True),
+        ("Date of loss (MM/DD/YYYY)", None, "April 3, 2025", True),
+        ("Date of loss (MM/DD/YYYY)", None, "March 4, 2025", False),
+        ("Date of loss", ("Date signed", "25/03/2025"), "04/03/2025", True),
+        ("Date of loss", ("Date signed", "25/03/2025"), "2025-04-03", False),
+        ("Date of loss", None, "04/03/2025", False),  # no printed order, no other date: both orders accepted
+    ],
+)
+def test_day_month_swap_is_wrong_when_the_form_fixes_the_order(
+    label: str, other: tuple[str, str] | None, written: str, wrong: bool
+):
+    ref = _dated(label, "03/04/2025", other)
+    md = render_reference(ref).replace(f"**{label}**: 03/04/2025", f"**{label}**: {written}")
+    kinds_ = [e.kind for e in score_forms(ref, md).events if e.charged]
+    assert kinds_ == (["wrong value"] if wrong else [])
+
+
+FRAMED = reference_from_tree(
+    [
+        {
+            "page_number": 1,
+            "items": [
+                _text("Social Security benefits", "964,240"),
+                _text("Exemption amount", "629,536"),
+                _text("Date of birth", "05/05/1996"),
+            ],
+        }
+    ]
+)
+
+
+def test_line_id_cents_box_and_date_hint_around_a_value_are_harmless():
+    """Tax forms print the line id before the amount box and a ``.00`` cents box after it; dates carry a hint."""
+    md = (
+        "Social Security benefits: 5 964,240 .00\n"
+        "Exemption amount: 10a 629,536 0 0\n"
+        "Date of birth: 05/05/1996 MM/DD/YYYY\n"
+    )
+    assert [(e.kind, e.cls) for e in score_forms(FRAMED, md).events if e.charged] == []
+
+
+def test_wrong_amount_inside_its_printed_frame_is_critical():
+    md = "Social Security benefits: 5 964,241 .00\nExemption amount: 10a 629,536 0 0\nDate of birth: 05/05/1996\n"
+    assert [(e.kind, e.cls) for e in score_forms(FRAMED, md).events if e.charged] == [("wrong value", "critical")]
+
+
+def test_unit_or_word_after_a_value_stays_extra_text():
+    """Only date-format hints are a printed frame: ``year`` or ``kg`` after a value is text the parser added."""
+    ref = reference_from_tree([{"page_number": 1, "items": [_text("Name", "Alice"), _text("Weight", "75")]}])
+    res = score_forms(ref, "Name: Alice year\nWeight: 75 kg\n")
+    assert [(e.kind, e.cls) for e in res.events if e.charged] == [("extra text in value", "minor")] * 2
+
+
+def test_spelled_out_format_hint_after_a_date_is_harmless():
+    ref = reference_from_tree([{"page_number": 1, "items": [_text("Date of birth", "05/05/1996")]}])
+    assert [e.kind for e in score_forms(ref, "Date of birth: 05/05/1996 Month Day Year\n").events if e.charged] == []
+    unit = score_forms(ref, "Date of birth: 05/05/1996 kg\n").events
+    assert [(e.kind, e.cls) for e in unit if e.charged] == [("extra text in value", "minor")]
+
+
+@pytest.mark.parametrize(
+    ("expected", "written", "kind"),
+    [
+        ("964,240", "5,964,240", "wrong value"),  # a longer number, the 5 is no line id
+        ("200", "1 200", "extra text in value"),  # digit grouping: 1,200
+        ("200", "1 200 .00", "extra text in value"),
+        ("200", "1 200.00", "extra text in value"),  # space-grouped 1,200.00
+        ("200", "1 200,00", "extra text in value"),  # space-grouped 1 200 with comma cents
+        ("12345", "12345 00", "extra text in value"),  # no cents box printed: 00 is extra
+        ("00-958", "5 00-958", "extra text in value"),  # an id, not an amount
+        ("12", "12 mm", "extra text in value"),  # a lone hint word after a value that is no date
+        ("Alice", "Alice yyyy", "extra text in value"),
+    ],
+)
+def test_near_miss_value_frames_are_kept(expected: str, written: str, kind: str) -> None:
+    ref = reference_from_tree([{"page_number": 1, "items": [_text("Amount", expected)]}])
+    assert [e.kind for e in score_forms(ref, f"Amount: {written}\n").events if e.charged] == [kind]
+
+
+@pytest.mark.parametrize("expected", ["964240", "964,240"])
+def test_line_id_before_a_comma_grouped_amount_is_harmless(expected: str) -> None:
+    ref = reference_from_tree([{"page_number": 1, "items": [_text("Amount", expected)]}])
+    assert [e.kind for e in score_forms(ref, "Amount: 5 964,240 .00\n").events if e.charged] == []
+
+
+@pytest.mark.parametrize(
+    ("expected", "written"),
+    [
+        ("26428", "12 26428"),  # a ZIP code
+        ("5551234", "1 5551234"),  # a phone number
+        ("05/05/1996", "12 05/05/1996"),  # a date
+        ("4500", "1 4500"),  # a plain number with no money mark
+    ],
+)
+def test_number_set_apart_by_a_space_before_a_non_money_value_stays_extra_text(expected: str, written: str) -> None:
+    ref = reference_from_tree([{"page_number": 1, "items": [_text("Amount", expected)]}])
+    assert [e.kind for e in score_forms(ref, f"Amount: {written}\n").events if e.charged] == ["extra text in value"]
+
+
+@pytest.mark.parametrize(
+    ("expected", "written"),
+    [
+        ("4,500", "1 4,500"),  # the reference writes the amount with grouping
+        ("4500", "1 4500 .00"),  # the cents box marks it as money
+        ("664", "23a 664"),  # a line id with a letter
+        ("664", "23: 664"),  # a line id set apart by punctuation
+        ("18/09/1978", "2. 18/09/1978"),  # a numbered line before a date
+    ],
+)
+def test_line_id_before_money_or_marked_by_punctuation_is_harmless(expected: str, written: str) -> None:
+    ref = reference_from_tree([{"page_number": 1, "items": [_text("Amount", expected)]}])
+    assert [e.kind for e in score_forms(ref, f"Amount: {written}\n").events if e.charged] == []
+
+
+def test_grid_split_into_tables_that_repeat_its_header_is_one_grid():
+    rows = [["1", "120", ""], ["2", "", "4"], ["3", "75", "6"], ["4", "", ""]]
+    ref = _page({"type": "table", "columns": ["Day", "Salary", "Hours"], "rows": rows})
+
+    def split(cells: list[list[str]]) -> str:
+        head = "<table><tr><th>Day</th><th>Salary</th><th>Hours</th></tr>"
+        body = [
+            "".join(f"<tr>{''.join(f'<td>{v}</td>' for v in r)}</tr>" for r in part) for part in (cells[:2], cells[2:])
+        ]
+        return "\n\n".join(f"{head}{b}</table>" for b in body)
+
+    assert [e.kind for e in score_forms(ref, split(rows)).events if e.charged] == []
+    wrong = [r[:] for r in rows]
+    wrong[2][1] = "57"
+    assert "wrong value" in {e.kind for e in score_forms(ref, split(wrong)).events if e.charged}
+
+
+def _table_html(head: list[str], rows: list[list[str]]) -> str:
+    th = "".join(f"<th>{h}</th>" for h in head)
+    body = "".join(f"<tr>{''.join(f'<td>{v}</td>' for v in r)}</tr>" for r in rows)
+    return f"<table><tr>{th}</tr>{body}</table>"
+
+
+def test_split_grid_header_matches_through_markdown_formatting():
+    rows = [["1", "120", ""], ["2", "", "4"], ["3", "75", "6"], ["4", "", ""]]
+    ref = _page({"type": "table", "columns": ["Day", "Salary", "Hours"], "rows": rows})
+    md = (
+        _table_html(["Day", "Salary", "Hours"], rows[:2])
+        + "\n\n"
+        + _table_html(["Day", "**Salary**", "Hours"], rows[2:])
+    )
+    assert [e.kind for e in score_forms(ref, md).events if e.charged] == []
+
+
+def test_reference_tables_sharing_a_header_stay_apart_in_the_output():
+    head = ["Item", "Quantity", "Price"]
+    filled = [["Apple", "5", "10"], ["Pear", "8", "12"]]
+    ref = _page({"type": "table", "columns": head, "rows": filled}, {"type": "table", "columns": head, "rows": filled})
+    md = _table_html(head, [["Apple", "", ""], ["Pear", "", ""]]) + "\n\n" + _table_html(head, filled)
+    assert "value lost" in {e.kind for e in score_forms(ref, md).events if e.charged}
+
+
+def test_caption_repeated_per_option_reads_the_column_under_its_header():
+    lines = [("Auto", True, "1,200.00"), ("Cargo", False, None), ("Crime", False, None), ("Yacht", False, None)]
+    ref = _page(
+        {
+            "type": "field",
+            "field": "multi_select",
+            "label": "Lines of business",
+            "valueItems": [
+                {
+                    "type": "section",
+                    "label": name,
+                    "items": [{"type": "field", "field": "checkbox", "value": on}, _text("Premium", value)],
+                }
+                for name, on, value in lines
+            ],
+        }
+    )
+
+    def grid(auto: str, cargo: str) -> str:
+        return (
+            "<table><tr><th colspan='2'>Lines of business</th><th>Premium</th>"
+            "<th colspan='2'></th><th>Premium</th></tr>"
+            f"<tr><td>[x]</td><td>Auto</td><td>$ {auto}</td><td>[ ]</td><td>Crime</td><td>$</td></tr>"
+            f"<tr><td>[ ]</td><td>Cargo</td><td>$ {cargo}</td><td>[ ]</td><td>Yacht</td><td>$</td></tr></table>"
+        )
+
+    assert [e.kind for e in score_forms(ref, grid("1,200.00", "")).events if e.charged] == []
+    assert "value lost" in {e.kind for e in score_forms(ref, grid("", "1,200.00")).events if e.charged}
+
+
+def _lines_of_business(lines: list[tuple[str, bool, str | None]]) -> Any:
+    sections = [
+        {
+            "type": "section",
+            "label": name,
+            "items": [{"type": "field", "field": "checkbox", "value": on}, _text("Premium", value)],
+        }
+        for name, on, value in lines
+    ]
+    return _page({"type": "field", "field": "multi_select", "label": "Lines of business", "valueItems": sections})
+
+
+def _premium_grid(rows: list[tuple[str, str, str]]) -> str:
+    body = "".join(f"<tr><td>{box}</td><td>{name}</td><td>{premium}</td></tr>" for box, name, premium in rows)
+    return f"<table><tr><th colspan='2'>Lines of business</th><th>Premium</th></tr>{body}</table>"
+
+
+def test_column_caption_premium_under_an_unprinted_option_is_not_credited():
+    ref = _lines_of_business([("Auto", True, "100"), ("Cargo", False, "200")])
+    md = _premium_grid([("[x]", "Auto", "100"), ("[ ]", "Other", "200")])
+    assert {e.kind for e in score_forms(ref, md).events if e.charged} - {"unchecked option omitted"}
+
+
+def test_column_caption_repeated_in_each_cell_is_not_value_text():
+    ref = _lines_of_business([("Auto", True, "100"), ("Cargo", False, "200")])
+    md = _premium_grid([("[x]", "Auto", "Premium: 100"), ("[ ]", "Cargo", "Premium: 200")])
+    assert [e.kind for e in score_forms(ref, md).events if e.charged] == []
+
+
+def test_column_caption_grid_found_past_an_unrelated_table_with_that_header():
+    ref = _lines_of_business(
+        [("Auto", True, "100"), ("Cargo", False, None), ("Crime", False, None), ("Yacht", False, None)]
+    )
+    other = "<table><tr><th>Fee</th><th>Premium</th></tr><tr><td>Total</td><td></td></tr></table>\n\n"
+
+    def grid(auto: str, cargo: str) -> str:
+        return (
+            "<table><tr><th colspan='2'>Lines of business</th><th>Premium</th>"
+            "<th colspan='2'></th><th>Premium</th></tr>"
+            f"<tr><td>[x]</td><td>Auto</td><td>$ {auto}</td><td>[ ]</td><td>Crime</td><td>$</td></tr>"
+            f"<tr><td>[ ]</td><td>Cargo</td><td>$ {cargo}</td><td>[ ]</td><td>Yacht</td><td>$</td></tr></table>"
+        )
+
+    assert [e.kind for e in score_forms(ref, other + grid("100", "")).events if e.charged] == []
+    assert "value lost" in {e.kind for e in score_forms(ref, other + grid("", "100")).events if e.charged}
+
+
+def test_column_caption_value_that_starts_with_the_caption_keeps_it():
+    ref = _lines_of_business([("Auto", True, "Premium 100"), ("Cargo", False, "Premium 200")])
+    md = _premium_grid([("[x]", "Auto", "Premium 100"), ("[ ]", "Cargo", "Premium 200")])
+    assert [e.kind for e in score_forms(ref, md).events if e.charged] == []

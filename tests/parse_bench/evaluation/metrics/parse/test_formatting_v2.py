@@ -147,9 +147,37 @@ def test_lists():
         ("list type changed", "minor")
     ]
     dropped = steps.replace("1. ", "").replace("2. ", "").replace("3. ", "")
-    assert [k for k, _ in kinds(steps, dropped)] == ["list marker lost (systematic, 3x)"]
+    assert [k for k, _ in kinds(steps, dropped)] == ["list marker lost (systematic, 3x)", "list marker lost"]
     split = steps.replace("2. Vent the line through port P3", "2. Vent the line\n9. through port P3")
     assert kinds(steps, split) == [("list item split", "minor")]
+
+
+def test_dash_and_middle_dot_bullets_are_unordered_list_markers():
+    items = "Intro line.\n\n- alpha item\n- beta item\n- gamma item"
+    for bullet in ("–", "—", "·"):
+        assert kinds(items, items.replace("- ", bullet + " ")) == []
+        assert kinds(items.replace("- ", bullet + " "), items) == []
+    # a dash inside a sentence is not a list: the invented list is still charged
+    assert kinds("Intro line.\n\nHe said – no – and left.", "Intro line.\n\n- He said no and left.") != []
+
+
+@pytest.mark.parametrize(("bullet", "entity"), [("•", "&bull;"), ("–", "&ndash;"), ("—", "&#8212;"), ("·", "&middot;")])
+def test_entity_bullet_at_a_line_start_is_the_bullet_it_displays(bullet: str, entity: str):
+    items = "Intro line.\n\n- alpha item\n- beta item\n  - nested item"
+    literal, escaped = items.replace("- ", bullet + " "), items.replace("- ", entity + " ")
+    assert kinds(literal, escaped) == [] and kinds(escaped, literal) == []
+    # mid-line, or with no space after it, the entity stays text
+    assert [u.role for u in parse(f"Intro {entity} alpha\n\n{entity}alpha").units] == ["p", "p"]
+
+
+def test_dash_and_middle_dot_lines_that_are_not_bullets_stay_text():
+    def roles(md: str) -> list[tuple[str, bool, int]]:
+        return [(u.role, u.ordered, u.depth) for u in parse(md).units]
+
+    for line in ("—Mark Twain", "———", "Text — with dash", "l·l is Catalan", "··· dots", "—"):
+        assert roles(line) == [("p", False, 0)], line
+    # a dash item nested under a numbered item is an unordered child
+    assert roles("1. one\n   — sub") == [("item", True, 0), ("item", False, 1)]
 
 
 def test_emphasis_is_minor_and_style_swap_is_one_event():
@@ -166,10 +194,12 @@ def test_underline_is_major_on_a_redline():
     assert kinds(plain, plain.replace("<u>Note 14</u>", "Note 14")) == [("underline lost", "minor")]
 
 
-def test_systematic_quirk_is_charged_once():
+def test_systematic_quirk_costs_what_it_costs_with_one_instance_right():
     page = "\n\n".join(f"Paragraph {w} has an *italic phrase {w}* inside it." for w in "abcdef")
     res = score_formatting(page, page.replace("*", ""))
-    assert res.counts() == {"critical": 0, "major": 0, "minor": 1}
+    assert res.counts() == {"critical": 0, "major": 0, "minor": 5}
+    one_right = page.replace("*", "").replace("italic phrase f", "*italic phrase f*")
+    assert res.floor == score_formatting(page, one_right).floor
     assert res.proportional < res.floor  # the extent is in the proportional part
 
 
@@ -212,7 +242,11 @@ def test_a_style_split_inside_a_word_is_matched_across_the_split():
 
 def test_dropped_headings_and_list_items_are_charged_and_empty_output_scores_zero():
     half = PAGE.split("- First")[0]
-    assert kinds(PAGE, half) == [("strikethrough missing", "critical"), ("list item missing (systematic, 3x)", "minor")]
+    assert kinds(PAGE, half) == [
+        ("strikethrough missing", "critical"),
+        ("list item missing (systematic, 3x)", "minor"),
+        ("list item missing", "minor"),
+    ]
     assert kinds(PAGE, PAGE.replace("## Results\n", "")) == [("heading missing", "major")]
     res = score_formatting(PAGE, "")
     assert res.score == 0.0 and res.coverage == 0.0
@@ -442,6 +476,18 @@ def test_an_underline_page_whose_underlines_are_all_dropped_scores_low():
     by = _fmt(_decoration_case("underline", ref), ref.replace("<u>", "").replace("</u>", ""))
     assert by["formatting_v2"].value == 0.0
     assert by["formatting_v2_underline"].value == 0.0
+
+
+def test_latex_underline_and_strike_in_inline_math_count_as_decoration():
+    """Some parsers write decoration as inline LaTeX; reading only the math text scored it as dropped."""
+    ref = "Insert <u>the new clause</u> here.\n\nSee <u>Schedule B</u> for the <u>updated fees</u>."
+    out = (
+        "Insert $ \\underline{\\text{the new clause}} $ here.\n\n"
+        "See $\\underline{\\text{Schedule B}}$ for the $\\underline{updated fees}$."
+    )
+    assert _fmt(_decoration_case("underline", ref), out)["formatting_v2_underline"].value == 1.0
+    struck = _fmt(_decoration_case("strikeout", REDLINE), REDLINE.replace("~~includes~~", "$\\sout{\\text{includes}}$"))
+    assert struck["formatting_v2"].metadata["decoration"]["strikeout"] == {"tp": 5, "fp": 0, "fn": 0}
 
 
 def test_inventory_hard_negative_passes_plain_text_and_fails_an_empty_output():

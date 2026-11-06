@@ -70,7 +70,7 @@ import math
 import re
 import unicodedata
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from typing import Any
 
@@ -155,6 +155,7 @@ _DIGIT = re.compile("[0-9]")
 _COMBINING = re.compile("[̀-ͯ]")
 _BR = re.compile(rf"<br{_S}*/?>")
 _SUP = re.compile(r"<sup>.*?</sup>", re.DOTALL)
+_HTML_COMMENT = re.compile(r"<!--[\s\S]*?-->")  # not rendered: a chart table inside it is not on the page
 _EMPH = re.compile(r"\*\*|__|\*")
 _WS_RUN = re.compile(f"{_S}+")
 
@@ -179,6 +180,7 @@ def num_cands(raw: Any) -> list[float]:
     s = pb_norm(raw)
     if s[:1] in ("~", "≈"):
         s = s[1:]
+    cur = re.search("[$€£¥]", s) is not None
     s = _js_trim(re.sub("[$€£¥]", "", s.replace("−", "-")))
     neg = False
     if s.startswith("(") and _PAREN_ALL.match(s):
@@ -195,7 +197,8 @@ def num_cands(raw: Any) -> list[float]:
     for v in variants:
         m = _NUM.match(v)
         if m:
-            x = float(m.group(1)) * (MULT[m.group(2).lower()] if m.group(2) else 1)
+            suf = (m.group(2) or "").lower()
+            x = float(m.group(1)) * (MULT[suf] if suf and (suf != "g" or cur) else 1)  # "26 g" is grams, "$5g" is 5e9
             out.append(-x if neg else x)
     return out
 
@@ -234,6 +237,7 @@ _PAREN = re.compile(f"\\(({_DOT}*?)\\)")
 _Q1 = re.compile(rf"q([1-4]){_S}*'?([0-9]{{2}}|[0-9]{{4}})\Z")
 _Q2 = re.compile(rf"([1-4])q{_S}*'?([0-9]{{2}}|[0-9]{{4}})\Z")
 _Q3 = re.compile(rf"([0-9]{{4}}){_S}*q([1-4])\Z")
+_Q4 = re.compile(rf"'([0-9]{{2}}){_S}*q([1-4])\Z")
 _YY = re.compile(r"'([0-9]{2})\Z")
 
 
@@ -244,12 +248,14 @@ def nx_label(x: Any) -> str:
     t = _js_trim(_WS_RUN.sub(" ", t.replace("**", "")))
     m = _Q1.match(t) or _Q2.match(t)
     if m:
-        t = f"{'20' + m.group(2) if len(m.group(2)) == 2 else m.group(2)}q{m.group(1)}"
+        t = f"{_year(m.group(2))}q{m.group(1)}"
     elif m := _Q3.match(t):
         t = f"{m.group(1)}q{m.group(2)}"
+    elif m := _Q4.match(t):
+        t = f"{_year(m.group(1))}q{m.group(2)}"
     elif m := _YY.match(t):
-        t = "20" + m.group(1)
-    return t[:-1] if t.endswith("s") else t
+        t = _year(m.group(1))
+    return t.removesuffix("s")
 
 
 def osa(a: str, b: str) -> int:
@@ -381,6 +387,7 @@ def bind(label: str, ev: str) -> float:
     return max(
         _bind_forms(nx_label(l0) or l0, nx_label(e0) or e0),
         _bind_forms(_strip_parens(l0), _strip_parens(e0)),
+        0.97 if _yy_either_century(l0, e0) else 0.0,  # "'50" printed for 2050
     )
 
 
@@ -525,8 +532,8 @@ def extract_tables(md: str) -> list[_LabTable]:
                 if _SEP_ROW.match(ln):
                     continue
                 t = _js_trim(ln)
-                t = t[1:] if t.startswith("|") else t
-                t = t[:-1] if t.endswith("|") else t
+                t = t.removeprefix("|")
+                t = t.removesuffix("|")
                 rows.append([_js_trim(x) for x in t.split("|")])
             ctx = [ln for ln in lines[max(0, i - 5) : i] if _js_trim(ln)]
             tables.append(_LabTable(rows, 1, ctx, offs[i]))
@@ -546,7 +553,110 @@ _BULLET = re.compile(rf"{_S}*[-*]{_S}+[^:|\n]+:{_S}")
 _BULLET_PARTS = re.compile(rf"{_S}*[-*]{_S}+([^:]+):{_S}*({_DOT}*)\Z")
 _COMMA_SPLIT = re.compile(f",{_S}*")
 _NAME_VAL = re.compile(rf"({_DOT}*?){_S}+([^{_WS}]+)\Z")
+_PART_NAMED = re.compile(rf"{_S}*([^:]+):{_S}+([-+−(]?[$€£¥]?[0-9]{_DOT}*)\Z")
 _INDEX_KEY = re.compile(r"(0|[1-9][0-9]*)\Z")
+# "Label: value" lines: the label has no colon or pipe, the value starts with a number
+_KV_LINE = re.compile(
+    rf"{_S}*([^:|\n#\-*\"'{{\[<][^:|\n]{{0,79}}?):{_S}*([~≈<>]?{_S}*[-+−(]?[$€£¥]?{_S}*[0-9][^:|\n]{{0,39}}?){_S}*\Z"
+)
+_KV_AXIS = re.compile(
+    rf"{_S}*(?:\*\*)?(?:(?:left|right|primary|secondary){_S}+)?(?:[xy][-{_WS}]?axis|legend|sources?|notes?)\b", _I
+)
+_KV_BREAK = re.compile(rf"{_S}*(?:\||```|(?:<[^>]+>{_S}*)+\Z|[-*_=]{{3,}}{_S}*\Z)")
+_KV_PROSE = 120  # a longer line is running text: it ends a block
+_KV_MARKUP = re.compile(rf"<[^>]+>|\*\*|^{_S}*#+{_S}*|^{_S}*[•·◦▪‣]{_S}*")
+_KV_LIST = re.compile(rf",{_S}")  # "2011 ~21, 2016 ~19": several values ("3,354" is one)
+_KV_ITEM = re.compile(rf"{_S}*[-*•]{_S}+")
+_KV_LABEL_ONLY = re.compile(r"[^:|\n]{1,80}:?\Z")  # a list item that only names a group: a nested list's parent
+
+
+def _kv_text(s: str) -> str:
+    """A label or series name without tags, bold markers, heading hashes or a leading bullet glyph."""
+    return _js_trim(_KV_MARKUP.sub("", s))
+
+
+def _kv_grids(md: str) -> tuple[list[tuple[list[list[str]], int]], set[int]]:
+    """Blocks of ``Label: value`` lines, each read as one grid with the offset of its first value line, plus the
+    offsets of the lines read as values.
+
+    Lines are read with bold markers removed (``**2006:** 73``). A list item is read like a plain line: a
+    ``- Label: value`` item is a value line and an item holding only a label (``* **Europe:**``, a nested
+    list's parent) names the series of the indented items below it. Any other list item ends the block.
+    A block is a stretch of short lines (blank lines included) ended by running text, a table or code line, a
+    rule (``---``) or a line holding only HTML tags (``<verbose>``). In a block, the non-value lines before
+    each run of value lines name that run's series: the last one ending in ``:``, else the last heading or
+    bold line, else the first one. A run with no such line is the series ``Value``. Axis, legend, source and
+    note lines are skipped. Rows are the labels in first-seen order, one column per series; a block needs two
+    or more value lines. When the series after the first are named by headings, bold lines or parent items and
+    no label repeats across series, the names are groups of one series (``* Southern Europe:`` /
+    ``  * Spain: 49%``) and the block is one ``Value`` column.
+    """
+    out: list[tuple[list[list[str]], int]] = []
+    used: set[int] = set()
+    series: dict[str, dict[str, str]] = {}
+    cats: list[str] = []
+    names: list[tuple[str, bool]] = []  # non-value lines since the last value line; is it a heading/item
+    run: str | None = None  # the series the current run of value lines fills
+    first = -1
+    at_run: list[int] = []  # offsets of the block's value lines
+    groups: set[str] = set()  # series named by a heading, bold line or list item
+    in_table = False
+
+    def flush() -> None:
+        nonlocal series, cats, names, run, first, at_run, groups
+        if len(at_run) >= 2:
+            if len(series) > 1 and groups >= set(list(series)[1:]) and len(cats) == sum(map(len, series.values())):
+                series = {"Value": {c: v for col in series.values() for c, v in col.items()}}  # groups, no series
+            cols = list(series)
+            out.append(([["", *cols], *([c, *(series[s].get(c, "") for s in cols)] for c in cats)], first))
+            used.update(at_run)
+        series, cats, names, run, first, at_run, groups = {}, [], [], None, -1, [], set()
+
+    pos = 0
+    for ln in md.split("\n"):
+        at, pos = pos, pos + len(ln) + 1
+        low = ln.lower()
+        if "<table" in low or in_table:  # an HTML table's lines are the table's, not a value list
+            in_table = "</table>" not in low[max(0, low.rfind("<table")) :]
+            flush()
+            continue
+        t = _js_trim(ln)
+        item = _KV_ITEM.match(t) if t else None
+        if item:
+            t = _js_trim(t[item.end() :])
+        t = t.replace("**", "")
+        if not t or _KV_AXIS.match(t):
+            continue
+        if len(t) > _KV_PROSE or _KV_BREAK.match(t):
+            flush()
+            continue
+        m = _KV_LINE.match(t)
+        if m and item and _KV_LIST.search(m.group(2)):
+            m = None  # "- Costs: 2011 ~21, 2016 ~19" holds several values: left to the bullet-row reader
+        if not m:
+            if item and not _KV_LABEL_ONLY.match(t):
+                flush()
+                continue
+            names.append((_kv_text(t), bool(item or _HEADING.match(ln) or _BOLD_LINE.match(ln))))
+            run = None
+            continue
+        if run is None:
+            colon = [x for x in names if x[0].endswith(":")]
+            marked = [x for x in names if x[1]]
+            head, own = colon[-1] if colon else marked[-1] if marked else names[0] if names else ("", False)
+            name: str = head.removesuffix(":").rstrip() or "Value"
+            if own:
+                groups.add(name)
+            run, names = name, []
+        cur = run or "Value"  # always set above; `or` narrows the type for ty
+        label, value = _kv_text(m.group(1)), _js_trim(m.group(2))
+        if label not in cats:
+            cats.append(label)
+        series.setdefault(cur, {}).setdefault(label, value)
+        first = at if first < 0 else first
+        at_run.append(at)
+    flush()
+    return out, used
 
 
 def _js_keys(o: Any) -> list[str]:
@@ -602,7 +712,7 @@ class _Pairs(list):
     """A JSON object kept as its ``(key, value)`` pairs, so repeated keys ("15yr" twice) all survive."""
 
 
-_JSON_OBJ_LINE = re.compile(r"^[ \t]*\{", re.M)
+_JSON_OBJ_LINE = re.compile(r"^[ \t]*\{", re.MULTILINE)
 
 
 def _scalar_map(o: Any) -> bool:
@@ -666,33 +776,53 @@ def _series_json_grids(md: str) -> list[tuple[list[list[str]], list[str], str | 
 
 
 def data_grids(md: str, include_tables: bool = True, series_json: bool = True) -> list[list[list[str]]]:
-    """Every data representation on the page as a grid (header row first): JSON, bullets, per-series tables.
+    """Every data representation on the page as a grid (header row first): JSON, bullets, ``Label: value``
+    blocks, per-series tables.
     ``series_json``: include the ``{series: {category: value}}`` objects (output_grids reads them with context)."""
-    grids: list[list[list[str]]] = []
+    return [g for g, _ in _data_grids_at(md, include_tables, series_json)]
+
+
+def _lines_before(md: str, pos: int) -> list[str]:
+    """The non-empty lines just before offset ``pos``: a JSON block's or bullet list's title and notes."""
+    return [_js_trim(x) for x in md[max(0, pos - 600) : pos].split("\n") if _js_trim(x)]
+
+
+def _data_grids_at(md: str, include_tables: bool, series_json: bool) -> list[tuple[list[list[str]], int | None]]:
+    """``data_grids`` with the offset each JSON block, bullet list or ``Label: value`` block starts at (None for
+    the other grids)."""
+    grids: list[tuple[list[list[str]], int | None]] = []
     fence = _FENCE.search(md)
     t = _js_trim(md)
     src = fence.group(1) if fence else (t if t.startswith(("{", "[")) else None)
     if src is not None:
         g = _json_grid(src)
         if g:
-            grids.append(g)
+            grids.append((g, fence.start() if fence else 0))
     if series_json:
-        grids += [g for g, _, _ in _series_json_grids(md)]
-    bullets = [ln for ln in md.split("\n") if _BULLET.match(ln)]
+        grids += [(g, None) for g, _, _ in _series_json_grids(md)]
+    kv, kv_lines = _kv_grids(md)
+    bullets: list[tuple[str, int]] = []  # bullets the Label: value blocks did not read, with their offsets
+    pos = 0
+    for ln in md.split("\n"):
+        if _BULLET.match(ln) and pos not in kv_lines:
+            bullets.append((ln, pos))
+        pos += len(ln) + 1
     if len(bullets) >= 2:
         rows: list[list[Any]] = []
-        for ln in bullets:
+        for ln, _ in bullets:
             m = _BULLET_PARTS.match(ln)
             if not m:
                 continue
             parts: list[Any] = [_js_trim(m.group(1))]
             for x in _COMMA_SPLIT.split(m.group(2)):
-                nv = _NAME_VAL.match(x)
-                parts.append([_js_trim(nv.group(1)), nv.group(2)] if nv else [None, _js_trim(x)])
+                # "Low EGDI: 32 (16.6%)" is a series and its whole value; "Low EGDI 32" splits at the last space
+                nv = _PART_NAMED.match(x) or _NAME_VAL.match(x)
+                parts.append([_js_trim(nv.group(1)), _js_trim(nv.group(2))] if nv else [None, _js_trim(x)])
             rows.append(parts)
         if rows:
             names = [x[0] if x[0] is not None else f"Value {k + 1}" for k, x in enumerate(rows[0][1:])]
-            grids.append([["", *names], *([r[0], *(x[1] for x in r[1:])] for r in rows)])
+            grids.append(([["", *names], *([r[0], *(x[1] for x in r[1:])] for r in rows)], bullets[0][1]))
+    grids += kv
     tables = extract_tables(md)
     if len(tables) >= 2 and all(tb.rows and len(tb.rows[0]) == 2 for tb in tables):
         cats = list(dict.fromkeys(r[0] for tb in tables for r in tb.rows[1:]))
@@ -704,9 +834,9 @@ def data_grids(md: str, include_tables: bool = True, series_json: bool = True) -
                 hit = next((r for r in tb.rows if r[0] == c), [])
                 vals.append(hit[1] if len(hit) > 1 else "")
             merged.append([c, *vals])
-        grids.append(merged)
+        grids.append((merged, None))
     elif tables and include_tables:
-        grids.append(tables[0].rows)
+        grids.append((tables[0].rows, None))
     return grids
 
 
@@ -1229,13 +1359,14 @@ _FOOTNOTE_CHARS = re.compile("[†‡§¶⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁽⁾]+"
 _BRACKET_NOTE = re.compile(r"\[[a-z0-9]{1,3}\]")
 _FY = re.compile(rf"\b(?:fy|cy){_S}*'?([0-9]{{4}}|[0-9]{{2}})\b", _A)
 _YEAR_MARK = re.compile(r"\b((?:19|20)[0-9]{2})[efpa]\b", _A)
-_MONTHS = {m: i + 1 for i, m in enumerate("jan feb mar apr may jun jul aug sep oct nov dec".split())}
+_MONTHS: dict[str, int] = {m: i + 1 for i, m in enumerate("jan feb mar apr may jun jul aug sep oct nov dec".split())}
 _MON_NAME = "(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?"
 _MON_Y = re.compile(rf"{_MON_NAME}[{_WS}\-/,']*'?([0-9]{{4}}|[0-9]{{2}})\Z")
 _Y_MON = re.compile(rf"([0-9]{{4}})[{_WS}\-/,:]*{_MON_NAME}\Z")
 _FQ1 = re.compile(rf"([qh])([1-4])[{_WS}\-/']*'?([0-9]{{4}}|[0-9]{{2}})\Z")
 _FQ2 = re.compile(rf"([1-4])([qh])[{_WS}\-/']*'?([0-9]{{4}}|[0-9]{{2}})\Z")
 _FQ3 = re.compile(rf"([0-9]{{4}})[{_WS}\-/:]*([qh])([1-4])\Z")
+_FQ4 = re.compile(rf"'([0-9]{{2}})[{_WS}\-/:]*([qh])([1-4])\Z")  # "'21 Q2", year first
 _AXIS_NOTE = re.compile(
     r"\((?:right|left|rhs|lhs|r\.h\.s\.|l\.h\.s\.)(?:[ -]hand)?(?: (?:side|axis|scale))*\)"
     r"|\b(?:right|left)[ -]hand axis\b|\b(?:right|left) axis\b",
@@ -1258,7 +1389,8 @@ def _year(y: str) -> str:
 def full_label(x: str) -> str:
     """Full-mode label key: ``nx_label`` plus FY prefixes, months, half-years, footnote markers and nested units.
 
-    ``FY2011`` = ``2011``, ``Q1-23`` = ``1Q 2023`` = ``2023 Q1``, ``Jan-23`` = ``January 2023`` = ``2023 Jan``,
+    ``FY2011`` = ``2011``, ``Q1-23`` = ``1Q 2023`` = ``2023 Q1`` = ``'23 Q1``,
+    ``Jan-23`` = ``January 2023`` = ``2023 Jan``,
     ``Poland*`` / ``Poland¹`` / ``Poland [a]`` = ``Poland``, ``Investment (USD (2023, MER))`` = ``Investment``.
     """
     t = _FOOTNOTE_CHARS.sub("", str(x).replace("~~", "").translate(_APOSTROPHES))
@@ -1275,12 +1407,14 @@ def full_label(x: str) -> str:
         t = f"{_year(m.group(3))}{m.group(2)}{m.group(1)}"
     elif m := _FQ3.match(t):
         t = f"{m.group(1)}{m.group(2)}{m.group(3)}"
+    elif m := _FQ4.match(t):
+        t = f"{_year(m.group(1))}{m.group(2)}{m.group(3)}"
     elif m := _MON_Y.match(t):
         t = f"{_year(m.group(2))}m{_MONTHS[m.group(1)]:02d}"
     elif m := _Y_MON.match(t):
         t = f"{m.group(1)}m{_MONTHS[m.group(2)]:02d}"
     elif m := _YY_MARK.match(t):
-        t = "20" + m.group(1)
+        t = _year(m.group(1))
     elif m := _MON_ONLY.match(t):
         t = f"m{_MONTHS[m.group(1)]:02d}"
     return t[:-1] if t.endswith("s") and len(t) > 2 else t
@@ -1341,6 +1475,17 @@ def _raw_label(x: str) -> str:
     return _strip_parens(pb_norm(_FOOTNOTE_CHARS.sub("", str(x).replace("~~", ""))))
 
 
+def _yy_either_century(label: str, ev: str) -> bool:
+    """A two-digit year mark and a four-digit year of either century with the same last digits.
+
+    ``'98`` normalises to 1998 and ``'50`` to 1950 (``_year``), but a projection chart prints ``'50`` for 2050,
+    so the mark also binds the other century below an exact match.
+    """
+    m = _YY_MARK.match(_js_trim(pb_norm(label).translate(_APOSTROPHES)))
+    e = _js_trim(pb_norm(ev))
+    return m is not None and _YEAR.match(e) is not None and e.endswith(m.group(1))
+
+
 @lru_cache(maxsize=400_000)
 def label_bind(label: str, ev: str) -> float:
     """Label -> one evidence string: 1 exact, 0.995 equal once units are dropped, 0.97 token run inside the
@@ -1354,9 +1499,16 @@ def label_bind(label: str, ev: str) -> float:
     if a == b or (_alnum(a) and _alnum(a) == _alnum(b)):
         return 0.995
     ca, cb = _content_toks(a), _content_toks(b)
-    if ca and ca == cb:
-        return 0.97  # the same words but for "of", "in", "the" ... ("Score in 2018" = "Score 2018")
+    if (ca and ca in (cb, _content_toks(rb))) or (cb and cb == _content_toks(ra)):
+        # the same words but for "of", "in", "the" ... ("Score in 2018" = "Score 2018"); a raw form also counts,
+        # as a note can stop one side normalising ("'26 Q1 (projection)" keeps "'26", "'26 Q1" is 2026q1)
+        return 0.97
     best = 0.0
+    ya = _year(a) if _TWO_DIGITS.match(a) else a  # GT often writes the tick '19 as a bare "19"
+    if _YEAR.match(ya) and re.match(ya + r"(m01|q1|h1)\Z", b) and _PRINTED_YEAR.search(ev.translate(_APOSTROPHES)):
+        best = 0.97  # a year tick binds the first month / quarter / half of its year ("'19" = "Jan 2019")
+    if _yy_either_century(label, ev):
+        best = 0.97  # "'50" printed for 2050 on a projection chart
     for x, y in ((a, b), (ra, rb)):
         if _TWO_DIGITS.match(x) and _YEAR.match(y) and y.endswith(x):
             return 1.0
@@ -1372,6 +1524,10 @@ def label_bind(label: str, ev: str) -> float:
         if abs(len(x) - len(y)) <= 0.2 * max(len(x), len(y)):  # else the typo similarity is below 0.8
             best = max(best, nx_label_sim(x, y))
     return best
+
+
+# a four-digit or apostrophe year: "Jan 2019", "Jan '19", "2019-01", but not the day label "Jan 19"
+_PRINTED_YEAR = re.compile(r"(?<![0-9])(?:(?:19|20)[0-9]{2}|'[0-9]{2})(?![0-9])")
 
 
 def _year_cut(ref: str, out: str) -> bool:
@@ -1430,6 +1586,7 @@ _LABEL_HEADER = re.compile(
     r"\b(year|years|period|date|time|quarter|month|decile|quintile|percentile|rank|age|cohort|wave|round)\b", _I
 )
 _INT_CELL = re.compile(r"[0-9]{1,4}\Z")
+_NUM_RANGE = re.compile(r"[0-9]+\s*[-–—]\s*[0-9]+")
 _TENOR = re.compile(
     r"[0-9]+(?:\.[0-9]+)?\s*(?:y|yrs?|years?|mos?|months?|wks?|weeks?|days?)\Z", _I
 )  # "10yr": a maturity
@@ -1547,6 +1704,26 @@ def _fill_group_labels(rows: list[list[str]], body_idx: Sequence[int]) -> None:
             rows[r][0] = x
 
 
+def _fill_header_spans(rows: list[list[str]], hdr: Sequence[int], th: set[tuple[int, int]]) -> None:
+    """Carry a group header written once across the blank header cells to its right, in place.
+
+    A markdown table cannot span cells, so ``| | 2020 | | | 2021 |`` over ``| | Q2 | Q3 | Q4 | Q1 |`` writes each
+    year once and leaves the rest of its quarters blank. Only upper header rows are filled, only right of a
+    named cell (never column 0), only where the header level below names the column, and only in a markdown
+    table: an HTML table (``th`` holds its header cells) can write a colspan, so its blank cells stay blank.
+    """
+    if th:
+        return
+    for k, h in enumerate(hdr[:-1]):
+        below = hdr[k + 1 :]
+        group = ""
+        for j in range(1, len(rows[h])):
+            if rows[h][j]:
+                group = rows[h][j]
+            elif group and any(rows[b][j] for b in below):
+                rows[h][j] = group
+
+
 def _make_grid(
     rows: list[list[str]],
     hdr: list[int],
@@ -1576,7 +1753,11 @@ def _make_grid(
     rows, th, stack_names, shift = _split_stacked(rows, body_idx, th, before)
     rows = [[_js_trim(_STACK_SEP.sub(" ", x)) for x in r] for r in rows]  # other line breaks read as spaces
     twins = {t + shift[t] for t in twins}
+    rows, th, part_names, shift = _split_named(rows, hdr, body_idx, th)
+    twins = {t + shift[t] for t in twins}
+    stack_names = {j + shift[j]: name for j, name in stack_names.items()} | part_names
     width = len(rows[0])
+    _fill_header_spans(rows, hdr, th)
     hchain = [_dedupe(rows[h][j] for h in hdr) for j in range(width)]
     for j, name in stack_names.items():
         hchain[j] = [*hchain[j], name]
@@ -1611,10 +1792,21 @@ def _make_grid(
         head = " ".join(hchain[j])
         prev = [tuple(rows[r][:j]) for r in body_idx if any(rows[r][:j])]
         # a "Year" / "Quarter" column of integers next to repeated row labels (long format); next to unique
-        # labels an integer column headed "25th percentile", "<30 years" or "Start year" holds values
+        # labels an integer column headed "25th percentile", "<30 years" or "Start year" holds values; a longer
+        # header keys only when every word is a label word or a numeral ("Round, Cycle 1", not "Round trip time")
+        # and a numeric range in it spans the column's integers ("Round 1-2" over 1, 2 names its codes; "30-44
+        # years" over other numbers heads a value series)
+        htoks = _content_toks(head, drop_parens=False)
+        span = [int(n) for n in _DIGITS.findall(m.group())] if (m := _NUM_RANGE.search(head)) else []
         label_like = bool(
             _LABEL_HEADER.search(_PAREN_LAZY.sub(" ", head.lower()))
-            and len(_content_toks(head, drop_parens=False)) <= 2
+            and (
+                len(htoks) <= 2
+                or (
+                    (not span or all(_INT_CELL.match(v) and span[0] <= int(v) <= span[-1] for _, v in vals))
+                    and all(t.isdigit() or t == "cycle" or _LABEL_HEADER.fullmatch(t) for t in htoks)
+                )
+            )
             and all(_INT_CELL.match(v) for _, v in vals)
         ) or all(_TENOR.match(v) for _, v in vals)
         codes = (
@@ -1739,6 +1931,88 @@ def _split_stacked(
     th2 = {(r, c + shift[c] + d) for r, c in th if c < width for d in range(split.get(c, 1))}
     named = {j + shift[j] + d: names[d] for j, n in split.items() for d in range(n)}
     return out_rows, th2, named, shift
+
+
+_NAMED_PART = re.compile(
+    rf"(?P<v>[-+−]?[$€£¥]?[0-9][0-9,.]*{_S}*%?){_S}+(?P<n>[^\W\d_][^\W\d_ -]*(?:[ -][^\W\d_]+){{0,3}})", re.UNICODE
+)
+_PART_SEP = re.compile(rf"{_S}*[,;]{_S}+")
+_SLASH_HEAD = re.compile(rf"({_DOT}*?){_S}*\(([^()]+/[^()]+)\){_S}*\Z")
+_SLASH_SEP = re.compile(rf"{_S}*/{_S}*")
+
+
+def _named_parts(x: str) -> list[tuple[str, str]] | None:
+    """``14% Yes, 5% Machine-readable``: (value, series name) per part; ``None`` unless every part is one."""
+    out = []
+    for part in _PART_SEP.split(_js_trim(x)):
+        m = _NAMED_PART.fullmatch(part)
+        if not m or _UNIT_WORDS.search(m.group("n")):
+            return None
+        out.append((_js_trim(m.group("v")), _js_trim(m.group("n"))))
+    return out
+
+
+def _split_named(
+    rows: list[list[str]], hdr: Sequence[int], body_idx: Sequence[int], th: set[tuple[int, int]]
+) -> tuple[list[list[str]], set[tuple[int, int]], dict[int, str], list[int]]:
+    """Columns whose cells hold one value per series, named in the cell or in the header, become one column per
+    series under the column's own header (a small-multiples panel per column, its series in each cell).
+
+    Two forms: ``14% Yes, 5% Machine-readable`` (every non-empty cell is ``<value> <name>`` parts, two names or
+    more in the column, one cell with two parts or more), and ``14% / 5% / -`` under ``SIDS (Yes / Machine-readable
+    / No)`` (every non-empty cell has exactly one part per header name, each a number or an empty mark). Returns
+    the rows, the header cells, the series name of each new column and, per old column, how far it moved right.
+    """
+    width = len(rows[0]) if rows else 0
+    plan: dict[int, list[str]] = {}
+    base: dict[int, str] = {}
+    for j in range(1, width):
+        cells = [rows[r][j] for r in body_idx if rows[r][j] and not _EMPTY_CELL.fullmatch(rows[r][j])]
+        if len(cells) < 2:
+            continue
+        heads = [(h, m) for h in hdr if (m := _SLASH_HEAD.match(rows[h][j]))]
+        if heads:
+            names = [_js_trim(n) for n in _SLASH_SEP.split(heads[-1][1].group(2))]
+            k = len(names)
+            parts = [_SLASH_SEP.split(_js_trim(x)) for x in cells]
+            if (
+                k >= 2
+                and all(names)
+                and len(set(names)) == k
+                and all(len(p) == k and all(_is_num(v) or _EMPTY_CELL.fullmatch(v) for v in p) for p in parts)
+            ):
+                plan[j] = names
+                base[j] = _js_trim(heads[-1][1].group(1))
+            continue
+        named = [_named_parts(x) for x in cells]
+        if all(named) and any(len(p) >= 2 for p in named if p):
+            order = list(dict.fromkeys(n for p in named if p for _, n in p))
+            if len(order) >= 2 and all(len({n for _, n in p}) == len(p) for p in named if p):
+                plan[j] = order
+    shift = [sum(len(plan[s_]) - 1 for s_ in plan if s_ < j) for j in range(width)]
+    if not plan:
+        return rows, th, {}, shift
+    head_rows = set(hdr)
+    out_rows: list[list[str]] = []
+    for r, row in enumerate(rows):
+        new: list[str] = []
+        for j, x in enumerate(row):
+            names = plan.get(j)
+            if names is None:
+                new.append(x)
+            elif r in head_rows:
+                new += [base.get(j, x) if _SLASH_HEAD.match(x) else x] * len(names)  # spans the series columns
+            elif not x or _EMPTY_CELL.fullmatch(x):
+                new += [""] * len(names)
+            elif j in base:
+                new += ["" if _EMPTY_CELL.fullmatch(v) else v for v in _SLASH_SEP.split(_js_trim(x))]
+            else:
+                got = {n: v for v, n in _named_parts(x) or []}
+                new += [got.get(n, "") for n in names]
+        out_rows.append(new)
+    th2 = {(r, c + shift[c] + d) for r, c in th if c < width for d in range(len(plan.get(c, [""])))}
+    named_cols = {j + shift[j] + d: n for j, names in plan.items() for d, n in enumerate(names)}
+    return out_rows, th2, named_cols, shift
 
 
 def _split_compound_rows(rows: list[list[str]], body_idx: list[int]) -> tuple[list[list[str]], list[int], set[int]]:
@@ -1942,7 +2216,7 @@ def _add_table(
         if (
             len(texts) >= 2
             and len(set(texts)) >= 2
-            and not any(_value_cell(x) for x in texts)
+            and not any(_value_cell(x) and not _PERIOD_LABEL.fullmatch(x) for x in texts)  # "Q2" is a label
             and any(x and _value_cell(x) for x in rows[k + 1][1:])
         ):
             hdr = [*hdr, k]
@@ -1960,7 +2234,7 @@ def _add_table(
             grids.append(g3)
 
 
-_ROW_GROUP = re.compile(r"(<(thead|tbody|tfoot)\b[^>]*>)(.*?)(</\2\s*>)", _I | re.S)
+_ROW_GROUP = re.compile(r"(<(thead|tbody|tfoot)\b[^>]*>)(.*?)(</\2\s*>)", _I | re.DOTALL)
 _TR_OPEN = re.compile(r"<tr\b", _I)
 _ROWSPAN_ATTR = re.compile(r"""(<t[hd]\b[^>]*?\browspan\s*=\s*["']?)(\d+)""", _I)
 
@@ -2042,9 +2316,11 @@ def output_grids(md: str) -> list[_Grid]:
     for joined in [*_sibling_grids(primary), *_panel_grids(primary)]:
         joined.tables = frozenset(t for j, _, _ in joined.src.values() for t in grids[j].tables)
         grids.append(joined)
-    raws: list[tuple[list[list[str]], list[str], str | None]] = [
-        (raw, [], None) for raw in data_grids(md, include_tables=not grids, series_json=False)
-    ]
+    # a JSON block, bullet list or Label: value block reads the lines above it as its context (its title)
+    raws: list[tuple[list[list[str]], list[str], str | None]] = []
+    for raw, pos in _data_grids_at(md, include_tables=not grids, series_json=False):
+        ctx = _lines_before(md, pos) if pos is not None else []
+        raws.append((raw, ctx, heading_of(ctx)))
     for raw, ctx, heading in [*raws, *_series_json_grids(md)]:
         if len(raw) >= 2:
             g = _make_grid([[html.unescape(str(x)) for x in r] for r in raw], [0], set(), set(), ctx, heading)
@@ -2631,7 +2907,7 @@ def _merged_groups(spec: ChartSpec) -> _ChartRef | None:
                 vals[ci] = v
     rest = [s for si, s in enumerate(spec.series) if si not in group]
     name = " / ".join(spec.series[si][0] for si in group)
-    merged = ChartSpec(**{**spec.__dict__, "series": [*rest, (name, vals)], "optional": frozenset()})
+    merged = replace(spec, series=[*rest, (name, vals)], optional=frozenset())
     return _ChartRef.of(merged, virtual=len(rest))
 
 
@@ -2658,7 +2934,7 @@ def _mark_axis_read(ch: _ChartRef, rules: Sequence[ChartRule]) -> None:
                     exact.add((ci, si))
     if estimated:
         nums = [v for v, _ in ch.known.values() if v is not None]
-        ch.tol_axis = chart_tol(ChartSpec(**{**ch.spec.__dict__, "data_labels_shown": False}), nums)
+        ch.tol_axis = chart_tol(replace(ch.spec, data_labels_shown=False), nums)
         ch.axis_read = frozenset(p for p in ch.known if p not in exact)
 
 
@@ -2738,6 +3014,7 @@ _HEAD_TAIL = re.compile(
 )
 _NOTE_COLUMN = re.compile(r"(notes?|comments?|remarks?|sources?|annotations?|events?)\b", _I)
 _HEAD_SEP = re.compile(rf"{_S}+[-–—:/|]{_S}+|:{_S}+")
+_YEAR_PERIOD_CAT = re.compile(rf"(?:19|20)[0-9]{{2}}{_S}+[qh][1-4]|[qh][1-4]{_S}+(?:19|20)[0-9]{{2}}", _I)
 
 
 def _views(g: _Grid, exclude: set[tuple[int, int]]) -> list[_View]:
@@ -2847,7 +3124,7 @@ def _unit_variant(chain: Sequence[str], bound: Sequence[str]) -> bool:
     return full_label(a) == full_label(b) and _raw_label(a) != _raw_label(b)
 
 
-def _fit_view(  # noqa: C901, PLR0912, PLR0915 - one pass over the matching steps
+def _fit_view(  # noqa: C901 - one pass over the matching steps
     ch: _ChartRef, g: _Grid, view: _View, page_lines: Sequence[str]
 ) -> _Fit:
     spec = ch.spec
@@ -2982,6 +3259,26 @@ def _fit_view(  # noqa: C901, PLR0912, PLR0915 - one pass over the matching step
     bmap = assign_b(amap)
     amap = assign_a(bmap)
     bmap = assign_b(amap)
+    if not ch.single:
+        # a placeholder header ("Value") bound only by a legend word ("Deal Value" next to "Deal Volume"): when
+        # every value contradicts that series and another series agrees, the name is not the legend; the column
+        # is left to the value binding below (legend lost)
+        loose = [
+            (b, si)
+            for b, si in bmap.items()
+            if b_chain[b]
+            and _generic_header(b_chain[b][-1])
+            and KB[b][si] < 0.995
+            and agree_b(b, si, amap) == 0
+            and any(agree_b(b, sj, amap) >= RENAMED_AGREE for sj in range(len(ch.names)) if sj != si)
+        ]
+        if loose:
+            for b, si in loose:
+                KB[b][si] = 0.0
+            amap = assign_a(None)
+            bmap = assign_b(amap)
+            amap = assign_a(bmap)
+            bmap = assign_b(amap)
     alias_a: set[int] = set()
     alias_b: set[int] = set()
 
@@ -2992,12 +3289,14 @@ def _fit_view(  # noqa: C901, PLR0912, PLR0915 - one pass over the matching step
     if not ch.single:
         legend_lost = False
         free_b = [b for b in B if b not in bmap and not derived(b_chain[b])]
+        # a "Total" column holding a series' printed values is that series under a wrong name, not a sum
+        total_b = [b for b in B if b not in bmap and derived(b_chain[b])]
         for si in range(len(ch.names)):
             if si in bmap.values():
                 continue
             n = sum(1 for ci in range(len(ch.cats)) if (ci, si) in ch.known)
             best = None
-            for b in free_b:
+            for b in [*free_b, *total_b]:
                 if b in bmap:
                     continue
                 lost = not b_chain[b] or _lost_legend(b_chain[b][-1])
@@ -3381,8 +3680,11 @@ def _fit_view(  # noqa: C901, PLR0912, PLR0915 - one pass over the matching step
 def _fit_chart(ch: _ChartRef, g: _Grid, page_lines: Sequence[str], exclude: set[tuple[int, int]] | None = None) -> _Fit:
     """Best orientation of one grid for one chart (categories down the rows, or across the header)."""
     views = _views(g, exclude or set())
-    # the cell-by-cell reading only for one series whose categories join two labels ("Occupation - Total")
-    joined = ch.single and sum(1 for c in ch.cats if len(_HEAD_SEP.split(c, maxsplit=1)) == 2) >= 0.5 * len(ch.cats)
+    # the cell-by-cell reading only for one series whose categories join two labels ("Occupation - Total") or
+    # a year and its period ("2007 Q1": a Year x Q1..Q4 grid holds the year in the row, the quarter in the column)
+    joined = ch.single and sum(
+        1 for c in ch.cats if len(_HEAD_SEP.split(c, maxsplit=1)) == 2 or _YEAR_PERIOD_CAT.fullmatch(_js_trim(c))
+    ) >= 0.5 * len(ch.cats)
     views = [v for v in views if joined or not v.cellwise]
     fits = [_fit_view(c, g, v, page_lines) for c in (ch, ch.merged) if c is not None for v in views]
     return max(fits, key=lambda f: (f.key, f.bound, -f.penalty))
@@ -3688,6 +3990,7 @@ def score_chart_next(
 
     Returns ``None`` when the page has neither (nothing to score).
     """
+    md = _HTML_COMMENT.sub(" ", md or "")
     if chart_tables:
         res = score_chart_tables(md, chart_tables, chart_rules(rules or ()))
         if res.n_points:

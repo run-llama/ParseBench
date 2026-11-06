@@ -12,6 +12,7 @@ from parse_bench.evaluation.metrics.parse.chart_next import (
     full_label,
     hungarian,
     label_bind,
+    num_cands,
     nx_label,
     score_chart_next,
     score_chart_rules,
@@ -263,6 +264,46 @@ def test_json_output_is_read_by_the_content_adapter():
         ' {"Quarter": "Q3 2023", "North": 455, "South": 299}]\n```\n'
     )
     assert score(md).score == 1.0
+
+
+def test_dash_less_value_lines_under_series_headings_are_one_grid():
+    md = (
+        "## Quarterly revenue by region\n\n<verbose>\nX-axis: Q1 2023 – Q3 2023\nLegend: North, South\n"
+        "North:\nQ1 2023: 412.5\nQ2 2023: 430\nQ3 2023: 455\n\n"
+        "South\nQ1 2023: 300\nQ2 2023: 310.2\nQ3 2023: 299\n</verbose>\n"
+    )
+    assert score(md).score == 1.0
+
+
+def test_bold_colon_bullets_under_series_headings_are_one_grid():
+    md = (
+        "## Quarterly revenue by region\n\n#### **North**\n- **Q1 2023:** 412.5\n- **Q2 2023:** 430\n"
+        "- **Q3 2023:** 455\n\n#### **South**\n- **Q1 2023:** 300\n- **Q2 2023:** 310.2\n- **Q3 2023:** 299\n"
+    )
+    assert score(md).score == 1.0
+
+
+def test_nested_bullets_read_parent_and_child_labels():
+    md = (
+        "## Quarterly revenue by region\n\n* **Q1 2023:**\n  * North: 412.5\n  * South: 300\n"
+        "* **Q2 2023:**\n  * North: 430\n  * South: 310.2\n* **Q3 2023:**\n  * North: 455\n  * South: 299\n"
+    )
+    assert score(md).score == 1.0
+
+
+def test_bullet_value_with_parenthetical_share_is_one_value():
+    chart = {
+        **REVENUE,
+        "series": [
+            {"name": "North", "values": ["412 (58%)", "430 (58%)", "455 (60%)"]},
+            {"name": "South", "values": ["300 (42%)", "310 (42%)", "299 (40%)"]},
+        ],
+    }
+    md = (
+        "## Quarterly revenue by region\n\n- Q1 2023: North: 412 (58%), South: 300 (42%)\n"
+        "- Q2 2023: North: 430 (58%), South: 310 (42%)\n- Q3 2023: North: 455 (60%), South: 299 (40%)\n"
+    )
+    assert score(md, [chart]).score == 1.0
 
 
 def test_unlabeled_chart_tolerates_axis_reading_noise():
@@ -1359,3 +1400,179 @@ def test_daily_axis_bare_days_take_the_month_above_them():
 
 def test_typeset_year_marks_read_as_years():
     assert full_label("’20") == full_label("'20") == "2020"
+
+
+_SHORT_TITLE_CHART = {
+    "title": "Annual revenue",
+    "chart_type": "bar",
+    "x_label": "Year",
+    "y_label": "Revenue",
+    "data_labels_shown": True,
+    "categories": ["2021", "2022", "2023", "2024"],
+    "series": [{"name": "Revenue", "values": ["11.6", "13.2", "15.2", "16.9"]}],
+}
+_JSON_BODY = '```json\n[{"Year": "2021", "Revenue": 11.6}, {"Year": "2022", "Revenue": 13.2}, ' + (
+    '{"Year": "2023", "Revenue": 15.2}, {"Year": "2024", "Revenue": 16.9}]\n```\n'
+)
+_BULLET_BODY = "- 2021: 11.6\n- 2022: 13.2\n- 2023: 15.2\n- 2024: 16.9\n"
+
+
+@pytest.mark.parametrize("body", [_JSON_BODY, _BULLET_BODY], ids=["json", "bullets"])
+def test_short_title_above_json_or_bullets_is_found(body: str):
+    res = score_chart_next("## Annual revenue\n\n" + body, [_SHORT_TITLE_CHART])
+    assert res is not None and res.score == 1.0
+    res = score_chart_next("## Staff by office\n\n" + body, [_SHORT_TITLE_CHART])
+    assert res is not None
+    assert {"title missing", "wrong title"} & set(res.events.kinds())
+
+
+def test_round_code_column_with_a_three_token_header_is_a_row_key():
+    countries = ["Norway", "Sweden", "Austria", "Chile", "Israel", "Hungary"]
+    vals = ["8.6", "8.4", "6.8", "4.9", "-5.2", "1.3"]
+    chart = {"title": "Change in share", "chart_type": "bar", "data_labels_shown": False, "categories": countries}
+    chart["series"] = [{"name": "Percentage point differences", "values": vals}]
+    rows = [["Country", "Round, Cycle 1", "Percentage point differences"]]
+    rows += [[c, r, v] for c, r, v in zip(countries, ["1", "1", "1", "2", "2", "3"], vals, strict=True)]
+    res = score(table(rows, "Change in share"), [chart])
+    assert res.score == 1.0, kinds(res)
+
+
+@pytest.mark.parametrize(("header", "keyed"), [("Round 1-2", True), ("30-44 years", False)])
+def test_round_range_header_over_its_own_codes_is_a_row_key(header: str, keyed: bool):
+    """``Round 1-2`` over 1, 2 names its codes; ``30-44 years`` over 1, 2 is a value series the chart lacks."""
+    countries = ["Norway", "Sweden", "Austria", "Chile", "Israel", "Hungary"]
+    vals = ["8.6", "8.4", "6.8", "4.9", "-5.2", "1.3"]
+    chart = {"title": "Change in share", "chart_type": "bar", "data_labels_shown": False, "categories": countries}
+    chart["series"] = [{"name": "Percentage point differences", "values": vals}]
+    rows = [["Country", header, "Percentage point differences"]]
+    rows += [[c, r, v] for c, r, v in zip(countries, "111222", vals, strict=True)]
+    res = score(table(rows, "Change in share"), [chart])
+    assert (res.score == 1.0) == keyed, kinds(res)
+
+
+def test_numbered_round_score_header_stays_a_value_series():
+    countries = ["Norway", "Sweden", "Austria", "Chile", "Israel", "Hungary"]
+    ratings = ["1", "2", "3", "1", "2", "3"]
+    chart = {"title": "Ratings", "chart_type": "bar", "categories": countries}
+    chart["series"] = [
+        {"name": "Round 1 score", "values": ratings},
+        {"name": "Revenue", "values": ["4", "5", "6", "7", "8", "9"]},
+    ]
+    rows = [["Country", "Round 1 score", "Revenue"]]
+    rows += [[c, r, v] for c, r, v in zip(countries, ratings, ["4", "5", "6", "7", "8", "9"], strict=True)]
+    assert score(table(rows, "Ratings"), [chart]).score == 1.0
+
+
+def test_three_word_round_header_over_small_integers_stays_a_value_series():
+    countries = ["Norway", "Sweden", "Austria", "Chile", "Israel", "Hungary"]
+    trips = ["1", "2", "3", "1", "2", "3"]
+    chart = {"title": "Latency", "chart_type": "bar", "categories": countries}
+    revenue = ["40", "35", "52", "18", "27", "22"]
+    chart["series"] = [{"name": "Round trip time", "values": trips}, {"name": "Revenue", "values": revenue}]
+    rows = [["Country", "Round trip time", "Revenue"]]
+    rows += [[c, t, r] for c, t, r in zip(countries, trips, revenue, strict=True)]
+    assert score(table(rows, "Latency"), [chart]).score == 1.0
+
+
+def year_tick_chart() -> dict:
+    return {"title": "CPI", "chart_type": "line", "data_labels_shown": False, "categories": ["'19", "'20", "'21"],
+            "series": [{"name": "Total", "values": ["1.6", "2.5", "7.0"]}]}  # fmt: skip
+
+
+def monthly_rows(jan: dict[int, str], other: dict[int, str]) -> list[list[str]]:
+    months = ["Jan", "Apr", "Jul", "Oct"]
+    return [["Month", "Total"]] + [
+        [f"{m} 20{y}", jan[y] if m == "Jan" else other[y]] for y in (19, 20, 21) for m in months
+    ]
+
+
+def test_year_tick_binds_the_january_row_of_monthly_output():
+    rows = monthly_rows({19: "1.6", 20: "2.5", 21: "7.0"}, {19: "4", 20: "4", 21: "4"})
+    assert score(table(rows, "CPI"), [year_tick_chart()]).score == 1.0
+    assert label_bind("2013", "2013Q1") >= 0.97 and label_bind("'19", "2019-01") >= 0.97
+    assert label_bind("2013", "2013Q3") == 0.0 and label_bind("'19", "Jul 2019") == 0.0
+
+
+def test_year_tick_rule_needs_a_year_and_the_first_period():
+    assert label_bind("19", "Jan 2019") >= 0.97 and label_bind("19", "Jul 2019") == 0.0  # bare GT year ticks
+    assert label_bind("2019", "2019Q2") == 0.0 and label_bind("2019", "Jan 2020") == 0.0
+    assert label_bind("2019", "H1 2019") >= 0.97 and label_bind("'19", "Q1 2019") >= 0.97
+
+
+def test_year_tick_is_not_satisfied_by_a_later_month_matching_the_tick_value():
+    rows = monthly_rows({19: "9", 20: "9", 21: "9"}, {19: "1.6", 20: "2.5", 21: "7.0"})
+    res = score(table(rows, "CPI"), [year_tick_chart()])
+    assert res.score == 0.0 and kinds(res).get("wrong value")
+
+
+@pytest.mark.parametrize("chart_type", ["bar", "stacked_bar"])
+def test_unlabeled_tolerance_is_two_percent_of_the_value_range_on_stacked_charts_too(chart_type: str):
+    # values span 0..100 (2% = 2) while the stacks reach 300: a 5-unit misread is a "value off" either way
+    names = ["Low", "Mid", "Top"]
+    chart = {"title": "Outlays", "chart_type": chart_type, "data_labels_shown": False, "categories": ["A", "B"],
+             "series": [{"name": n, "values": ["100", "80"]} for n in names]}  # fmt: skip
+    rows = [["Cat", *names], ["A", "105", "100", "100"], ["B", "80", "80", "80"]]
+    assert kinds(score(table(rows, "Outlays"), [chart])) == {"value off": 1}
+
+
+def test_year_tick_does_not_bind_a_day_label():
+    assert label_bind("2019", "Jan 19") == 0.0 and label_bind("'19", "Jan. 19") == 0.0
+    assert label_bind("2019", "Jan '19") >= 0.97 and label_bind("2019", "Jan ’19") >= 0.97
+
+
+def test_missing_yearly_chart_is_not_read_from_a_daily_january_series():
+    # the daily chart has no Jan. 19 point; the output adds that day, and the yearly chart is left out
+    days = ["Jan. 16", "Jan. 20", "Jan. 21", "Jan. 22"]
+    daily = {"title": "Futures price performance this year", "chart_type": "line", "data_labels_shown": False,
+             "categories": days, "series": [{"name": "Silver", "values": ["25", "34", "31", "36"]},
+                                            {"name": "Gold", "values": ["6", "10", "11", "13"]}]}  # fmt: skip
+    yearly = {"title": "Futures price performance since the end of 2009", "chart_type": "line",
+              "data_labels_shown": False, "categories": ["2019", "2020", "2021", "2022"],
+              "series": [{"name": "Gold", "values": ["17", "40", "73", "65"]},
+                         {"name": "Silver", "values": ["-8", "8", "55", "35"]}]}  # fmt: skip
+    rows = [["Date", "Silver", "Gold"], ["Jan 16", "25", "6"], ["Jan 19", "30", "6"], ["Jan 20", "34", "10"]]
+    rows += [["Jan 21", "31", "11"], ["Jan 22", "36", "13"]]
+    res = score(table(rows, "Futures price performance this year"), [daily, yearly])
+    assert "chart missing" in kinds(res) and not {"wrong value", "value off"} & set(kinds(res)), kinds(res)
+
+
+def test_year_first_apostrophe_quarter_binds_the_quarter():
+    assert nx_label("'21 Q2") == full_label("'21 Q2") == "2021q2" and full_label("’21 H1") == "2021h1"
+    assert label_bind("'26 Q1 (projection)", "'26 Q1") >= 0.97  # the note keeps the reference label raw
+    cats = ["2020", "2020 Q2", "2020 Q3", "2020 Q4", "'21", "'21 Q2", "'21 Q3", "'21 Q4"]
+    hpc, phone = ["30", "33", "37", "31", "35", "39", "37", "36"], ["49", "47", "46", "51", "45", "42", "44", "43"]
+    chart = {"title": "Revenue by segment, quarterly", "chart_type": "bar", "data_labels_shown": False,
+             "categories": cats, "series": [{"name": "HPC", "values": hpc},
+                                            {"name": "Smartphone", "values": phone}]}  # fmt: skip
+    quarters = [f"{y} Q{q}" for y in (2020, 2021) for q in range(1, 5)]
+    rows = [["Quarter", "HPC", "Smartphone"]] + [[c, h, s] for c, h, s in zip(quarters, hpc, phone, strict=True)]
+    assert score(table(rows, "Revenue by segment, quarterly"), [chart]).score == 1.0
+
+
+def test_numeric_range_header_over_small_integers_stays_a_value_series():
+    items = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"]
+    young, old = ["1", "2", "1", "2", "1", "3"], ["12", "15", "17", "11", "19", "14"]
+    chart = {"title": "Respondents", "chart_type": "bar", "categories": items,
+             "series": [{"name": "30-44 years", "values": young}, {"name": "45-60 years", "values": old}]}  # fmt: skip
+    rows = [["Item", "30-44 years", "45-60 years"]] + [[i, y, o] for i, y, o in zip(items, young, old, strict=True)]
+    assert score(table(rows, "Respondents"), [chart]).score == 1.0
+
+
+def test_two_digit_year_marks_before_2050_are_twentieth_century():
+    assert nx_label("'98") == full_label("'98") == "1998" and nx_label("'08") == "2008"
+    assert nx_label("Q1 '98") == full_label("Q1 '98") == "1998q1"
+    assert label_bind("'98", "1998") >= 0.99 > label_bind("'98", "2098")
+
+
+def test_two_digit_year_mark_still_binds_a_projection_year():
+    assert label_bind("'50", "2050") >= 0.97 and label_bind("’50", "2050") >= 0.97
+    assert label_bind("'50", "2150") == 0.0 and label_bind("'5", "2005") == 0.0
+
+
+def test_g_suffix_is_giga_only_after_a_currency_symbol():
+    assert num_cands("26 g") == [26.0] and num_cands("$5g") == [5e9]
+    assert num_cands("€2.5g") == [2.5e9] and num_cands("-3 g") == [-3.0] and num_cands("5 GB") == []
+    chart = {"title": "Protein per serving", "chart_type": "bar", "categories": ["Beef", "Tofu"],
+             "series": [{"name": "Protein (g)", "values": ["26", "8"]}]}  # fmt: skip
+    rows = [["Food", "Protein (g)"], ["Beef", "26 g"], ["Tofu", "8 g"]]
+    assert score(table(rows, "Protein per serving"), [chart]).score == 1.0

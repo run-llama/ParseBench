@@ -30,7 +30,7 @@ triggers one event with a severity class:
 Headline: ``min(proportional, floor)``. Proportional = 1 - sum(atom losses) / (atoms + PRIOR_ATOMS).
 Floor = 1 - 0.10 * fix(critical) - 0.05 * fix(major) - min(0.15, 0.01 * minor) where the first event
 counts in full and later ones scale by min(1, FLOOR_K / atoms). A minor or major event kind that hits
-every instance of its kind on the page (3+) is a systematic quirk, charged once. When less than half of
+every instance of its kind on the page (3+) is a systematic quirk, charged as one instance fewer. When less than half of
 the reference's formatted items can be located in the output, the score is capped at 2 x coverage.
 
 Regexes are written so Python ``re`` and JavaScript (``u`` flag) behave the same: explicit character
@@ -56,7 +56,7 @@ FLOOR = {"critical": 0.10, "major": 0.05, "minor": 0.01, "minor_cap": 0.15}
 LOSS = {"critical": 1.0, "major": 0.5, "minor": 0.2}
 PRIOR_ATOMS = 3  # smoothing: one lost minor atom on a page with a single atom costs 0.2 / 4
 FLOOR_K = 10  # events after the first scale by min(1, FLOOR_K / atoms)
-SYSTEMATIC_MIN = 3  # a minor/major kind hitting every instance (at least this many) is charged once
+SYSTEMATIC_MIN = 3  # a minor/major kind hitting every instance (at least this many) is charged one instance short
 COVERAGE_FREE = 0.5  # below this share of located reference atoms the score is capped at coverage / 0.5
 TILE_K = 3
 LCS_CELL_LIMIT = 4_000_000
@@ -181,6 +181,8 @@ _CODE_SPAN = _rx(r"(`+)([^`][\s\S]*?)\1(?!`)")
 _ESCAPE = _rx(r"\\([!-/:-@\[-`{-~])")
 _INLINE_MATH = _rx(r"\\\(([\s\S]+?)\\\)|\$([^$\n]+?)\$")
 _MATH_TEXTCMD = _rx(r"\\(?:mathrm|text|textbf|textit|mathbf|mathit|operatorname|rm|bf|it)\{([^{}]*)\}")
+# Inline math that only decorates text, as in $\underline{\text{word}}$: group 1 is the command, group 2 the text.
+_MATH_DECORATED_TEXT = _rx(r"[ \t]*\\(underline|uline|sout|st)\{((?:\\(?:text|mathrm)\{[^{}]*\}|[^{}\\])*)\}[ \t]*")
 _MATH_SUPB = _rx(r"\^\{([^{}]*)\}")
 _MATH_SUP1 = _rx(r"\^([A-Za-z0-9])")
 _MATH_SUBB = _rx(r"_\{([^{}]*)\}")
@@ -241,6 +243,11 @@ def _inline_math(m: re.Match[str]) -> str:
     body = m.group(1) if m.group(1) is not None else m.group(2)
     if m.group(1) is None and not re.search(r"[\\^_{}]", body):
         return m.group(0)
+    decorated = _MATH_DECORATED_TEXT.fullmatch(body)
+    if decorated:
+        # Prose decorated through LaTeX reads as decorated prose; a formula that uses \underline stays a formula.
+        text = _MATH_TEXTCMD.sub(lambda t: t.group(1), decorated.group(2))
+        return _wrap(U if decorated.group(1) in ("underline", "uline") else S, text)
     return _wrap(F, _math(body))
 
 
@@ -421,7 +428,10 @@ _ATX_CLOSE = _rx(r"[ \t]+#+$")
 _SETEXT = _rx(r"^ {0,3}(=+|-+)[ \t]*$")
 _HR = _rx(r"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
 _QUOTE = _rx(r"^ {0,3}>[ \t]?")
-_ITEM = _rx(r"^([ \t]*)([-*+•◦▪●○■‣∙]|[0-9]{1,3}[.)]|\([0-9]{1,3}\)|\([a-z]{1,4}\)|\([A-Z]\)|[a-z]\))[ \t]+(.*)$")
+_ITEM = _rx(r"^([ \t]*)([-*+•◦▪●○■‣∙–—·]|[0-9]{1,3}[.)]|\([0-9]{1,3}\)|\([a-z]{1,4}\)|\([A-Z]\)|[a-z]\))[ \t]+(.*)$")
+# "&bull; item" at a line start: decoded here so it gets the same list-item role as a literal "•" line
+_LEAD_ENTITY = _rx(r"^[ \t]*&(#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]{1,7});(?=[ \t])", re.MULTILINE)
+_ENTITY_BULLETS = frozenset("•◦▪●○■‣∙–—·")
 _PIPE_ROW = _rx(r"^[ \t]*\|.*\|[ \t]*$")
 _PIPE_SEP = _rx(r"^[ \t]*\|?[ \t]*:?-{2,}:?[ \t]*(?:\|[ \t]*:?-{2,}:?[ \t]*)*\|?[ \t]*$")
 
@@ -480,7 +490,10 @@ def _prepare(md: str) -> str:
     md = _tables(md)
     md = _html_lists(md)
     md = _BR.sub("\n", md)
-    return _BLOCK_TAG.sub("\n\n", md)
+    md = _BLOCK_TAG.sub("\n\n", md)
+    return _LEAD_ENTITY.sub(
+        lambda m: m.group()[: m.group().index("&")] + ch if (ch := _entity(m)) in _ENTITY_BULLETS else m.group(), md
+    )
 
 
 def parse(md: str) -> Doc:
@@ -586,7 +599,7 @@ def parse(md: str) -> Doc:
                 while len(stack) > 1 and stack[-1] > ind + 1:
                     stack.pop()
             marker = im.group(2)
-            ordered = marker not in "-*+•◦▪●○■‣∙"
+            ordered = marker not in "-*+•◦▪●○■‣∙–—·"
             block += 1
             new_unit(Unit("item", depth=len(stack) - 1, ordered=ordered, group=group, block=block), im.group(3))
             para_open = True
@@ -700,7 +713,7 @@ def _lcs_pairs(a: Sequence[str], b: Sequence[str]) -> list[tuple[int, int]]:
                 cur[j] = nxt[j + 1] + 1
             else:
                 x, y = nxt[j], cur[j + 1]
-                cur[j] = x if x >= y else y
+                cur[j] = max(x, y)
     out: list[tuple[int, int]] = []
     i = j = 0
     while i < n and j < m:
@@ -1429,7 +1442,9 @@ def score_docs(ref: Doc, out: Doc, scope: Scope = FULL, skip: frozenset[int] = f
     instances = _instances(ref, atoms)
     for g, es in by_group.items():
         if es[0].cls != "critical" and len(es) >= SYSTEMATIC_MIN and len(es) >= instances.get(g, 10**9):
-            for e in es[1:]:
+            # charged as the events one short of systematic: a quirk on every instance never costs less than the
+            # same quirk with one instance right, so one more error never raises the score
+            for e in es[max(SYSTEMATIC_MIN, instances[g]) - 1 :]:
                 e.charged = False
             es[0].kind += f" (systematic, {len(es)}x)"
     cnt = {"critical": 0, "major": 0, "minor": 0}

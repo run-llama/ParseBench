@@ -53,6 +53,7 @@ from parse_bench.evaluation.metrics.parse.text_next import (
     text_next_metrics,
 )
 from parse_bench.schemas.evaluation import EvaluationResult, MetricValue
+from parse_bench.schemas.layout_detection_output import LayoutDetectionModel, Qwen3VLLabel
 from parse_bench.schemas.parse_output import ParseLayoutPageIR, ParseOutput
 from parse_bench.schemas.pipeline_io import InferenceResult
 from parse_bench.test_cases.schema import LayoutDetectionTestCase, LayoutTestRule, ParseTestCase, TestCase
@@ -69,6 +70,19 @@ _LAYOUT_KEY_ALIASES = {
 
 # Provider labels of box-only picture elements (no text content), compared lower-cased.
 _PICTURE_LABELS = frozenset({"picture", "figure", "image", "chart", "graphic", "logo"})
+
+# Layout models whose predictions come from ``_parse_with_layout_to_layout_output``: every segment label
+# there is written as a Qwen3-VL class index ("6" is Picture), whatever the model.
+_QWEN3VL_INDEX_LABEL_MODELS = frozenset(
+    {
+        LayoutDetectionModel.QWEN3_VL_8B,
+        LayoutDetectionModel.GEMINI_LAYOUT,
+        LayoutDetectionModel.OPENAI_LAYOUT,
+        LayoutDetectionModel.ANTHROPIC_LAYOUT,
+        LayoutDetectionModel.GEMMA4_LAYOUT,
+        LayoutDetectionModel.OPENAI_COMPATIBLE_VLM_LAYOUT,
+    }
+)
 
 
 def compute_next_metrics(inference_result: InferenceResult, test_case: TestCase) -> list[MetricValue]:
@@ -227,12 +241,15 @@ def _with_picture_boxes(
     width, height = layout_output.image_width, layout_output.image_height
     if width <= 0 or height <= 0:
         return blocks
+    # Attribution needs one exact frame per page; the page's own blocks may carry the PDF page size
+    # (1659.9999 x 2340.0001) where the image size is rounded (1659 x 2340).
+    frame_w, frame_h = (blocks[0].page_width, blocks[0].page_height) if blocks else (width, height)
     seen = {tuple(round(v, 6) for v in b.bbox_xyxy) for b in blocks}
     out = list(blocks)
     for idx, prediction in enumerate(layout_output.predictions):
         if (prediction.page if prediction.page is not None else 1) != page_number or prediction.content is not None:
             continue
-        if prediction.label.strip().lower() not in _PICTURE_LABELS:
+        if not _is_picture_prediction(prediction, layout_output.model):
             continue
         box = normalize_bbox_xyxy(prediction.bbox, width=width, height=height)
         key = tuple(round(v, 6) for v in box)
@@ -243,6 +260,9 @@ def _with_picture_boxes(
         out.append(
             PredBlock(
                 bbox_xyxy=box,
+                r=prediction.r,
+                page_width=frame_w,
+                page_height=frame_h,
                 block_type="text",
                 label=prediction.label,
                 text="",
@@ -252,6 +272,14 @@ def _with_picture_boxes(
             )
         )
     return out
+
+
+def _is_picture_prediction(prediction: Any, model: LayoutDetectionModel) -> bool:
+    """Return True for a picture prediction, labelled by name ("Picture") or by its Qwen3-VL index."""
+    label = prediction.label.strip()
+    if label.lower() in _PICTURE_LABELS:
+        return True
+    return model in _QWEN3VL_INDEX_LABEL_MODELS and label == str(int(Qwen3VLLabel.PICTURE))
 
 
 def attach_next_metrics(

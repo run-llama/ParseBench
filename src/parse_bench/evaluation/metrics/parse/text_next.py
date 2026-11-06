@@ -34,7 +34,7 @@ import html
 import math
 import unicodedata
 from bisect import bisect_left
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -54,9 +54,9 @@ FLOOR = {"critical": 0.10, "major": 0.05, "minor": 0.01, "minor_cap": 0.15, "ord
 NOVEL_CAP = 2  # invented critical tokens counted per inserted run
 CRIT_RAMP = 10  # the critical lane reaches full weight at this many critical tokens
 FLOOR_L0 = 400  # occurrences after the first scale by min(1, FLOOR_L0 / reference tokens)
-LCS_CELL_LIMIT = 4_000_000  # gap LCS skipped above this many DP cells
+LCS_CELL_LIMIT = 4_000_000  # gaps above this many DP cells align with rapidfuzz's LCS instead of the engine's DP
+LCS_SLICE_CELLS = 400_000_000  # ... and in proportional slices above this many (its bit matrix stays ~50 MB)
 OMIT_PASSAGE = 12  # an omitted run of this many reference tokens is a lost passage (critical), not a phrase
-NEG_OMIT_MAX = 3  # a negator inside a longer omitted run is part of the omission, not a flipped meaning
 CHAIN_LIMIT = 3000  # moved-block runs use an O(n^2) chain below this many blocks
 SWAP_SLOT = 3  # a displaced number whose slot (up to this many output tokens) holds another one: swapped values
 LINE_NO_RUN = 10  # consecutive lines numbered n, n+1, ... that make a margin line numbering (pleading paper)
@@ -100,14 +100,33 @@ def _utf16_len(s: str) -> int:
 # A link destination: ``(<url>)`` (the ``<`` may already be the ``‹`` placeholder) or a URL with
 # one level of balanced parentheses, e.g. ``(http://host/a-1(17)2-3)``.
 _DEST = r"\((?:[<\u2039][^>\n]*>|(?:[^()\n]|\([^()\n]*\))*)\)"
+_LINK_LABEL = r"(?:[^\[\]]|\[[^\[\]]*\])*"
+_STRUCK_LINK = _rx(rf"(?<![\\~])~~((?<style>\*{{1,3}}|_{{1,2}})?\[{_LINK_LABEL}\]{_DEST}(?(style)(?P=style)))~~(?!~)")
+
+
+def _glued_tag_join(m: Any) -> str:
+    """A tag run glued inside a word joins it (``<u>n</u>oncore``), so it reads like the plain text it shows.
+
+    ``H<span>2</span>O`` reads like ``H2O`` and ``Table<span>3</span>`` like ``Table3`` (then split by the
+    word/number rule). It stays a space between two digits (``<u>103</u><b>101</b>`` keeps two numbers) and
+    next to Markdown emphasis (``~``, ``*``).
+    """
+    b, a = m.string[m.start() - 1 : m.start()], m.string[m.end() : m.end() + 1]
+    return " " if (b.isdigit() and a.isdigit()) or b in "~*" or a in "~*" else ""
+
+
+# inline tags a parser may open or close inside a word (sup/sub have their own glue rule); strikethrough
+# (s, del, strike) stays a space like Markdown ``~~``
+_INLINE_TAGS = ("u", "ins", "mark", "span", "font", "small", "b", "i", "em", "strong", "a")
+_GLUED_INLINE_TAGS = _rx(rf"(?<=[^\s>])(?:</?(?:{'|'.join(_INLINE_TAGS)})(?:\s[^<>]*)?>)+(?=[^\s<])", _I)
 
 _MD_STEPS: list[tuple[Any, str]] = [
     (_rx(rf"<br{_S}*/?>", _I), " "),
     (_rx(r"</(td|th)>", _I), " "),
     (_rx(r"</(tr|p|div|li|h[0-9]|table|thead|tbody)>", _I), "\n"),
     (_rx(r"<[^>]+>"), " "),
-    (_rx(rf"!\[[^\]]*\]{_DEST}"), " "),
-    (_rx(rf"\[([^\]]*)\]{_DEST}"), r"\1"),
+    (_rx(rf"!\[{_LINK_LABEL}\]{_DEST}"), " "),
+    (_rx(rf"\[({_LINK_LABEL})\]{_DEST}"), r"\1"),
     (_rx(rf"{_BOL_M}[ \t]*\|?[ \t]*:?-{{3,}}[-|: \t]*{_EOL_M}"), ""),
     (_rx(rf"{_BOL_M}[ \t]*(?:```|~~~)[^\n]*{_EOL_M}"), ""),  # code fence with its language label
     (_rx(r"\|"), " "),
@@ -136,7 +155,12 @@ _SPACES = _rx("[\xa0\u202f\u2009]")
 _EM_DASH = _rx(r"(?<=\p{L})[\u2014\u2015](?=\p{L})")
 _FRACTION_SLASH = _rx("\u2044")  # NFKC of "¾" is "3⁄4": read as 3/4
 _SPACED_DATE = _rx(r"(?<![0-9.])([0-9]{1,2})\.[ \t]+([0-9]{1,2})\.[ \t]+([0-9]{2,4})(?![0-9])")  # 23. 2. 2021
-_SPACED_RANGE = _rx(r"([0-9])-[ \t]+([0-9])")  # "17- 43": a range wrapped after its dash
+_DATE_SPACE = r"[ \t\xa0\u202f\u2009]*"
+_DOTTED_DATE = _rx(
+    rf"(?<![\p{{L}}\p{{N}}_./-])([0-9]{{1,2}}){_DATE_SPACE}\.{_DATE_SPACE}([0-9]{{1,2}})"
+    rf"{_DATE_SPACE}\.{_DATE_SPACE}([0-9]{{2,4}})(?![\p{{L}}\p{{N}}_/-]|\.[0-9])"
+)
+_SPACED_RANGE = _rx(r"([0-9])-(?:[ \t]+|\r?\n[ \t]*)([0-9])")  # "17- 43": a range wrapped after its dash
 
 
 def tok_normalize(md: str) -> str:
@@ -157,10 +181,11 @@ def tok_normalize(md: str) -> str:
 # Token scanner
 # ---------------------------------------------------------------------------
 
-_AN = "[0-9A-Za-z\xc0-\u024f\u0370-\u03ff\u0400-\u04ff]"
+_AN = "[0-9A-Za-z\xc0-\xd6\xd8-\u024f\u0370-\u03ff\u0400-\u04ff]"  # Latin letters; the sign × (\xd7) is an operator
 _JOIN = r"[.,:/\-]"
 _TLDS = "com|org|net|gov|edu|int|io|ai|info|co|uk|de|fr|eu|ca|au|us"
-_URL = rf"(?:https?://|www\.)[^{_JS_WS}<>()\[\]\"'|“”‘’]+"
+_URL_START = r"(?:https?://|www\.)"
+_URL = rf"{_URL_START}[^{_JS_WS}<>()\[\]\"'|“”‘’]+"
 _TOKEN = (
     r"(?<email>[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+)"
     rf"|(?<url>{_URL})"
@@ -171,7 +196,9 @@ _CJK = "[\u3005-\u3007\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u0e00
 # A math operator (see _MATH_CMDS). = < > count only before a number and not at a line start or escaped (\\>):
 # "p < 0.05", "x = 5". Elsewhere they are markup, arrows or quote marks (<!-- -->, <url>, ->, ==, "> Formatted").
 _REL = r"(?<![=<>\u2039\\-])(?<!\A[ \t]*)[=<>\u2039](?![=<>\u2039])"
-_OP = rf"[∑∏∫≤≥≠±∓]|{_REL}(?=[ \t]*[-+±]?\.?[0-9])"
+# × counts between two operands (5 × 10, n × m); at a line start it is a list mark ("× Not covered: ...")
+_TIMES = r"(?<!\A[ \t]*)×(?=[ \t]*[-+±]?\.?[\p{L}\p{N}])"
+_OP = rf"[∑∏∫≤≥≠±∓]|{_TIMES}|{_REL}(?=[ \t]*[-+±]?\.?[0-9])"
 _SCAN = _rx(
     rf"(?<crit>{_TOKEN})|(?<sym>[%‰\p{{Sc}}])|(?<op>{_OP})|(?<char>{_CJK})"
     rf"|(?<word>[\p{{L}}\p{{N}}](?:(?!{_CJK})[\p{{L}}\p{{N}}\p{{M}}])*)",
@@ -301,9 +328,7 @@ def _sign(line: str, s0: int, e0: int, piece: str) -> str:
     IDs carry no sign.
     """
     j = s0 - 1
-    if j >= 1 and line[j] == "." and line[j - 1] in "-+":
-        j -= 1
-    elif j >= 0 and _SC.match(line[j]):
+    if (j >= 1 and line[j] == "." and line[j - 1] in "-+") or (j >= 0 and _SC.match(line[j])):
         j -= 1
     before = line[: j + 1].rstrip()
     if before[-1:] not in ("-", "+"):
@@ -331,7 +356,7 @@ _MARKS = _rx(r"\p{M}")
 # Fixes applied before tokenization (tags, fig, sup, latex, unit, neg).
 _PAGE_TAGS = _rx(r"</?(?:page_header|page_footer)>", _I)
 _PAGE_NUMBER_TAG = _rx(r"<page_number>([^<]*)</page_number>", _I)
-_FIGURE = _rx(rf"!?\[(?:Figure|Image|Logo|Photo|Chart|Graphic|Icon|Diagram){_NW}[^\]]*\](?:{_DEST})?", _I)
+_FIGURE = _rx(rf"!?\[(?:Figure|Image|Logo|Photo|Chart|Graphic|Icon|Diagram){_NW}{_LINK_LABEL}\](?:{_DEST})?", _I)
 # A transcribed visual element: ``[signature: Name]`` in a reference, ``![signature: Name](img.png)`` in an
 # output. Both read as the transcribed text alone; a bare ``[signature]`` placeholder reads as nothing.
 _TRANSCRIBED = _rx(
@@ -343,10 +368,29 @@ _DOLLAR_SUP = _rx(rf"\$\^\{{?{_S}*([\p{{L}}\p{{N}}*†‡,]{{1,6}}){_S}*\}}?\$")
 # Glued to the previous word only when written glued: ``mc<sup>2</sup>`` is one token, while
 # ``2\n<sup>2024 AB</sup>`` or ``1990 <sup>25</sup>`` keep their space.
 _SUP_SUB_TAG = _rx(rf"({_S}*)<(sup|sub)>{_S}*([^<]{{1,8}}?){_S}*</\2>", _I)
+# a marker written after the closing ** / __ belongs to the bold word: ``**Herlina**<sup>1</sup>``
+_SUP_AFTER_BOLD = _rx(r"(\*\*|__)(<sup>[^<]{1,8}</sup>)", _I)
+# a marker that is a link reads as its link text: ``<sup>[3,2](https://orcid.org/...)</sup>``
+_SUP_LINK = _rx(r"(<sup>[^<]*?)\[([^\]]*)\]\([^)]*\)([^<]*?</sup>)", _I)
+_SPACED_DATE_ORDINAL = _rx(
+    r"(?<![\p{L}\p{N}])([0-9]{1,2})[ \t]+(st|nd|rd|th)"
+    r"(?=[ \t]+(?:January|February|March|April|May|June|July|August|September|October|November|December)\b)",
+    _I,
+)
 _SUP_SUB_CHAR = _rx("[\u2070\xb9\xb2\xb3\u2074-\u2079\u2080-\u2089]")
 _WORD_NUM = _rx(r"(\p{L}{3,})([0-9]{1,3})(?![\p{L}\p{N}])")
 _UNIT_GLUE = _rx(r"([0-9])(mm|cm|km|kg|mg|ml|µm|μm|nm|kwh|kw|mw|gb|mb|kb|hz|ghz|mhz|%)(?![\p{L}\p{N}])", _I)
 _NUMERO = _rx(rf"(?<![A-Za-z0-9_])([Nn]){_S}*\.?{_S}*[º°]")
+# A ``$$$ … $$$`` fence is display math (``$$ … $$``); an HTML ``<math>`` element holding LaTeX (no child tags)
+# is math too, read like ``$$ … $$``. A MathML body (``<mi>``, ``<mo>``) is left to the markup stripping.
+_TRIPLE_DOLLAR = _rx(r"\${3}([^$]+?)\${3}")
+_MATH_ELEMENT = _rx(r"<math(?:[ \t\n][^<>]*)?>([^$]*?)</math[ \t\n]*>", _I)
+_TAG_START = _rx(r"<[A-Za-z/]")
+# A decimal digit of another script (Thai ๕, Devanagari ४, Arabic-Indic ٥) reads as its ASCII digit on both sides
+_NATIVE_DIGIT = _rx(r"(?![0-9])\p{Nd}")
+# The Arabic decimal and thousands separators between two digits read as "." and "," (١٢٬٣٤٥٫٦ = 12,345.6)
+_ARABIC_DECIMAL = _rx(r"(?<=[0-9])\u066b(?=[0-9])")
+_ARABIC_THOUSANDS = _rx(r"(?<=[0-9])\u066c(?=[0-9])")
 _LATEX = _rx(r"\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$([^$\n]+?)\$")
 _LATEX_KEEP = _rx(r"[\\^_{}=]")
 _LATEX_LETTER = _rx(rf"\A{_S}*[A-Za-z]{_S}*\Z")
@@ -357,10 +401,51 @@ _LATEX_OPS = _rx(r"[-+=<>*/]")
 # Math operators are critical tokens (_OP): a swapped relation (≤ / ≥, = / ≠) or big operator (∑ / ∏) changes
 # the meaning. LaTeX commands (in math) and ASCII spellings (<=, !=, +/-) read as the symbol; ‹ is a < (_NOT_TAG).
 _MATH_CMDS = {
+    "alpha": "α",
+    "beta": "β",
+    "gamma": "γ",
+    "delta": "δ",
+    "epsilon": "ϵ",
+    "zeta": "ζ",
+    "eta": "η",
+    "theta": "θ",
+    "iota": "ι",
+    "kappa": "κ",
+    "lambda": "λ",
+    "mu": "μ",
+    "nu": "ν",
+    "xi": "ξ",
+    "pi": "π",
+    "rho": "ρ",
+    "sigma": "σ",
+    "tau": "τ",
+    "upsilon": "υ",
+    "phi": "ϕ",
+    "chi": "χ",
+    "psi": "ψ",
+    "omega": "ω",
+    "Gamma": "Γ",
+    "Delta": "Δ",
+    "Theta": "Θ",
+    "Lambda": "Λ",
+    "Xi": "Ξ",
+    "Pi": "Π",
+    "Sigma": "Σ",
+    "Upsilon": "Υ",
+    "Phi": "Φ",
+    "Psi": "Ψ",
+    "Omega": "Ω",
     **dict.fromkeys(("le", "leq", "leqq", "leqslant"), "≤"),
     **dict.fromkeys(("ge", "geq", "geqq", "geqslant"), "≥"),
     **dict.fromkeys(("ne", "neq"), "≠"),
-    **{"pm": "±", "mp": "∓", "sum": "∑", "prod": "∏", "int": "∫", "lt": "<", "gt": ">"},
+    "pm": "±",
+    "times": "×",
+    "mp": "∓",
+    "sum": "∑",
+    "prod": "∏",
+    "int": "∫",
+    "lt": "<",
+    "gt": ">",
 }
 _MATH_CMD = _rx(r"\\(" + "|".join(sorted(_MATH_CMDS, key=len, reverse=True)) + r")(?![A-Za-z])")
 # A tag left in the text (an unknown ``<math display="inline">`` read as ``‹math ...>``, an escaped one, or a
@@ -372,9 +457,9 @@ _ASCII_OP = _rx(r"(?<![<>=!\u2039-])(?:[<\u2039]=|>=|!=)(?![<>=])|\+/-")
 _QUOTE_S = _rx("[‘’]")
 _QUOTE_D = _rx("[“”]")
 _NOT_TAG = _rx(
-    r"<(?!/?(?:p|div|span|br|b|i|u|s|em|strong|sup|sub|table|thead|tbody|tr|td|th|ul|ol|li|h[1-6]|a|img|code|pre|"
+    r"<(?!(?:/?(?:p|div|span|br|b|i|u|s|em|strong|sup|sub|table|thead|tbody|tr|td|th|ul|ol|li|h[1-6]|a|img|code|pre|"
     r"blockquote|hr|figure|figcaption|caption|section|header|footer|page_number|del|ins|mark|small|font|center)"
-    rf"{_NW}[^<>]*>)",
+    rf"{_NW}|/?(?:change|verbose|signature|empty)(?=[\s/>]))[^<>]*>)",
     _I,
 )
 _CHECKBOX = _rx(r"\[(?:yes|no|x| )\]|[✓✔✗✘☐☑☒■□]", _I)
@@ -479,17 +564,26 @@ def _sup_sub_spaced(m: Any) -> bool:
     return bool(m.group(1)) or after_tag or _after_digit(m, m.group(3))
 
 
+# a URL glued after "word:" starts its own token (``repository:https://...``); "10:30" is untouched
+_URL_AFTER_SEPARATOR = _rx(rf"(?<=[\p{{L}}\p{{N}}][:/])(?={_URL_START})|(?<url>{_URL})", _I)
+
+
 def preprocess(md: str) -> str:
     """Fixes applied before tokenization."""
+    md = _URL_AFTER_SEPARATOR.sub(lambda match: match.group("url") or " ", md).replace("×", " × ")
     md = _PAGE_TAGS.sub("\n", md)
     md = _PAGE_NUMBER_TAG.sub(_page_number_sub, md)
     md = _TRANSCRIBED.sub(_transcribed_sub, md)
     md = _FIGURE.sub(" ", md)
     md = _DOLLAR_SUP.sub(r"<sup>\1</sup>", md)
+    md = _SUP_LINK.sub(r"\1\2\3", md)
+    md = _SUP_AFTER_BOLD.sub(r"\2\1", md)
+    md = _SPACED_DATE_ORDINAL.sub(r"\1\2", md)
     md = _SUP_SUB_TAG.sub(lambda m: (" " if _sup_sub_spaced(m) else "") + m.group(3), md)
     md = _SUP_SUB_CHAR.sub(
         lambda m: (" " if _after_digit(m, m.group(0)) else "") + unicodedata.normalize("NFKC", m.group(0)), md
     )
+    md = _TRIPLE_DOLLAR.sub(r"$$\1$$", md)
     md = _LATEX.sub(_latex_sub, md)
     md = _WORD_NUM.sub(r"\1 \2", md)
     md = _UNIT_GLUE.sub(r"\1 \2", md)
@@ -498,6 +592,32 @@ def preprocess(md: str) -> str:
 
 
 _URL_SPAN = _rx(_URL, _I)
+_URL_WRAP_START = _rx(rf"{_URL}|{_URL_START}", _I)
+_URL_OR_HYPHEN_BREAK = _rx(rf"(?<url>{_URL})|{_HYPHEN_BREAK.pattern}", _I)
+
+
+def _rejoin_url_wraps(text: str, urls: Sequence[str]) -> str:
+    """Remove only whitespace inside a complete visible URL witnessed on either side of the comparison.
+
+    A truncated prefix alone is not evidence for its continuation. Every non-whitespace character and
+    its order must match a complete candidate; prose and separate URL occurrences keep their positions.
+    """
+    parts: list[str] = []
+    cursor = 0
+    for fragment in _URL_WRAP_START.finditer(text):
+        if fragment.start() < cursor:
+            continue
+        prefix = fragment.group().lower()
+        for url in urls:
+            if len(url) <= len(prefix) or not url.lower().startswith(prefix):
+                continue
+            pattern = f"{_S}*".join(map(regex.escape, url)) + rf"(?=[.,;:]*(?:{_S}|[<>()\[\]\"'|“”‘’]|\Z))"
+            joined = _rx(pattern, _I).match(text, fragment.start())
+            if joined is not None and not regex.search(r"\n[ \t\r]*\n", joined.group()):
+                parts.extend((text[cursor : joined.start()], _rx(_S).sub("", joined.group())))
+                cursor = joined.end()
+                break
+    return "".join((*parts, text[cursor:]))
 
 
 def to_lines(md: str) -> list[str]:
@@ -505,8 +625,98 @@ def to_lines(md: str) -> list[str]:
     return _box_marks(_raw_lines(md))[0]
 
 
-def _raw_lines(md: str) -> list[str]:
-    safe = unicodedata.normalize("NFKC", preprocess(md))
+_HTML_COMMENT = _rx(r"<!--[\s\S]*?-->")  # not rendered: its text is not on the page
+# HTML document scaffolding is not page text: the doctype, the <head> with everything in it, style and script
+# elements, and the html/body/meta/link tags themselves (their content stays)
+_HTML_HIDDEN = _rx(r"<!doctype[^<>]*>|<(head|style|script)(?:[ \t\n/][^<>]*)?>[\s\S]*?</\1[ \t\n]*>", _I)
+_HTML_SCAFFOLD = _rx(r"</?(?:html|body|meta|link)(?:[ \t\n/][^<>]*)?>", _I)
+# a tag written with attributes (name="value") is markup whatever its name: its attributes are not text
+_ATTR_TAG = _rx(r"</?([A-Za-z][\w:-]*)(?:[ \t\n]+[\w:-]+[ \t]*=[ \t]*(?:\"[^\"<>]*\"|'[^'<>]*'))+[ \t\n]*/?>")
+_UNDERLINED_ORDINAL = _rx(r"(?<=[0-9])(?:</?u>)+<sup>(st|nd|rd|th)</sup>(?![\p{L}\p{N}])", _I)
+
+
+def _markup_tag_sub(m: Any) -> str:
+    """An inline tag glued inside a word joins it (``iduna.<span style="...">pl``); any other tag is a space."""
+    s = m.string
+    glued = m.start() > 0 and not s[m.start() - 1].isspace() and m.end() < len(s) and not s[m.end()].isspace()
+    return _glued_tag_join(m) if glued and m.group(1).lower() in _INLINE_TAGS else " "
+
+
+def _math_element_sub(m: Any) -> str:
+    body = m.group(1)
+    return m.group(0) if _TAG_START.search(body) or not body.strip() else " $$" + body + "$$ "
+
+
+def _strip_markup(md: str) -> str:
+    """Text a browser would not show removed: comments, document scaffolding, attributes of tags."""
+    md = _HTML_HIDDEN.sub(" ", _HTML_COMMENT.sub(" ", md))
+    md = _STRUCK_LINK.sub(r"\1", md)
+    md = _MATH_ELEMENT.sub(_math_element_sub, md)
+    md = _HTML_SCAFFOLD.sub(" ", md)
+    md = _UNDERLINED_ORDINAL.sub(r"\1", md)
+    names = {m.group(1).lower() for m in _ATTR_TAG.finditer(md)}
+    md = _ATTR_TAG.sub(_markup_tag_sub, md)
+    if names:  # the same element's plain opening and closing tags (``</article>``) are markup too
+        plain = r"</?(" + "|".join(map(regex.escape, sorted(names))) + r")[ \t\n]*>"
+        md = regex.sub(plain, _markup_tag_sub, md, flags=regex.I)
+    # plain inline tags glued inside a word, joined here (before preprocess) like the attributed ones above
+    md = str(_GLUED_INLINE_TAGS.sub(_glued_tag_join, md))
+    return _join_emphasis_outside_code(md) if "*" in md else md
+
+
+# A ``*``/``**``/``***`` emphasis span on one line (CommonMark flanking): each delimiter is a whole run of the same
+# length; a delimiter with a letter or digit on one side only must face the text it wraps, so ``O*NET`` and
+# ``(*i.e.*)`` never pair
+_WORD_CH = r"[\p{L}\p{N}]"
+_MD_EMPHASIS = _rx(
+    rf"(?<!\*)(?|(?<={_WORD_CH})(\*{{1,3}})(?={_WORD_CH})|(?<!{_WORD_CH})(\*{{1,3}})(?![\s*]))([^*\n]*?[^\s*])"
+    rf"(?:(?<={_WORD_CH})\1(?!\*)|(?<!{_WORD_CH})\1(?![*\p{{L}}\p{{N}}]))"
+)
+
+
+# Code, where a star is literal: a fenced block (a ``` or ~~~ run of 3+, closed by a run of the same character at
+# least as long, or by the end of the page) and an inline code span (a backtick run closed by a run of the same
+# length within the paragraph)
+_MD_CODE = _rx(
+    rf"{_BOL_M}[ ]{{0,3}}(?P<f>(?P<c>[`~])(?P=c){{2,}})[^\n]*?(?:\n[\s\S]*?)??"
+    rf"(?:\n[ ]{{0,3}}(?P=f)(?P=c)*[ \t]*{_EOL_M}|\Z)"
+    r"|(?<!`)(?P<t>`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)(?P=t)(?!`)"
+)
+
+
+def _join_emphasis_outside_code(md: str) -> str:
+    """``_MD_EMPHASIS`` joins applied to the text around code spans and fenced blocks, which keep their stars."""
+    out, pos = [], 0
+    for code in [*_MD_CODE.finditer(md), None]:
+        end = code.start() if code else len(md)
+        for m in _MD_EMPHASIS.finditer(md, pos, end):  # lookarounds still see the characters around the segment
+            out += [md[pos : m.start()], _join_glued_stars(m)]
+            pos = m.end()
+        out.append(md[pos:end] + (code.group() if code else ""))
+        pos = code.end() if code else end
+    return "".join(out)
+
+
+def _join_glued_stars(m: Any) -> str:
+    """Markdown ``*`` emphasis glued inside a word joins it like an inline HTML tag (``_glued_tag_join``).
+
+    ``1*CNC*`` reads like ``1<i>CNC</i>``, ``H*2*O`` like ``H<i>2</i>O`` and ``Table**3**`` like
+    ``Table<b>3</b>``; a delimiter between two digits stays a space. Only a paired span is emphasis, so a lone
+    ``O*NET`` keeps its star. A delimiter with a space or punctuation on a side is left for ``md_plain``.
+    Intraword ``_`` is not emphasis in CommonMark (``snake_case``) and is left alone.
+    """
+    s, d = m.string, m.group(1)
+    parts = []
+    for start, end in ((m.start(1), m.end(1)), (m.end(2), m.end())):
+        b, a = s[start - 1 : start], s[end : end + 1]
+        parts.append((" " if b.isdigit() and a.isdigit() else "") if b.isalnum() and a.isalnum() else d)
+    return parts[0] + m.group(2) + parts[1]
+
+
+def _raw_lines(md: str, url_candidates: Sequence[str] = ()) -> list[str]:
+    safe = unicodedata.normalize("NFKC", preprocess(_strip_markup(md)))
+    safe = _NATIVE_DIGIT.sub(lambda m: str(unicodedata.digit(m.group(0))), safe)
+    safe = _ARABIC_THOUSANDS.sub(",", _ARABIC_DECIMAL.sub(".", safe))
     safe = _QUOTE_S.sub("'", safe)
     safe = _QUOTE_D.sub('"', safe)
     safe = _NOT_TAG.sub("\u2039", safe)
@@ -514,7 +724,8 @@ def _raw_lines(md: str) -> list[str]:
     text = _TAG_LIKE.sub(lambda m: "".join(_TAG_PUNCT.get(c, c) for c in m.group(0)), text)
     text = _ASCII_OP.sub(lambda m: _ASCII_OPS[m.group(0).replace("\u2039", "<")], text)
     text = _CHECKBOX.sub(lambda m: " " + _BOX_MARK.get(_BOX_STATE.get(m.group(0).lower(), ""), "") + " ", text)
-    text = str(_HYPHEN_BREAK.sub("", text))
+    text = _rejoin_url_wraps(text, url_candidates) if url_candidates else text
+    text = _URL_OR_HYPHEN_BREAK.sub(lambda match: match.group("url") or "", text)
     # inside a URL an underscore reads as a space: a parser may render "Two_RBO" as "Two RBO" (or the reverse)
     return [_URL_SPAN.sub(lambda m: m.group(0).replace("_", " "), line) for line in text.split("\n")]
 
@@ -591,12 +802,14 @@ def _attach_boxes(toks: Sequence[Token], marks: Sequence[tuple[int, int, str]]) 
             q += 1
 
 
-def tokenize(md: str, drop_line_numbers: bool = False) -> tuple[list[Token], list[str]]:
+def tokenize(
+    md: str, drop_line_numbers: bool = False, url_candidates: Sequence[str] = ()
+) -> tuple[list[Token], list[str]]:
     """Token stream of a Markdown page and the plain-text lines it was read from.
 
     ``drop_line_numbers`` removes margin line numbers (``_line_number_lines``) before tokenizing.
     """
-    lines, marks = _box_marks(_raw_lines(md))
+    lines, marks = _box_marks(_raw_lines(md, url_candidates))
     if drop_line_numbers:
         cut: dict[int, int] = {}
         for i in _line_number_lines(lines):
@@ -694,6 +907,43 @@ def tokenize(md: str, drop_line_numbers: bool = False) -> tuple[list[Token], lis
     return toks, lines
 
 
+_DIGIT_RUN = regex.compile(r"[0-9]+")
+GARBLED_ID_MIN = 8  # a one-letter edit is a misreading only in an identifier this long (A4 vs B4 is another one)
+
+
+def _garbled_identifier(ref: Sequence[str], out: Sequence[str]) -> bool:
+    """The same identifier or URL split at a separator or with one letter misread (``-ld.1055646`` read
+    ``-Id. 1055646``): every digit kept in order, and equal once separators go, or one letter edit away in an
+    identifier of ``GARBLED_ID_MIN``+ characters. A digit changed, dropped, added or read as a letter (0 as O,
+    1 as l) is no such reading: it stays a wrong number or identifier (critical)."""
+    a, b = (_NON_ALNUM.sub("", "".join(k.lstrip("#") for k in x).lower()) for x in (ref, out))
+    if not a or not b or not any(ch.isalpha() for ch in a + b):
+        return False
+    if "".join(_DIGIT_RUN.findall(a)) != "".join(_DIGIT_RUN.findall(b)):
+        return False
+    return a == b or (min(len(a), len(b)) >= GARBLED_ID_MIN and Levenshtein.distance(a, b) <= 1)
+
+
+def _sentences_dropped(rt: Sequence[Token], a: int, b: int, is_neg: Callable[[Token], bool]) -> bool:
+    """Whether the omitted run ``rt[a:b]`` holds every sentence that has a negator in it.
+
+    A negator dropped with its whole sentence leaves no claim behind (the omission is charged as such);
+    dropped from a sentence whose other words remain, it flips what the rest says, at any run length.
+    """
+    for i in range(a, b):
+        if not is_neg(rt[i]):
+            continue
+        start = i
+        while start > 0 and not rt[start - 1].end:
+            start -= 1
+        stop = i
+        while not rt[stop].end:
+            stop += 1
+        if start < a or stop >= b:
+            return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Alignment primitives
 # ---------------------------------------------------------------------------
@@ -748,8 +998,10 @@ def _tile(
 def _lcs_pairs(a: Sequence[str], b: Sequence[str]) -> list[tuple[int, int]]:
     """In-order LCS pairs; the backtrack prefers skipping in ``a`` on ties."""
     n, m = len(a), len(b)
-    if not n or not m or n * m > LCS_CELL_LIMIT:
+    if not n or not m:
         return []
+    if n * m > LCS_CELL_LIMIT:
+        return _large_lcs_pairs(a, b)
     rows: list[list[int]] = [[0] * (m + 1) for _ in range(n + 1)]
     for i in range(n - 1, -1, -1):
         ai = a[i]
@@ -760,7 +1012,7 @@ def _lcs_pairs(a: Sequence[str], b: Sequence[str]) -> list[tuple[int, int]]:
                 cur[j] = nxt[j + 1] + 1
             else:
                 x, y = nxt[j], cur[j + 1]
-                cur[j] = x if x >= y else y
+                cur[j] = max(x, y)
     out: list[tuple[int, int]] = []
     i = j = 0
     while i < n and j < m:
@@ -772,6 +1024,24 @@ def _lcs_pairs(a: Sequence[str], b: Sequence[str]) -> list[tuple[int, int]]:
             i += 1
         else:
             j += 1
+    return out
+
+
+def _large_lcs_pairs(a: Sequence[str], b: Sequence[str]) -> list[tuple[int, int]]:
+    """In-order LCS pairs of a gap too large for the engine's DP table, so a long gap is still aligned.
+
+    rapidfuzz's bit-parallel LCS has the same length as the DP (ties may pair other equal tokens). Above
+    ``LCS_SLICE_CELLS`` both sides are cut into k proportional slices aligned pairwise, k the smallest count
+    that keeps each slice pair under that size.
+    """
+    n, m = len(a), len(b)
+    k = max(1, math.ceil(math.sqrt(n * m / LCS_SLICE_CELLS)))
+    out: list[tuple[int, int]] = []
+    for s in range(k):
+        a0, a1 = n * s // k, n * (s + 1) // k
+        b0, b1 = m * s // k, m * (s + 1) // k
+        for blk in LCSseq.editops(list(a[a0:a1]), list(b[b0:b1])).as_matching_blocks():
+            out.extend((a0 + blk.a + x, b0 + blk.b + x) for x in range(blk.size))
     return out
 
 
@@ -800,8 +1070,7 @@ def _heaviest_chain(items: Sequence[tuple[int, int, int]]) -> int:
         best = max(best, v)
         x = rank[ref]
         while x <= len(refs):
-            if tree[x] < v:
-                tree[x] = v
+            tree[x] = max(tree[x], v)
             x += x & -x
     return best
 
@@ -834,6 +1103,15 @@ def _fold(z: str) -> str:
     return str(_MARKS.sub("", unicodedata.normalize("NFD", z)))
 
 
+_GLOTTAL = _rx("[\u02bb\u02bc\u2018\u2019'`\u00b4 ]")  # ʻokina, modifier apostrophe, quotes: and the split they cause
+
+
+def _fold_marks(z: str) -> str:
+    """``_fold`` with the ʻokina and apostrophe variants (and the word split they cause) removed: Koʻolau, Ko‘olau,
+    Ko'olau and Koolau are one name written with other marks."""
+    return str(_GLOTTAL.sub("", _fold(z)))
+
+
 _SMALL_INT = _rx(r"\A#[0-9]{1,3}\Z")
 _NON_ALNUM = _rx(r"[^\p{L}\p{N}]+")
 
@@ -861,6 +1139,14 @@ def _same_number(rc: Sequence[Token], hc: Sequence[Token]) -> bool:
         return [g for g in _NON_ALNUM.split(text) if g], [t.key for t in ts if not _LN.search(t.key)]
 
     return groups(rc) == groups(hc)
+
+
+def _thousands_dropped(ref: str, out: str) -> bool:
+    """The output writes the reference number without its comma thousands separators (1,250 read 1250,
+    1,250.5 read 1250.5): the digits are identical, so it costs nothing. A separator added (2024 read
+    2,024), a dot or a space between groups (1.250, 1 250) and a moved or swapped separator stay "number
+    written differently" or a wrong number."""
+    return bool(_THOUSANDS.search(ref)) and ref.replace(",", "") == out
 
 
 def _in_order(ha: int, hb: int, pref: Sequence[int]) -> bool:
@@ -1034,14 +1320,40 @@ ALT_FREE_WORDS = 8  # reference alt text over this many words may hold page text
 ALT_DUP_MIN = 5  # an output alt text of at least this many tokens ...
 ALT_DUP_SHARE = 0.5  # ... with this share of them in runs of K+ tokens the reference has duplicates page text
 ALT_JUNK_MIN = 4  # garbage is judged on alt texts of at least this many tokens
-_ALT_IMAGE = _rx(rf"!\[([^\]\n]*)\](?:{_DEST})?")
+_ALT_IMAGE = _rx(rf"!\[({_LINK_LABEL})\](?:{_DEST})?")
 _HTML_OPEN = _rx(r"<[A-Za-z][^<>]*>")
 _ALT_ATTR = _rx(r"""\b(?:alt|title|aria-label)[ \t]*=[ \t]*(?:"([^"]*)"|'([^']*)')""", _I)
 _ALT_LABEL = _rx(r"\A[ \t]*[A-Za-z]+[ \t]*:")  # "image:", "logo:" prefixes an output adds to alt text
+# Other picture descriptions an output marks as such, read like alt text: [IMAGE_DESCRIPTION: ...] and
+# [Image: ...] labels, <figure> elements (figcaption and img alt included), <::type: ...::> and
+# <::...: figure::> blocks, <figure-description> elements and <div class="img-description"> blocks
+_DESC_LABEL = _rx(
+    r"(?<!!)\[[ \t]*(?:image|figure|logo|photo|picture|icon|chart|graphic|diagram|illustration)"
+    r"(?:[ \t_-]*(?:description|caption|desc))?[ \t]*:([^\]]*)\]",
+    _I,
+)
+_DESC_FIGURE = _rx(r"<figure(?:[ \t\n][^<>]*)?>([\s\S]*?)</figure[ \t\n]*>", _I)
+_DESC_BLOCK = _rx(r"<::[^:<>\n]{0,40}:([\s\S]*?)::>")
+_DESC_BLOCK_END = _rx(
+    r"<::((?:(?!::>)[\s\S])*?):[ \t]*(?:figure|image|picture|photo|photograph|logo|icon|chart|graphic|diagram"
+    r"|illustration|flowchart)[ \t]*::>",
+    _I,
+)
+_DESC_ELEMENT = _rx(
+    r"<figure-description(?:[ \t\n][^<>]*)?>(?:[ \t\n]*\**figure-description:\**)?"
+    r"([\s\S]*?)</figure-description[ \t\n]*>",
+    _I,
+)
+_DESC_DIV = _rx(r"""<div(?:[ \t\n][^<>]*)?[ \t\n]class=["']img-description["'][^<>]*>([\s\S]*?)</div[ \t\n]*>""", _I)
+_DESC_MORE = (_DESC_BLOCK_END, _DESC_BLOCK, _DESC_ELEMENT, _DESC_DIV)  # a trailing type first: "<::a: b : logo::>"
+
+
+_CJK_CHARS = _rx(_CJK)
 
 
 def _long(text: str) -> bool:
-    return len(text.split()) > ALT_FREE_WORDS
+    # whitespace-separated words, with each Han or Kana character (text without spaces) counted as one word
+    return len(_CJK_CHARS.sub(" ", text).split()) + len(_CJK_CHARS.findall(text)) > ALT_FREE_WORDS
 
 
 def _covered(keys: Sequence[str], other: Sequence[str]) -> float:
@@ -1067,7 +1379,7 @@ def _junk(text: str, toks: Sequence[Token]) -> bool:
     return len(toks) >= ALT_JUNK_MIN and (2 * alnum < len(chars) or 2 * lone > len(toks))
 
 
-def alt_as_text(ref_keys: Sequence[str], md: str) -> str:
+def alt_as_text(ref_keys: Sequence[str], md: str, figures: bool = True) -> str:
     """The output page with alt text that carries page content or junk written out as body text.
 
     Image alt text and alt / title / aria-label attributes are free: a picture description costs nothing
@@ -1076,9 +1388,13 @@ def alt_as_text(ref_keys: Sequence[str], md: str) -> str:
     not already give (same test), so page content placed only inside alt is matched normally; alt text
     repeating the body is ignored. And junk (``_junk``), charged as inserted text.
     """
-    if not _ALT_IMAGE.search(md) and not _ALT_ATTR.search(md):
+    markers = (_DESC_LABEL, _DESC_FIGURE, *_DESC_MORE) if figures else (_DESC_LABEL, *_DESC_MORE)
+    if not _ALT_IMAGE.search(md) and not _ALT_ATTR.search(md) and not any(rx.search(md) for rx in markers):
         return md
-    body = [t.key for t in tokenize(md)[0]]
+    unmarked = md
+    for rx in markers:
+        unmarked = rx.sub(" ", unmarked)
+    body = [t.key for t in tokenize(unmarked)[0]]
 
     def as_text(text: str) -> str | None:
         plain = _ALT_LABEL.sub("", text)
@@ -1097,6 +1413,13 @@ def alt_as_text(ref_keys: Sequence[str], md: str) -> str:
         vals = [a.group(1) if a.group(1) is not None else a.group(2) for a in _ALT_ATTR.finditer(m.group(0))]
         return str(m.group(0)) + "".join(x for x in (as_text(str(v)) for v in vals) if x)
 
+    def described(m: Any) -> str:  # a marked description: read as text when alt text would be, else nothing
+        inner = str(m.group(1))
+        alts = " ".join(a.group(1) if a.group(1) is not None else a.group(2) for a in _ALT_ATTR.finditer(inner))
+        return as_text(alts + " " + _HTML_OPEN.sub(" ", inner)) or " "
+
+    for rx in markers:
+        md = rx.sub(described, md)
     return str(_HTML_OPEN.sub(tag, _ALT_IMAGE.sub(image, md)))
 
 
@@ -1110,25 +1433,71 @@ def _ref_alt_as_text(md: str) -> str:
 
 
 def score_text_next(ref_md: str, hyp_md: str) -> TextNextResult:
-    """Score an output page (``hyp_md``) against its reference page (``ref_md``).
+    """Score a page, also reading shared dotted dates with the reference's horizontal spacing.
+
+    The standalone digit groups must match exactly and the reference must use one spelling. Keep the original
+    reading too: retokenizing a date can change an unrelated gap's alignment, sentence boundaries or denominator.
+    """
+    date_forms: dict[str, set[str]] = {}
+    for date in _DOTTED_DATE.finditer(ref_md):
+        date_forms.setdefault(".".join(date.groups()), set()).add(date.group())
+
+    def date_spacing(match: Any) -> str:
+        forms = date_forms.get(".".join(match.groups()), set())
+        return next(iter(forms)) if len(forms) == 1 else str(match.group())
+
+    original = _score_text_next(ref_md, hyp_md)
+    spaced = _DOTTED_DATE.sub(date_spacing, hyp_md)
+    if spaced != hyp_md:
+        alternative = _score_text_next(ref_md, spaced)
+        if alternative.score > original.score:
+            return alternative
+    return original
+
+
+def _score_text_next(ref_md: str, hyp_md: str) -> TextNextResult:
+    """Score the page's visible-text readings, including optional figure text and margin line numbers.
 
     The output's alt text is free except page text placed only there, or junk (``alt_as_text``). A reference's
     long alt text reads as nothing (an output may leave a picture undescribed), but annotators sometimes put
     page text there: the page is then also scored with it as text, and the better reading counts.
+    Short Markdown image alts also get a literal output reading, retaining any unmatched narration.
     """
-    rt, _ = tokenize(ref_md)
-    hyp_md = alt_as_text([t.key for t in rt], _split_glued_decorated_numbers(ref_md, hyp_md))
-    ht, _ = tokenize(hyp_md)
-    res = score_tokens(rt, ht)
+    urls = sorted(
+        {_TRAIL_ID.sub("", match.group()) for md in (ref_md, hyp_md) for match in _URL_SPAN.finditer(_visible(md))},
+        key=len,
+        reverse=True,
+    )
+    rt, _ = tokenize(ref_md, url_candidates=urls)
+    split = _split_glued_decorated_numbers(ref_md, hyp_md)
+    # A <figure> may hold the picture's printed text (a logo word, chart labels) rather than a description:
+    # the page is also scored with figure content read as text, and the better reading counts.
+    short_alts = _ALT_IMAGE.sub(
+        lambda match: (
+            str(match.group(0)) if _long(match.group(1)) else "\n\n" + _ALT_LABEL.sub("", match.group(1)) + "\n\n"
+        ),
+        split,
+    )
+    hyps = []
+    for reading in dict.fromkeys((split, short_alts)):
+        hyps.append(alt_as_text([t.key for t in rt], reading))
+        if _DESC_FIGURE.search(reading):
+            hyps.append(alt_as_text([t.key for t in rt], reading, figures=False))
     ref_alt = _ref_alt_as_text(ref_md)
-    if res.score < 1.0 and ref_alt != ref_md:
-        alt = score_tokens(tokenize(ref_alt)[0], ht)
-        if alt.score > res.score:
-            res, ref_md = alt, ref_alt
+    refs = [(ref_md, rt)] + ([(ref_alt, tokenize(ref_alt, url_candidates=urls)[0])] if ref_alt != ref_md else [])
+    res: TextNextResult | None = None
+    for r_md, r_toks in refs:
+        for h_md in hyps:
+            alt = score_tokens(r_toks, tokenize(h_md, url_candidates=urls)[0])
+            if res is None or alt.score > res.score:
+                res, ref_md, hyp_md = alt, r_md, h_md
+            if res.score >= 1.0:
+                return res
+    assert res is not None
     # Margin line numbers are optional page furniture: when the reference has them, the page is also
     # scored with them left out on both sides, and the better reading counts.
     if res.score < 1.0 and has_line_numbers(ref_md):
-        alt = score_tokens(tokenize(ref_md, True)[0], tokenize(hyp_md, True)[0])
+        alt = score_tokens(tokenize(ref_md, True, urls)[0], tokenize(hyp_md, True, urls)[0])
         if alt.score > res.score:
             return alt
     return res
@@ -1261,6 +1630,14 @@ def score_tokens(rt: list[Token], ht: list[Token]) -> TextNextResult:  # noqa: C
                 h_override[y] = []
 
     ref_bag = set(r_keys)
+    negated_sentences: set[tuple[str, ...]] = set()
+    sentence_start = 0
+    for position, token in enumerate(rt):
+        if token.end:
+            sentence = rt[sentence_start : position + 1]
+            if len(sentence) >= K and any(is_neg(item) for item in sentence):
+                negated_sentences.add(tuple(item.key for item in sentence))
+            sentence_start = position + 1
     for a, b in _runs(n_r, rm):
         rr = rt[a:b]
         hp = r2h[a - 1] if a > 0 else -1
@@ -1283,15 +1660,24 @@ def score_tokens(rt: list[Token], ht: list[Token]) -> TextNextResult:  # noqa: C
             ev.examples.append(("words split or joined", " ".join(rk), " ".join(hk)))
             as_present(rr, hy_idx)
             continue
+        if (
+            len(rr) == len(hy)
+            and any(is_neg(token) for token in rr + hy)
+            and [_fold(key) for key in rk] == [_fold(key) for key in hk]
+        ):
+            ev.minor += len(rr)
+            ev.examples.append(("accent only", " ".join(rk), " ".join(hk)))
+            as_present(rr, hy_idx)
+            continue
         rc = [t for t in rr if t.crit and not is_neg(t)]
         hc = [t for t in hy if t.crit and not is_neg(t)]
         rw = [t for t in rr if not t.crit]
         hw = [t for t in hy if not t.crit]
         r_neg = sum(1 for t in rr if is_neg(t))
         h_neg = sum(1 for t in hy if is_neg(t))
-        if r_neg != h_neg and (hy or len(rr) <= NEG_OMIT_MAX):
+        if r_neg != h_neg and (hy or not _sentences_dropped(rt, a, b, is_neg)):
             ev.critical += 1
-            ev.examples.append(("negation changed", " ".join(rk), " ".join(hk)))
+            ev.examples.append(("negator in changed text", " ".join(rk), " ".join(hk)))
         if not hy:
             if len(rr) >= OMIT_PASSAGE:
                 ev.critical += 1
@@ -1302,6 +1688,9 @@ def score_tokens(rt: list[Token], ht: list[Token]) -> TextNextResult:  # noqa: C
         if rc and hc and _same_number(rc, hc):
             ev.minor += 1
             ev.examples.append(("number written differently", " ".join(t.key for t in rc), " ".join(t.key for t in hc)))
+            as_present(rc, [y for y in hy_idx if ht[y].crit and not is_neg(ht[y])])
+        elif rc and hc and _garbled_identifier([t.key for t in rc], [t.key for t in hc]):
+            major("identifier garbled", [t.key for t in rc], [t.key for t in hc])
             as_present(rc, [y for y in hy_idx if ht[y].crit and not is_neg(ht[y])])
         else:
             sub = min(len(rc), len(hc))
@@ -1325,7 +1714,7 @@ def score_tokens(rt: list[Token], ht: list[Token]) -> TextNextResult:  # noqa: C
                 continue
             sim = 1 - Levenshtein.distance(rs, hs) / max(_utf16_len(rs), _utf16_len(hs))
             name = any(_UPPER_START.search(t.surf or "") for t in rw) and a > 0 and not rt[a - 1].end
-            if _fold(rs) == _fold(hs):
+            if _fold(rs) == _fold(hs) or _fold_marks(rs) == _fold_marks(hs):
                 ev.minor += len(rw)
                 ev.examples.append(("accent only", rs, hs))
             elif name and sim < 0.85:
@@ -1341,9 +1730,16 @@ def score_tokens(rt: list[Token], ht: list[Token]) -> TextNextResult:  # noqa: C
         if not hh:
             continue
         hk = [t.key for t in hh]
-        if any(is_neg(t) for t in hh):
+        added_negators = {position for position, token in enumerate(hh) if is_neg(token)}
+        for sentence in negated_sentences:
+            if not added_negators:
+                break
+            for start in range(len(hk) - len(sentence) + 1):
+                if tuple(hk[start : start + len(sentence)]) == sentence:
+                    added_negators.difference_update(range(start, start + len(sentence)))
+        if added_negators:
             ev.critical += 1
-            ev.examples.append(("negation added", "", " ".join(hk)))
+            ev.examples.append(("negator in added text", "", " ".join(hk)))
         novel = [t for t in hh if t.key not in ref_bag]
         novel_crit = [t for t in novel if t.crit and not is_neg(t)]
         ev.critical += min(NOVEL_CAP, len(novel_crit))
@@ -1453,7 +1849,7 @@ def score_tokens(rt: list[Token], ht: list[Token]) -> TextNextResult:  # noqa: C
     for i, j in enumerate(r2h):
         if j < 0:
             continue
-        if rt[i].crit and rt[i].surf != ht[j].surf:
+        if rt[i].crit and rt[i].surf != ht[j].surf and not _thousands_dropped(rt[i].surf, ht[j].surf):
             fmt += 1
         elif not rt[i].crit and _GREEK_CYR.search(ht[j].surf) and not _GREEK_CYR.search(rt[i].surf):
             glyph += 1
@@ -1475,7 +1871,7 @@ def score_tokens(rt: list[Token], ht: list[Token]) -> TextNextResult:  # noqa: C
         if order is not None and order < 1 and not ev.moved:
             ev.examples.append(("reading order", f"{1 - order:.0%} of matched text out of order", ""))
         if critical is not None and critical < 1 and not ev.critical:
-            ev.examples.append(("numbers out of sequence", f"critical-token F1 {critical:.2f}", ""))
+            ev.examples.append(("critical-token sequence differs", f"critical-token F1 {critical:.2f}", ""))
     return TextNextResult(
         score=min(prop, floor),
         proportional=prop,
@@ -1507,19 +1903,40 @@ def _nz(x: str) -> str:
     return str(_NZ.sub("", x)).lower()
 
 
+_AUTOLINK = _rx(rf"<((?:https?://|mailto:|www\.)[^<>{_JS_WS}]+)>", _I)  # ``<url>`` is visible text
+
+
+def _visible(md: str) -> str:
+    """Visible text of a page or section: comments and attributes dropped; ``<url>`` and a stray ``<`` kept."""
+    return md_plain(_NOT_TAG.sub("\u2039", _AUTOLINK.sub(r" \1 ", _strip_markup(md))))
+
+
 def with_page_sections(markdown: str, headers: Sequence[str | None], footers: Sequence[str | None]) -> str:
     """Add the parser's page header/footer text that the page Markdown does not already contain.
 
-    A section of at least ``SECTION_SUBSTRING_MIN`` normalized characters is present when its first 40
-    appear anywhere in the page; a shorter one (a page number, "Page 3") only when a whole line of the
-    page reads the same, so a footer "12" is not taken for the "12" of "12 months".
+    The section is read through the same visible-text projection as the page (tags such as ``<page_number>``,
+    ``<br>`` and ``<b>`` dropped; raw text when nothing is visible, e.g. an image-only footer). A section of at
+    least ``SECTION_SUBSTRING_MIN`` normalized characters is present when its first 40 appear anywhere in the
+    page's visible text (link text and ``<url>`` autolinks; link targets and image alt text are not shown, so a
+    footer URL inside an ad link's target is still missing); a shorter one (a page number, "Page 3") only when
+    a whole line of the page reads the same, so a footer "12" is not taken for the "12" of "12 months". A
+    section over several lines is also present when each of its lines is, by the same two rules.
     """
-    body = _nz(markdown)
-    body_lines = {_nz(line) for line in md_plain(markdown).split("\n")}
+    plain_page = _visible(markdown)
+    body = _nz(plain_page)
+    body_lines = {_nz(line) for line in plain_page.split("\n")}
+
+    def found(nz: str) -> bool:
+        return nz in body_lines if len(nz) < SECTION_SUBSTRING_MIN else nz[:40] in body
 
     def present(x: str) -> bool:
-        nz = _nz(x)
-        return nz in body_lines if len(nz) < SECTION_SUBSTRING_MIN else nz[:40] in body
+        plain = _visible(x)  # the body's projection; raw text when nothing is visible
+        if found(_nz(plain) or _nz(x)):
+            return True
+        # a section over several lines (``Appendix A`` then ``<page_number>1</page_number>``) whose lines the
+        # page prints apart, with other text between them
+        lines = [k for k in map(_nz, plain.split("\n")) if k]
+        return len(lines) > 1 and all(map(found, lines))
 
     def missing(parts: Sequence[str | None]) -> list[str]:
         return [x for x in parts if x and _js_trim(x) and not present(x)]

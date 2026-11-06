@@ -14,12 +14,15 @@ its area to the denominator. Nothing is emitted when the denominator is 0.
 
 Inputs per page: region rules (granularity ``None``/``"region"``) are the elements,
 ``"word"`` rules are the word boxes and their text, ``"line"`` rules order words
-into lines for the hyphen join. ``optional``/``ignore`` regions and their words
-are not scored; their boxes only neutralize predictions on them.
+into lines for the hyphen join. A region whose GT text holds LaTeX is checked by
+its box only, like a caption. ``optional``/``ignore`` regions and their words
+are not scored; their boxes only neutralize predictions on them. A skip region with
+``neutral: "match"`` neutralizes only a prediction that matches it, so junk inside it still counts as extra.
 """
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -58,6 +61,10 @@ __all__ = [
 
 # ------------------------------------------------------------ rules to pages
 
+# LaTeX in GT text: a `$$` display or a `\command`. GT and models write math in different notations,
+# so a math region is checked by its box only. Plain `$` (currency) and `$_{1}$` scripts stay text.
+_MATH = re.compile(r"\$\$|\\[a-zA-Z]+")
+
 
 def layout_angle(value: object) -> float | None:
     """Return the rotation ``r`` of a layout model, or None when it carries none."""
@@ -91,6 +98,10 @@ def _is_mark_checkbox(rule: LayoutTestRule) -> bool:
     return rule.canonical_class in ("Checkbox-Selected", "Checkbox-Unselected") and (
         str(normalize_layout_attributes(rule.attributes).get("scope", "")).strip().lower() == "mark"
     )
+
+
+def _is_math(rule: LayoutTestRule) -> bool:
+    return rule.content is not None and rule.content.type != "table" and bool(_MATH.search(rule.content.text or ""))
 
 
 def _rule_text(rule: LayoutTestRule) -> str:
@@ -177,7 +188,7 @@ def _build_page(
                 # pred=True: content keeps line-break hyphens as `infor- mation`, joined like the prediction side
                 tokens=() if r.canonical_class == "Picture" else tuple(content_tokens(_rule_text(r), pred=True)),
                 angle=r.r,
-                caption=_grade(r) == "box" or r.canonical_class == "Picture",
+                caption=_grade(r) == "box" or r.canonical_class == "Picture" or _is_math(r),
             )
         )
     model = Page(
@@ -191,9 +202,12 @@ def _build_page(
         ).reshape(-1, 4),
         pred_tokens=[content_tokens(b.text, pred=True) for b in blocks],
         pred_units=[b.order_index for b in blocks],
-        pred_angles=[layout_angle(b) for b in blocks],
+        pred_angles=[b.r for b in blocks],
         skip_boxes=np.array([_xyxy(r, pw, ph) for r in shields], dtype=float).reshape(-1, 4),
         skip_angles=[r.r for r in shields],
+        skip_match=[
+            normalize_layout_attributes(r.attributes).get("neutral", "").strip().lower() == "match" for r in shields
+        ],
         page=page,
         chain_tolerance=CHAIN_OVERLAP_POINTS if page_frame else 0.0,
     )
@@ -286,7 +300,8 @@ def compute_layout_grounding_metrics(
 
     ``page_sizes`` maps a 1-based page number to its (width, height) in points.
 
-    Returns nothing when no rule carries content or the denominator is zero.
+    Returns nothing when no rule carries content, no reference element is scored
+    (the score would be the prediction penalty alone), or the denominator is zero.
     """
     if all(r.content is None for r in layout_rules):
         return []
@@ -311,7 +326,7 @@ def compute_layout_grounding_metrics(
         denom += (result.weight + result.extra) / unit
         element_rows.extend(result.element_rows)
         prediction_rows.extend(result.prediction_rows)
-    if denom <= 0:
+    if denom <= 0 or not element_rows:
         return []
     return [
         MetricValue(

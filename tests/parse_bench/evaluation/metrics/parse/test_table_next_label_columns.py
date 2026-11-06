@@ -70,3 +70,19 @@ def test_page_with_a_one_column_table_still_reads_joined_labels() -> None:
         "| 1987 Q1 | 14 | 9 |\n\n| Note |\n|---|\n| a |\n| b |\n"
     )
     assert 0.5 < score_table_next(ref, out).score < 1.0
+
+
+def test_blank_child_does_not_inherit_across_changed_parent() -> None:
+    ref = table(
+        ["Group", "Item", "Value"],
+        [["Assets", "Fixed", "10"], ["", "Current", "20"], ["Assets", "Other", "5"], ["Total", "", "35"]],
+    )
+    out = ref.replace("<td>Total</td><td></td>", '<td colspan="2">Total</td>')
+    assert score_table_next(ref, out).score == 1.0
+    assert score_table_next(ref, out.replace(">35<", ">31<")).score < 1.0
+    explicit = ref.replace("<td></td><td>Current", "<td>Assets</td><td>Current")
+    assert score_table_next(ref, explicit).score == 1.0
+    rowspan = ref.replace("<td>Assets</td>", '<td rowspan="2">Assets</td>', 1).replace(
+        "<td></td><td>Current", "<td>Current"
+    )
+    assert score_table_next(ref, rowspan).score == 1.0

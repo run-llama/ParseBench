@@ -163,9 +163,28 @@ def test_interleaved_columns_break_sentences():
 def test_flipped_negation_is_critical():
     ref = PROSE + " The board did not approve the merger."
     res = score_text_next(ref, ref.replace("did not approve", "did approve"))
-    assert res.events.kinds().get("negation changed") == 1
+    assert res.events.kinds().get("negator in changed text") == 1
     assert (res.events.critical, res.events.major) == (1, 1)  # flipped meaning + the omitted word
     assert res.floor == pytest.approx(0.85)
+
+
+@pytest.mark.parametrize(
+    "dropped",
+    ["not, without the prior ", "not, without the prior written consent of the landlord, "],
+    ids=["4-token run", "9-token run"],
+)
+def test_negator_dropped_inside_a_longer_omission_is_still_critical(dropped: str):
+    clause = "The tenant shall not, without the prior written consent of the landlord, sublet any part of the premises."
+    ref = PROSE + " " + clause
+    res = score_text_next(ref, ref.replace(dropped, ""))
+    assert res.events.kinds().get("negator in changed text") == 1
+    assert res.floor <= score_text_next(ref, ref.replace("shall not,", "shall,")).floor
+
+
+def test_negator_dropped_with_its_whole_sentence_is_only_an_omission():
+    ref = PROSE + " Members did not object. The treasurer presented the plan."
+    res = score_text_next(ref, ref.replace(" Members did not object.", ""))
+    assert "negator in changed text" not in res.events.kinds()
 
 
 def test_invented_passage_is_critical():
@@ -416,7 +435,7 @@ def test_bare_numbers_at_sentence_ends_do_not_break_sentences():
 def test_long_omission_is_critical_and_does_not_flip_negation():
     extra = " Members did not object to the plan, which the treasurer presented with a short summary of costs."
     res = score_text_next(PROSE + extra, PROSE)
-    assert res.events.kinds() == {"omitted passage": 1}  # not also "negation changed"
+    assert res.events.kinds() == {"omitted passage": 1}
     assert res.events.critical == 1
 
 
@@ -537,9 +556,268 @@ def test_spacing_inside_dates_and_ranges_is_harmless():
         assert score_text_next(ref, ref.replace(ref_num, out_num)).score == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize(
+    "spaced",
+    ["19.07 .2022", "19 .07.2022", "19. 07.2022", "19.07. 2022", "19\t. 07 \t.\t2022", "19.\u202f07 .\u00a02022"],
+)
+def test_spaces_on_either_side_of_date_dots_do_not_invent_numeric_errors(spaced: str) -> None:
+    compact = "Signed on 19.07.2022 by the clerk."
+    rendered = f"Signed on {spaced} by the clerk."
+
+    for reference, hypothesis in ((compact, rendered), (rendered, compact)):
+        result = score_text_next(reference, hypothesis)
+        assert result.score == 1.0
+        assert not result.events.kinds()
+
+
+@pytest.mark.parametrize(
+    ("reference", "hypothesis", "critical"),
+    [
+        ("Signed on 09.07 .2022", "Signed on 07.09.2022", True),
+        ("Signed on 19.07 .2022", "Signed on 19.07.2023", True),
+        ("Signed on 19.07 .2022", "Signed on 19.7.2022", True),
+        ("Code AB-19.07 .2022-X", "Code AB-19.07.2022-Y", False),
+        ("Code AB19.07 .2022-X", "Code AB19.07.2022-X", False),
+        ("Code 19.07 .2022", "Code 19-07-2022", False),
+        ("Coefficient 0.004307", "Coefficient 0.04307", True),
+        ("Amount -47.2", "Amount 47.2", True),
+        ("Code 19.\n07.2022", "Code 19.07.2022", False),
+    ],
+)
+def test_date_spacing_equivalence_keeps_changed_values_signs_and_identifiers_chargeable(
+    reference: str, hypothesis: str, critical: bool
+) -> None:
+    result = score_text_next(reference + ". Filed on 11.06 .2020.", hypothesis + ". Filed on 11.06.2020.")
+
+    assert result.score < 1.0
+    assert result.events.kinds()
+    if critical:
+        assert result.events.critical >= 1
+
+
+def test_identically_spaced_dates_do_not_change_an_unrelated_spelling_penalty() -> None:
+    reference = "The clerk recorded 19.07 .2022 before approval."
+    hypothesis = "The clark recorded 19.07 .2022 before approval."
+
+    assert score_text_next(reference, hypothesis).score == pytest.approx(6 / 7)
+
+
+def test_dotted_output_without_a_dotted_reference_does_not_invent_a_missing_date() -> None:
+    reference = "Record\n19\n07\n2022\nEnd of record."
+    hypothesis = "Record\n19 . 07 . 2022\nEnd of record."
+
+    assert score_text_next(reference, hypothesis).score == 1.0
+
+
+@pytest.mark.parametrize("wrapped", ["12—\n18", "12-\r\n\t18", "12-\n  18"])
+def test_single_soft_wrap_after_range_dash_is_not_a_number_rewrite(wrapped: str) -> None:
+    """The eller replay charges a minor number rewrite for an unchanged range wrapped after its dash."""
+    ref = PROSE + " The layer measures 12-18 cm."
+    hyp = PROSE + f" The layer measures {wrapped} cm."
+    for reference, output in ((ref, hyp), (hyp, ref)):
+        result = score_text_next(reference, output)
+        assert result.score == pytest.approx(1.0)
+        assert result.events.kinds() == {}
+
+
+@pytest.mark.parametrize(
+    "separated",
+    [
+        "12-\n\n18 cm",
+        "12-  \n18 cm",
+        "12-\\\n18 cm",
+        "<p>12-</p><p>18 cm</p>",
+        "<table><tr><td>12-</td><td>18 cm</td></tr></table>",
+        "| 12- |\n| 18 cm |",
+    ],
+)
+def test_range_repair_does_not_join_ambiguous_hard_or_structural_breaks(separated: str) -> None:
+    assert keys(separated) != keys("12-18 cm")
+    result = score_text_next(PROSE + " 12-18 cm.", PROSE + " " + separated)
+    assert result.score < 1.0
+    assert result.events.kinds()
+
+
+@pytest.mark.parametrize("wrong_range,expect_critical", [("18—\n12", True), ("12—\n19", True), ("12\n18", False)])
+def test_wrapped_range_does_not_hide_reversed_changed_or_missing_endpoints(
+    wrong_range: str, expect_critical: bool
+) -> None:
+    result = score_text_next(PROSE + " Depth 12-18 cm.", PROSE + f" Depth {wrong_range} cm.")
+    assert result.score < 1.0
+    assert result.events.kinds()
+    assert (result.events.critical > 0) is expect_critical
+
+
+def test_soft_wrapped_ranges_do_not_excuse_swapped_paragraphs() -> None:
+    first = "The excavation depth was 12-18 cm below ground."
+    second = "The drainage layer reached 24-30 cm after compaction."
+    ref = PROSE + "\n\n" + first + "\n\n" + second
+    hyp = PROSE + "\n\n" + second.replace("24-30", "24-\n30") + "\n\n" + first.replace("12-18", "12-\n18")
+    result = score_text_next(ref, hyp)
+    assert result.words == pytest.approx(1.0)
+    assert result.order < 1.0
+    assert result.events.moved > 0
+    assert result.score < 1.0
+
+
+def test_date_spacing_and_wrapped_range_are_both_preserved_in_one_page() -> None:
+    reference = PROSE + " Filed on 19.07 .2022. The layer measures 12-18 cm."
+    hypothesis = PROSE + " Filed on 19.07.2022. The layer measures 12-\n18 cm."
+    assert score_text_next(reference, hypothesis).score == pytest.approx(1.0)
+
+
 def test_every_lost_point_has_an_event_example():
     # row-major interleaving lowered the score to 0.59 with no event listed
     ref = "Answers\n1. A\n2. C\n3. B\n4. D\n5. A\n6. B"
     hyp = "Answers\n1. A 4. D\n2. C 5. A\n3. B 6. B"
     res = score_text_next(ref, hyp)
     assert res.score < 1.0 and res.events.kinds()
+
+
+def test_gap_larger_than_the_dp_limit_is_still_aligned(monkeypatch: pytest.MonkeyPatch):
+    """A gap over LCS_CELL_LIMIT was left unaligned (a 2,001-token page scored 0.0, a 1,999-token one 0.5)."""
+    import random
+
+    from parse_bench.evaluation.metrics.parse import text_next
+
+    rng = random.Random(3)
+    vocab = ["revenue", "margin", "center", "freight", "costs", "board", "dividend", "share", "payable", "record"]
+    words = [rng.choice(vocab) for _ in range(300)]
+    ref = " ".join(words)
+    hyp = " ".join(w + "s" if i % 2 else w for i, w in enumerate(words))  # every 2nd word respelled: no 3-tiles
+    exact = score_text_next(ref, hyp).proportional
+    assert exact == pytest.approx(0.5)
+    monkeypatch.setattr(text_next, "LCS_CELL_LIMIT", 1_000)
+    assert score_text_next(ref, hyp).proportional == pytest.approx(exact, abs=0.02)
+    monkeypatch.setattr(text_next, "LCS_SLICE_CELLS", 10_000)
+    assert score_text_next(ref, hyp).proportional == pytest.approx(exact, abs=0.05)
+
+
+def test_html_document_scaffolding_and_tag_attributes_are_not_text():
+    ref = "Item #3 was approved by the board on Monday after a short debate."
+    wrapped = (
+        '<!doctype html><html><head><meta charset="utf-8"><title>Minutes</title><style>p{color:red}</style>'
+        f'</head><body><article class="main" id="m1"><p>{ref}</p></article></body></html>'
+    )
+    res = score_text_next(ref, wrapped)
+    assert res.score == 1.0, res.events.kinds()
+    assert score_text_next(ref, wrapped.replace("#3", "#8")).events.kinds().get("wrong number or identifier") == 1
+
+
+_URL = "https://www.example.ch/region/neue-regeln-fuer-velofahrer-ld.1055646"
+_CITED = f"Quelle: {_URL} abgerufen am 3. Mai 2019 von der Redaktion der Zeitung in der Stadt."
+
+
+def test_identifier_misread_or_split_costs_no_more_than_omitting_it():
+    omitted = score_text_next(_CITED, _CITED.replace(_URL + " ", ""))
+    garbled = score_text_next(_CITED, _CITED.replace("-ld.1055646", "-Id. 1055646"))
+    assert garbled.events.kinds() == {"identifier garbled": 1}
+    assert garbled.score >= omitted.score
+
+
+def test_identifier_with_a_changed_digit_stays_critical():
+    res = score_text_next(_CITED, _CITED.replace("1055646", "1055647"))
+    assert res.events.kinds().get("wrong number or identifier") == 1
+    assert res.events.critical >= 1
+
+
+@pytest.mark.parametrize(
+    ("name", "written"),
+    [("ʻAiea", "Aiea"), ("Koʻolau", "Ko‘olau"), ("Koʻolau", "Ko'olau"), ("Koʻolau", "Koolau"), ("Kāneʻohe", "Kaneohe")],
+)
+def test_okina_apostrophe_and_accent_variants_of_a_name_are_minor(name: str, written: str):
+    page = "The new clinic opened last spring in {} near the harbor and serves families from the whole district."
+    res = score_text_next(page.format(name), page.format(written))
+    assert res.events.critical == 0 and res.events.kinds() == {"accent only": 1}
+
+
+def test_a_different_name_is_still_critical():
+    page = "The new clinic opened last spring in {} near the harbor and serves families from the whole district."
+    assert score_text_next(page.format("Koʻolau"), page.format("Kailua")).events.kinds() == {"name changed": 1}
+
+
+_LEAFLET = (
+    "Keep the battery away from heat. Charge it only with the supplied cable and never leave it charging overnight."
+)
+_MARKERS = [
+    "[IMAGE_DESCRIPTION: {}]",
+    "[Image: {}]",
+    "[Logo: {}]",
+    "<figure><img src='a.png'><figcaption>{}</figcaption></figure>",
+    '<img src="a.png" alt="{}">',
+    "<::image: {}::>",
+    "<::{} : figure::>",
+    "<figure-description>\n\n***figure-description:***\n{}\n\n</figure-description>",
+    '<div class="img-description" style="padding: 10px;">\n <div class="img-alt">{}</div>\n</div>',
+]
+
+
+def _with_description(marker: str, text: str) -> str:
+    return _LEAFLET.replace(" Charge", "\n\n" + marker.format(text) + "\n\n Charge")
+
+
+@pytest.mark.parametrize("marker", _MARKERS)
+def test_marked_picture_description_is_free_like_alt_text(marker: str):
+    desc = "a small green battery icon with a lightning bolt in the corner"
+    assert score_text_next(_LEAFLET, _with_description(marker, desc)).score == 1.0
+
+
+@pytest.mark.parametrize("marker", _MARKERS)
+def test_marked_garbage_is_charged_and_marked_page_text_is_read_as_text(marker: str):
+    assert score_text_next(_LEAFLET, _with_description(marker, "i l 1 | l i 1 ; j 1 l i")).score < 0.9
+    moved = "Keep the battery away from heat. Charge it only with the supplied cable"
+    out = marker.format(moved) + "\n\n" + _LEAFLET.replace(moved, "")
+    assert score_text_next(_LEAFLET, out).score == 1.0
+
+
+def test_unmarked_description_is_still_invented_text():
+    out = _with_description("{}", "a small green battery icon with a lightning bolt in the corner")
+    assert "invented passage" in score_text_next(_LEAFLET, out).events.kinds()
+
+
+def test_page_text_inside_a_figure_still_counts():
+    ref = (
+        "metro\n\nFrom The Palms to Wigram, buses run every fifteen minutes on weekdays and every half hour on Sundays."
+    )
+    out = "<figure>\n\nmetro\n\n</figure>\n\n" + ref.split("\n\n", 1)[1]
+    assert score_text_next(ref, out).score == 1.0
+
+
+@pytest.mark.parametrize("printed", ["Kite", "2030-2031 Kite", "北駅"])
+def test_short_printed_text_in_markdown_alt_is_not_reported_missing(printed: str) -> None:
+    ref = printed + "\n\n" + PROSE
+    out = f"![logo: **{printed}**](logo.png)\n\n" + PROSE
+    assert score_text_next(ref, out).score == 1.0
+
+
+def test_short_alt_reading_does_not_discard_unmatched_narration() -> None:
+    ref = "Kite 2030-2031\n\n" + PROSE
+    out = "![logo: **Kite** **2030-2031** logo](logo.png)\n\n" + PROSE
+    result = score_text_next(ref, out)
+    assert result.recall == 1.0
+    assert result.critical == 1.0
+    assert result.score < 1.0
+    assert "inserted words" in result.events.kinds()
+
+
+@pytest.mark.parametrize(
+    "caption",
+    ["", "Station 71 must not close.", "Station 17 must close.", "Depot 17 must not close."],
+)
+def test_short_alt_recovery_still_penalizes_missing_or_changed_printed_caption(caption: str) -> None:
+    ref = "Kite\n\nStation 17 must not close.\n\n" + PROSE
+    out = f"![logo: Kite](logo.png)\n\n<figure><figcaption>{caption}</figcaption></figure>\n\n" + PROSE
+    assert score_text_next(ref, out).score < 1.0
+
+
+@pytest.mark.parametrize("printed", ["Kite 2030-2032", "Kite", "2030-2031"])
+def test_short_alt_recovery_still_penalizes_wrong_or_missing_logo_text(printed: str) -> None:
+    ref = "Kite 2030-2031\n\n" + PROSE
+    out = f"![logo: {printed}](logo.png)\n\n" + PROSE
+    assert score_text_next(ref, out).score < 1.0
+
+
+def test_short_alt_reading_does_not_exempt_unmarked_body_narration() -> None:
+    ref = "Kite\n\n" + PROSE
+    out = "![logo: Kite](logo.png)\n\nA bright bird perched above the distant river.\n\n" + PROSE
+    assert score_text_next(ref, out).score < 1.0

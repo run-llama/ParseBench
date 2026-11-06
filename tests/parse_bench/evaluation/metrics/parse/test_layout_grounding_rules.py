@@ -173,6 +173,15 @@ def test_no_scored_elements_and_no_predictions_emit_nothing() -> None:
     assert compute_layout_grounding_metrics(rules, lambda page: []) == []
 
 
+def test_no_scored_elements_with_predictions_emit_nothing() -> None:
+    """With no reference element the score is the prediction penalty alone: a 0.0 on every such page."""
+    rules = [
+        _rule("OPT", [0.5, 0.5, 0.2, 0.2], attributes={"optional": "true"}),
+        _word("W", "OPT", [0.55, 0.55, 0.05, 0.02], "hello"),
+    ]
+    assert compute_layout_grounding_metrics(rules, lambda page: [_block([0.1, 0.1, 0.3, 0.02], "alpha", 0)]) == []
+
+
 def test_ground_truth_without_any_content_emits_nothing_and_reads_no_predictions() -> None:
     """Box-only GT has no content to ground: scoring it reads the adapter and crashes detector-only outputs."""
 
@@ -269,7 +278,7 @@ def test_region_text_is_graded_against_its_content_not_only_its_annotated_words(
 
 def test_ocr_tokens_of_inline_math_absent_from_content_are_not_scored() -> None:
     """OCR words of `$...$` math (stripped from content) would sink token F1 of a clean prediction."""
-    rules = _math_doc(r"a matrix $Q_k \in \mathbb{R}^{k}$ satisfies", ["a", "matrix", "Qk", "E_R(k-1)xk,", "satisfies"])
+    rules = _math_doc(r"a matrix $Q_k^{k}$ satisfies", ["a", "matrix", "Qk", "E_R(k-1)xk,", "satisfies"])
     row = _single_score(rules, [_block(rules[0].bbox, "a matrix satisfies", 0)]).metadata["element_results"][0]
     assert row["token_f1"] == pytest.approx(1.0)
     assert row["A"] is True
@@ -282,6 +291,24 @@ def test_display_math_element_is_box_only() -> None:
     row = metric.metadata["element_results"][0]
     assert row["A"] is None
     assert metric.value == pytest.approx(1.0)
+
+
+def test_region_whose_text_holds_latex_is_checked_by_box_only() -> None:
+    """GT writes `\\begin{bmatrix}` where models write `$...$` or Unicode, so the text check failed a right box."""
+    box = [0.1, 0.1, 0.6, 0.05]
+    content = r"where $\beta > 0$ and $W(t) \triangleq \begin{bmatrix}\Psi(t) & 0\end{bmatrix}$. Notice"
+    rules = [_rule("R", box, content={"type": "text", "text": content})]
+    metric = _single_score(rules, [_block(box, "where β > 0 and W(t) ≜ [Ψ(t) 0]. Notice", 0)])
+    assert metric.metadata["element_results"][0]["A"] is None
+    assert metric.value == pytest.approx(1.0)
+
+
+def test_region_with_currency_dollars_keeps_its_text_check() -> None:
+    """`$` alone is currency, not math: a right box with the wrong text must still fail attribution."""
+    box = [0.1, 0.1, 0.6, 0.05]
+    rules = [_rule("R", box, content={"type": "text", "text": "revenue rose from $5 million to $7 million"})]
+    metric = _single_score(rules, [_block(box, "headcount fell sharply in every region", 0)])
+    assert metric.metadata["element_results"][0]["A"] is False
 
 
 def test_mark_scope_checkbox_rules_are_not_scored() -> None:
@@ -330,3 +357,23 @@ def test_eszett_tokens_agree_with_the_attribution_normalizer() -> None:
 
 
 # ------------------------------------------------------------ evaluator wiring
+
+
+@pytest.mark.parametrize(("neutral", "junk_is_neutral"), [("match", False), (None, True)], ids=["match", "contain"])
+def test_match_only_optional_box_neutralizes_its_match_and_penalizes_junk_inside(
+    neutral: str | None, junk_is_neutral: bool
+) -> None:
+    """A ``neutral: match`` sub-chart box inside a picture shields only a matching prediction; plain ones shield any."""
+    attrs = {"grade": "none", "grade_reason": "picture_inner_element"} | ({"neutral": neutral} if neutral else {})
+    sub = [0.32, 0.42, 0.18, 0.18]
+    rules = [
+        _rule("P", [0.1, 0.1, 0.3, 0.02], ro_index=0),
+        _word("W1", "P", [0.1, 0.1, 0.1, 0.02], "alpha"),
+        _rule("FIG", [0.3, 0.4, 0.4, 0.4], cls="Picture", ro_index=1),
+        _rule("SUB", sub, cls="Picture", attributes=attrs),
+    ]
+    base = [_block([0.1, 0.1, 0.3, 0.02], "alpha", 0), _block([0.3, 0.4, 0.4, 0.4], "", 1)]
+    clean = _single_score(rules, base).value
+    assert _single_score(rules, [*base, _block(sub, "", 2)]).value == pytest.approx(clean)
+    junk = _single_score(rules, [*base, _block([0.33, 0.43, 0.03, 0.02], "", 2)]).value
+    assert (junk == pytest.approx(clean)) is junk_is_neutral

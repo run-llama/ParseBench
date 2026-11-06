@@ -17,16 +17,17 @@ Scores (each in [0, 1]):
 * floor = 1 - severity cost. The first event of a class costs its full weight (critical 0.10,
   major 0.05, minor 0.01, minor total capped at 0.15); later events of the class cost
   ``min(1, K / reference cells)`` of it (K = 80), so a long table is not zeroed by a handful of
-  repeated slips. Systematic quirks count once (a reworded label per table, a failing column,
+  repeated slips. Systematic quirks count once (a reworded label per table, a failing column
+  (3+ cell errors of one severity, costing as the 2 row events below that threshold),
   an inserted column, row labels wrapped over two rows where the reference spans one cell), and so do
   repeats of one structural cause (a rowspan value written in one row only, a whole table moved in the page
   order).
 * ``table_next = min(proportional, floor)``.
 
 Policy: row reorder, column swap, transposition, header flattening, table split/merge, number
-format and case changes are errors (graded by severity); output format (Markdown vs HTML,
-attributes, th vs td markup) is not. Output tables that share nothing with the reference are
-ignored (references are not exhaustive).
+format (a whole table in the other decimal convention is one minor) and case changes are errors
+(graded by severity); output format (Markdown vs HTML, attributes, th vs td markup) is not. Output
+tables that share nothing with the reference are ignored (references are not exhaustive).
 
 test.json flags: ``max_top_title_rows`` caps the leading title rows stripped per table (default 1,
 0 = none); ``allow_splitting_ambiguous_merged_tables`` splits side-by-side tables emitted as one
@@ -62,6 +63,8 @@ from parse_bench.schemas.evaluation import MetricValue
 K_SCALE = 80  # later events of a class weigh min(1, K_SCALE / reference cells)
 WEIGHTS = {"critical": 0.10, "major": 0.05, "minor": 0.01}
 MINOR_CAP = 0.15
+COPY_SHARE = 0.9  # an output table sharing this share of its cell keys with a better-fitting one is a copy of it
+SYSTEMATIC_CELLS = 3  # errors of one severity in one column charged as one column event (costing 2)
 ORDER_PENALTY = 0.3
 BIG_COMPONENT = 400  # connected components larger than this are matched greedily
 MIN_VALUES = 3  # with 1 to MIN_VALUES - 1 non-empty reference values, dash cells ("-", "n/a") count as values
@@ -123,31 +126,39 @@ class Cell:
 class ParsedTable:
     kind: str  # "html" or "md"
     cells: list[Cell]
-    before: str  # last non-empty line before the table
+    before: str  # last non-empty line before the table, then "\x1f" and the <caption> text when there is one
     pos: int
     end: int = -1  # offset just past the table in the source markdown
 
 
-_RE_TABLE = re.compile(rf"<table{_NOT_W}[\s\S]*?(?:</table>|\Z)", re.I)  # an unclosed table runs to the end
-_RE_TAG = re.compile(rf"<(/?)(thead|tbody|tfoot|tr|td|th){_NOT_W}([^>]*)>", re.I)
-_RE_BR = re.compile(rf"<br{_S}*/?>", re.I)
+# a table tag, or a cell, row or section tag (group 1 "/" on a close, group 2 the name): these open or end a cell
+_RE_TABLE_TAG = re.compile(rf"<table{_NOT_W}|</table>|<(/?)(thead|tbody|tfoot|tr|td|th){_NOT_W}", re.IGNORECASE)
+_RE_CAPTION = re.compile(rf"<caption{_NOT_W}[^>]*>([\s\S]*?)</caption>", re.IGNORECASE)
+_RE_COMMENT = re.compile(r"<!--[\s\S]*?-->")  # not rendered: a table or cell text inside it is not on the page
+_RE_TAG = re.compile(rf"<(/?)(thead|tbody|tfoot|tr|td|th){_NOT_W}([^>]*)>", re.IGNORECASE)
+_RE_BR = re.compile(rf"<br{_S}*/?>", re.IGNORECASE)
 _RE_ANY_TAG = re.compile(r"<[^>]+>")
 # A <sup>/<sub> marker attaches to the text before it: pretty-printed "(42)\n<sup>\nab\n</sup>" reads
 # "(42)ab", like "(42)<sup>ab</sup>" and the NFKC form of "(42)ᵃᵇ".
-_RE_SUPSUB_WS = re.compile(rf"{_S}*(<su[pb]{_NOT_W}[^>]*>){_S}*|{_S}+(</su[pb]{_S}*>)", re.I)
+_RE_SUPSUB_WS = re.compile(rf"{_S}*(<su[pb]{_NOT_W}[^>]*>){_S}*|{_S}+(</su[pb]{_S}*>)", re.IGNORECASE)
 _RE_WS = re.compile(f"{_S}+")
 # a <sup> of digits is kept as superscript digits ("1,200<sup>1</sup>" reads "1,200¹"): NFKC compares it as before,
 # and ``strip_footnotes`` still sees the marker
-_RE_SUP_DIGITS = re.compile(rf"<sup{_NOT_W}[^>]*>{_S}*([0-9]{{1,2}}(?:,[0-9]{{1,2}})*){_S}*</sup{_S}*>", re.I)
+_RE_SUP_DIGITS = re.compile(rf"<sup{_NOT_W}[^>]*>{_S}*([0-9]{{1,2}}(?:,[0-9]{{1,2}})*){_S}*</sup{_S}*>", re.IGNORECASE)
 _SUPERSCRIPT = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
+# a LaTeX superscript is a <sup> marker: "9,999^{9}", "(42)$^{ab}$" read like "9,999<sup>9</sup>", "(42)<sup>ab</sup>"
+_RE_LATEX_SUP = re.compile(r"\$?\^\{([^{}$\n]{1,12})\}\$?")
 # The reading ``score_table_next`` is scoring: whether <sup>/<sub> markers attach to the text before them
 # (``parse_tables``) and whether labels equal once spaces are removed match (``key_sim``). Both default on.
 _ATTACH_MARKS: ContextVar[bool] = ContextVar("table_next_attach_marks", default=True)
 _SPACELESS_KEYS: ContextVar[bool] = ContextVar("table_next_spaceless_keys", default=True)
-_RE_HEX_ENT = re.compile(r"&#x([0-9a-f]{1,8});", re.I)
+_RE_HEX_ENT = re.compile(r"&#x([0-9a-f]{1,8});", re.IGNORECASE)
 _RE_DEC_ENT = re.compile(r"&#([0-9]{1,8});")
+_RE_NAMED_ENT = re.compile(r"&([A-Za-z][A-Za-z0-9]{1,31});")
+# a blank table cell: an HTML cell holding only space, or a Markdown cell between two pipes holding only space
+_RE_BLANK_CELL = re.compile(r"<t[hd](?:\s[^>]*)?>(?:\s|&nbsp;|<br\s*/?>)*</t[hd]\s*>|\|[ \t]*(?=\|)", re.IGNORECASE)
 _RE_MD_SEP = re.compile(rf"{_S}*\|?{_S}*:?-{{3,}}[-|: ]*\Z")
-_SPAN_RX = {k: re.compile(rf"{k}{_S}*={_S}*[\"']?([0-9]+)", re.I) for k in ("rowspan", "colspan")}
+_SPAN_RX = {k: re.compile(rf"{k}{_S}*={_S}*[\"']?([0-9]+)", re.IGNORECASE) for k in ("rowspan", "colspan")}
 
 
 def _code_point(m: re.Match[str], n: int) -> str:
@@ -155,11 +166,11 @@ def _code_point(m: re.Match[str], n: int) -> str:
 
 
 def decode_entities(s: str) -> str:
+    """Numeric and HTML5 named character references ("&#36;", "&dollar;", "&amp;"), each decoded once. Only a
+    reference closed by ";" decodes ("&parent" stays text), and an unknown name stays as written."""
     s = _RE_HEX_ENT.sub(lambda m: _code_point(m, int(m.group(1), 16)), s)
     s = _RE_DEC_ENT.sub(lambda m: _code_point(m, int(m.group(1))), s)
-    return (
-        s.replace("&nbsp;", " ").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"').replace("&amp;", "&")
-    )
+    return _RE_NAMED_ENT.sub(lambda m: html.unescape(m.group(0)), s)
 
 
 def _place(rows: list[list[dict[str, Any]]]) -> list[Cell]:
@@ -208,50 +219,99 @@ def _cap_spans(rows: list[list[dict[str, Any]]]) -> None:
             x["cs"] = min(x["cs"], cells)
 
 
+def _table_spans(md: str) -> list[tuple[int, int]]:
+    """Start and end offsets of each top-level HTML table. A table opened inside an open cell is nested and stays
+    inside its outer table; one opened outside any cell closes the tables left unclosed before it, so it starts a
+    sibling (or a new top-level table). The last unclosed table runs to the end."""
+    spans: list[tuple[int, int]] = []
+    cell_open: list[bool] = []  # one entry per open table, innermost last: is a cell of that table open
+    start = 0
+    for t in _RE_TABLE_TAG.finditer(md):
+        if t.group(2):
+            if cell_open:  # "<td>" / "<th>" opens a cell; any other cell, row or section tag ends it
+                cell_open[-1] = t.group(1) == "" and t.group(2).lower() in ("td", "th")
+        elif not t.group(0).startswith("</"):
+            if cell_open and not any(cell_open):  # no cell to nest in: the unclosed table ends here
+                spans.append((start, t.start()))
+                cell_open.clear()
+            while cell_open and not cell_open[-1]:  # an unclosed nested table ends; its outer cell is open
+                cell_open.pop()
+            if not cell_open:
+                start = t.start()
+            cell_open.append(False)
+        elif cell_open:
+            cell_open.pop()
+            if not cell_open:
+                spans.append((start, t.end()))
+    if cell_open:
+        spans.append((start, len(md)))
+    return spans
+
+
+def _sub_tables(md: str, fn: Callable[[str], str]) -> str:
+    """``md`` with each top-level HTML table replaced by ``fn(table)``."""
+    out, last = [], 0
+    for a, b in _table_spans(md):
+        out += [md[last:a], fn(md[a:b])]
+        last = b
+    return "".join(out) + md[last:]
+
+
 def _last_line(text: str) -> str:
     lines = [t for t in (_trim(line) for line in text.split("\n")) if t]
     return lines[-1] if lines else ""
 
 
+def _html_cell(raw: str, tag: str, attrs: str, row_spans: bool) -> dict[str, Any]:
+    """One HTML cell from its inner markup ``raw`` and its tag's attributes."""
+
+    def span(k: str) -> int:
+        x = _SPAN_RX[k].search(attrs)
+        return max(1, min(1000, int(x.group(1)))) if x else 1
+
+    raw = _RE_LATEX_SUP.sub(r"<sup>\1</sup>", raw)
+    if _ATTACH_MARKS.get():
+        raw = _RE_SUPSUB_WS.sub(lambda x: x.group(1) or x.group(2), raw)
+    raw = _RE_SUP_DIGITS.sub(lambda x: x.group(1).translate(_SUPERSCRIPT), raw)
+    text = _trim(_RE_WS.sub(" ", decode_entities(_RE_ANY_TAG.sub("", _RE_BR.sub(" ", raw)))))
+    return {"rs": span("rowspan") if row_spans else 1, "cs": span("colspan"), "text": text, "th": tag == "th"}
+
+
 def parse_tables(md: str | None, row_spans: bool = True) -> list[ParsedTable]:
     """Every HTML table and Markdown pipe table of ``md``, in document order (``row_spans=False`` reads every
     rowspan as 1: the reading of a span that was not meant to cover the rows below)."""
-    md = md or ""
+    md = _RE_COMMENT.sub(" ", md or "")
     tables: list[ParsedTable] = []
-    for m in _RE_TABLE.finditer(md):
-        html = m.group(0)
+    for m_start, m_end in _table_spans(md):
+        # a table nested in a cell reads as that cell's text (the slice from 1 skips the outer table's own tag)
+        html = md[m_start] + _sub_tables(md[m_start + 1 : m_end], lambda t: _RE_ANY_TAG.sub(" ", t))
         rows: list[list[dict[str, Any]]] = []
         row: list[dict[str, Any]] | None = None
         open_tag: tuple[str, str, int] | None = None
-        for t in _RE_TAG.finditer(html):
-            close, tag = t.group(1) == "/", t.group(2).lower()
-            if tag == "tr":
-                if not close:
+        for t in [*_RE_TAG.finditer(html), None]:  # None: the table's end closes a cell left open
+            if open_tag is not None:  # "</td>", or the next cell, row or section when the end tag is omitted
+                if row is None:
                     row = []
                     rows.append(row)
-            elif tag in ("td", "th"):
-                if not close:
-                    open_tag = (tag, t.group(3), t.end())
-                elif open_tag is not None:
-                    raw, attrs = html[open_tag[2] : t.start()], open_tag[1]
-
-                    def span(k: str, attrs: str = attrs) -> int:
-                        x = _SPAN_RX[k].search(attrs)
-                        return max(1, min(1000, int(x.group(1)))) if x else 1
-
-                    if row is None:
-                        row = []
-                        rows.append(row)
-                    if _ATTACH_MARKS.get():
-                        raw = _RE_SUPSUB_WS.sub(lambda x: x.group(1) or x.group(2), raw)
-                    raw = _RE_SUP_DIGITS.sub(lambda x: x.group(1).translate(_SUPERSCRIPT), raw)
-                    text = _trim(_RE_WS.sub(" ", decode_entities(_RE_ANY_TAG.sub("", _RE_BR.sub(" ", raw)))))
-                    rs = span("rowspan") if row_spans else 1
-                    row.append({"rs": rs, "cs": span("colspan"), "text": text, "th": open_tag[0] == "th"})
-                    open_tag = None
+                row.append(_html_cell(html[open_tag[2] : t.start() if t else len(html)], *open_tag[:2], row_spans))
+                open_tag = None
+            if t is None:
+                break
+            close, tag = t.group(1) == "/", t.group(2).lower()
+            if tag == "tr" and not close:
+                row = []
+                rows.append(row)
+            elif tag in ("td", "th") and not close:
+                open_tag = (tag, t.group(3), t.end())
         _cap_spans(rows)
-        tables.append(ParsedTable("html", _place(rows), _last_line(md[: m.start()]), m.start(), m.end()))
-    masked = _RE_TABLE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), md)
+        # a <caption> ahead of the first row is one more title candidate after the line before the table,
+        # split off by "\x1f"
+        first_row = _RE_TAG.search(html)
+        cap = _RE_CAPTION.search(html, 0, first_row.start() if first_row else len(html))
+        cap_t = _trim(_RE_WS.sub(" ", decode_entities(_RE_ANY_TAG.sub("", cap.group(1))))) if cap else ""
+        before = _last_line(md[:m_start]) + ("\x1f" + cap_t if cap_t else "")
+        tables.append(ParsedTable("html", _place(rows), before, m_start, m_end))
+    masked = _sub_tables(md, lambda t: re.sub(r"[^\n]", " ", t))
     lines, orig = masked.split("\n"), md.split("\n")
     offs, off = [], 0
     for line in lines:
@@ -272,7 +332,10 @@ def parse_tables(md: str | None, row_spans: bool = True) -> list[ParsedTable]:
                 if not (_RE_MD_SEP.match(line) or (bare and _RE_BARE_SEP.match(line)))
             ]
             if j - i >= 2:
-                rows_md = [[{"rs": 1, "cs": 1, "text": x, "th": k == 0} for x in r] for k, r in enumerate(body)]
+                rows_md = [
+                    [{"rs": 1, "cs": 1, "text": _RE_LATEX_SUP.sub(r"<sup>\1</sup>", x), "th": k == 0} for x in r]
+                    for k, r in enumerate(body)
+                ]
                 tables.append(
                     ParsedTable(
                         "md", _place(rows_md), _last_line("\n".join(orig[:i])), offs[i], offs[j - 1] + len(lines[j - 1])
@@ -289,6 +352,14 @@ def parse_tables(md: str | None, row_spans: bool = True) -> list[ParsedTable]:
 # ---------------------------------------------------------------------------
 
 NX_EMPTY = frozenset({"", "-", "--", "---", "n/a", "na", "none", "nan"})
+_RE_CUR_SYM = re.compile("[$€£¥]")
+
+
+def is_empty(n: str) -> bool:
+    """Normalized cell text with no content: an empty marker, alone or with currency symbols ("$", "$ -")."""
+    return n in NX_EMPTY or _trim(_RE_CUR_SYM.sub("", n)) in NX_EMPTY
+
+
 _PRE = [
     (re.compile(r"!\[[^\]]*\]\([^)]*\)"), ""),
     (re.compile(r"\[([^\]]*)\]\([^)]*\)"), r"\1"),
@@ -310,6 +381,12 @@ _POST = [
     (re.compile(f"{_S}+"), " "),
 ]
 _RE_END_PUNCT = re.compile(r"([^0-9])[.:]\Z")
+# a whole cell that is only a checkbox mark, as checked or unchecked (after the _POST folds: "●" is "•", "☑" is "✓").
+# "✗" (and "☒", which _POST folds into it) stays apart: tables use ✓ / ✗ for yes / no.
+_CHECK_STATE = {
+    **dict.fromkeys(("[x]", "✓", "•", "◉", "■"), "✓"),
+    **dict.fromkeys(("[ ]", "[]", "☐", "○", "□", "◯"), "☐"),
+}
 _BASE = [
     (re.compile(r"\*\*|__|~~"), ""),
     (re.compile(r"(?<![\w*])\*(?=[^\s*])([^*]*?[^\s*])\*(?![\w*])"), r"\1"),
@@ -317,8 +394,18 @@ _BASE = [
     (re.compile(" "), " "),
     (re.compile("×"), "x"),
     (re.compile("[µμ]"), "u"),
+    (re.compile("∆"), "Δ"),  # U+2206 INCREMENT looks like U+0394 GREEK CAPITAL DELTA
     (re.compile(f"{_S}+"), " "),
 ]
+
+
+# Match only a complete simple symbol with an optional fractional coefficient. Optional
+# paired math delimiters wrap either the expression or its symbol; content stays intact.
+_RE_FRACTION_SYMBOL = re.compile(
+    r"(?P<outer>\$)?\s*(?P<fraction>[+-]?[0-9]+\s*/\s*[0-9]+)?\s*"
+    r"(?P<inner>\$)?\s*(?P<symbol>[A-Za-z]+)(?:_\{(?P<sub>[A-Za-z0-9]+)\})?"
+    r"\s*(?(inner)\$)\s*(?(outer)\$)"
+)
 
 
 def _pre(s: str) -> str:
@@ -337,6 +424,9 @@ def _base(s: str) -> str:
     s = unicodedata.normalize("NFKC", _pre(s))
     for rx, rep in _BASE:
         s = rx.sub(rep, s)
+    match = _RE_FRACTION_SYMBOL.fullmatch(s.strip())
+    if match:
+        s = re.sub(r"\s+", "", match["fraction"] or "") + match["symbol"] + (match["sub"] or "")
     return _trim(s)
 
 
@@ -348,6 +438,7 @@ def nx_norm(s: str) -> str:
     v = _NORM.get(s)
     if v is None:
         v = _post(_base(s)).lower()
+        v = _CHECK_STATE.get(v, v)
         if len(_NORM) > 200_000:
             _NORM.clear()
         _NORM[s] = v
@@ -369,6 +460,16 @@ def _ungroup(s: str) -> str:
     """Thousands separators removed from a normalized cell: commas, and spaces or apostrophes between groups."""
     s = _RE_SPACE_GROUPS.sub(lambda m: m.group(1) + m.group(3).replace(m.group(2), ""), s)
     return _RE_THOUSANDS.sub(r"\1", s)
+
+
+# A number grouped by commas in threes ("1,250", "1,234,567.8"); the first group 1 to 3 digits long
+_RE_COMMA_GROUPED = re.compile(r"(?<![0-9.,])[0-9]{1,3}(?:,[0-9]{3})+(?![0-9]|,[0-9])")
+
+
+def _commas_dropped(ref: str) -> str | None:
+    """The cell with the commas of its comma-grouped numbers removed ("1,250" -> "1250"), None without any."""
+    out = _RE_COMMA_GROUPED.sub(lambda m: m.group(0).replace(",", ""), ref)
+    return out if out != ref else None
 
 
 def nx_digits(s: str) -> str:
@@ -414,7 +515,7 @@ def _is_year(s: str) -> bool:
 _SUP = "⁰¹²³⁴⁵⁶⁷⁸⁹"
 _RE_FOOTNOTE = re.compile(
     rf"(?<=[0-9%)])(?:[{_SUP}]{{1,2}}(?:,[{_SUP}]{{1,2}})*|\^\(?[0-9]{{1,2}}\)?|<sup>{_S}*[0-9]{{1,2}}{_S}*</sup>)(?![0-9])",
-    re.I,
+    re.IGNORECASE,
 )
 _RE_POWER_BASE = re.compile(r"(?:\A|[^0-9.,])10\Z")
 
@@ -436,15 +537,33 @@ def _negated(a: str, b: str) -> bool:
     return (na + nb) % 2 == 1 and [w for w in wa if w not in _NEGATIONS] == [w for w in wb if w not in _NEGATIONS]
 
 
+# a leading zero of a digit group, except after "." (a decimal or a version) or ":" (a time): "05/01" reads "5/1"
+_RE_LEAD_ZERO = re.compile(r"(?<![0-9.:])0+(?=[0-9])")
+
+
+def _same_unit(a: str, b: str) -> bool:
+    """The text after two equal leading numbers, compared without spaces ("/10 (20%)" is "/10(20%)") and without
+    zero-padding ("/01/2019" is "/1/2019"), or both ("/01 (20%)" is "/1(20%)")."""
+
+    def unpad(u: str) -> str:
+        return _RE_LEAD_ZERO.sub("", u)
+
+    sa, sb = a.replace(" ", ""), b.replace(" ", "")  # spaces go first, so "1. 05" keeps the zero after "."
+    return a == b or sa == sb or unpad(a) == unpad(b) or unpad(sa) == unpad(sb)
+
+
 def value_sim(a: str, b: str, key: str = "") -> float:
-    """1 equal; 0.95 letter case only; 0.9 same number written differently; 0.5 unit lost; 0 any digit differs.
+    """1 equal (comma thousands separators dropped included); 0.95 letter case only; 0.9 same number written
+    differently; 0.5 unit lost; 0 any digit differs.
 
     A percent sign present on one side only is no loss when the cell's labels (``key``) already say percent."""
     na, nb = nx_norm(a), nx_norm(b)
-    if na in NX_EMPTY and nb in NX_EMPTY:
+    if is_empty(na) and is_empty(nb):
         return 1.0
     if na == nb:
         return 1.0 if _surface(a) == _surface(b) else 0.95
+    if _commas_dropped(na) == nb:  # thousands separators dropped, every digit kept: the same number
+        return 1.0 if _commas_dropped(_surface(a)) == _surface(b) else 0.95
     if nx_digits(na) != nx_digits(nb):
         fa, fb = strip_footnotes(a), strip_footnotes(b)
         if (fa, fb) != (a, b):  # footnote digits glued to a number on one side: the number is right
@@ -455,10 +574,15 @@ def value_sim(a: str, b: str, key: str = "") -> float:
         if x.v == y.v and x.cmp == y.cmp:
             if x.unit == y.unit and x.pct != y.pct and "%" in key:
                 return 1.0
-            return 0.9 if (x.unit == y.unit and x.pct == y.pct) else 0.5
+            return 0.9 if (_same_unit(x.unit, y.unit) and x.pct == y.pct) else 0.5
         return 0.0
     if _negated(na, nb):
         return 0.0
+    ua, ub = _surface(a).lower(), _surface(b).lower()  # the cells before the checkbox map
+    # one side is a mapped mark, the other text: the better of the two readings, so "[x]" against "X" keeps its
+    # 0.5 and "●" against "✓ yes" keeps the credit of "✓" against "✓ yes"
+    if (ua != na) != (ub != nb):
+        return max(ratio(na, nb), ratio(ua, ub))
     return ratio(na, nb)
 
 
@@ -556,6 +680,37 @@ def clean_grid(t: ParsedTable) -> TableGrid:
     return TableGrid(g, rows0 - len(g), cols0 - len(g[0]), t.kind, t.before)
 
 
+# A number with separators, and its full forms under each convention: 1,284.5 (us) and 1.284,5 (eu). "1,284" and
+# "1.284" fit both; "44.0" and "1,284.5" only us; "44,0" and "1.284,5" only eu.
+_RE_SEP_NUMBER = re.compile(r"(?<![0-9.,])[0-9][0-9.,]*[0-9](?![0-9])")
+_RE_US_NUMBER = re.compile(r"[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?")
+_RE_EU_NUMBER = re.compile(r"[0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]+)?|[0-9]+(?:,[0-9]+)?")
+
+
+def _locale(grids: Sequence[TableGrid]) -> str | None:
+    """The number convention of ``grids``: "us" (decimal point) or "eu" (decimal comma) when at least one number
+    fits only that convention and none fits only the other, "mixed" when both occur, else None (no evidence)."""
+    us = eu = False
+    for tg in grids:
+        for r in tg.g:
+            for x in r:
+                for m in _RE_SEP_NUMBER.finditer(x.text):
+                    u, e = _RE_US_NUMBER.fullmatch(m.group(0)), _RE_EU_NUMBER.fullmatch(m.group(0))
+                    us, eu = us or bool(u and not e), eu or bool(e and not u)
+    return "mixed" if us and eu else "us" if us else "eu" if eu else None
+
+
+def _swap_separators(tg: TableGrid) -> TableGrid:
+    """``tg`` with the point and comma of every number swapped: a table written whole in the other convention,
+    read in the reference's."""
+
+    def swap(text: str) -> str:
+        return _RE_SEP_NUMBER.sub(lambda m: m.group(0).translate(str.maketrans(".,", ",.")), text)
+
+    g = [[Slot(swap(x.text), x.th, x.id) for x in r] for r in tg.g]
+    return TableGrid(g, tg.empty_rows, tg.empty_cols, tg.kind, tg.before, tg.transposed)
+
+
 def drop_span_copy_rows(tg: TableGrid) -> TableGrid:
     """Rows holding nothing but copies of cells spanning from above (a header cell with rowspan over an otherwise
     empty row) carry no content of their own: the same table written without the span has no such row."""
@@ -649,6 +804,26 @@ def merge_label_columns(tg: TableGrid) -> TableGrid:
     return TableGrid(out, tg.empty_rows, tg.empty_cols, tg.kind, tg.before, tg.transposed)
 
 
+def merge_empty_stub_column(tg: TableGrid) -> TableGrid | None:
+    """The grid with an empty leading stub column joined to the column beside it, or None when it has none.
+
+    A wide first column may be read as two: an empty stub over the body and the row labels beside it, with the
+    stub's header words left in the first column ("INTEREST RATE STRUCTURE / BASE RATE" over "" and "RATE %" over
+    the rates). Every row key is then empty. The column qualifies when it is empty in every row from the first row
+    holding a number down, those are two or more rows, and the column beside it has text in each. Joined
+    (``merge_label_columns``), its header words prefix the neighbor's header; the column counts as one empty column
+    added (a minor)."""
+    g = tg.g
+    if not g or len(g[0]) < 3:
+        return None
+    first = next((i for i, r in enumerate(g) if any(is_numeric(x.text) for x in r)), len(g))
+    body = g[first:]
+    if len(body) < 2 or any(r[0].text for r in body) or not all(r[1].text for r in body):
+        return None
+    m = merge_label_columns(tg)
+    return TableGrid(m.g, m.empty_rows, m.empty_cols + 1, m.kind, m.before, m.transposed)
+
+
 _CONNECTORS = frozenset({"to", "-", "through", "thru", "vs", "vs.", "and", "&", "or"})
 
 
@@ -681,7 +856,7 @@ def drop_header_only_columns(tg: TableGrid) -> TableGrid:
     return TableGrid(g, tg.empty_rows, tg.empty_cols + sum(drop), tg.kind, tg.before, tg.transposed)
 
 
-_SERIAL = re.compile(r"\(?(?:[0-9]{1,3}|[ivxlc]{1,6}|[a-z])[.)]?\)?\Z", re.I)
+_SERIAL = re.compile(r"\(?(?:[0-9]{1,3}|[ivxlc]{1,6}|[a-z])[.)]?\)?\Z", re.IGNORECASE)
 
 
 def _is_serial_run(vals: Sequence[str]) -> bool:
@@ -861,13 +1036,16 @@ def _infer_labels(rows: Grid, h: int, c: int) -> tuple[int, bool]:
     return lab, sec
 
 
-def infer_schema(g: Grid, max_title: int) -> Schema:
-    """Title rows, header rows and label columns of a grid."""
+def infer_schema(g: Grid, max_title: int, extra_titles: bool = False) -> Schema:
+    """Title rows, header rows and label columns of a grid. ``extra_titles`` (the output side) also strips more
+    rows that are one cell spanning the whole width, up to 4 title rows in all: title lines written into the table."""
     if not g:
         return Schema(0, 0, 0, False)
     rr, c = len(g), len(g[0])
     t = 0
     while t < max_title and rr - t > 1 and is_title_row(g[t]):
+        t += 1
+    while extra_titles and 0 < t < 4 and rr - t > 1 and g[t][0].text and all(x.id == g[t][0].id for x in g[t]):
         t += 1
     rows = g[t:]
     th_h = 0
@@ -937,12 +1115,18 @@ def build_triples(
     ref_prefixes: Sequence[str] = (),
     borrow_keys: Sequence[str] | None = None,
     keep_marks: bool = False,
+    span_blanks: bool = False,
 ) -> Reading:
     """Triples of a grid read with ``schema``.
 
     ``ref_prefixes`` are parent header levels the reference drops; ``borrow_keys`` are the column keys of the
     paired reference table, used by a headerless fragment of the same width. ``keep_marks`` keeps cells holding
-    an empty marker such as "-" or "n/a" (blank cells stay out).
+    an empty marker such as "-" or "n/a" (blank cells and a bare "$" stay out).
+
+    ``span_blanks`` (an output reading) reads blank cells as the span of the cell before them, as written spans
+    are read: an HTML header cell left blank after a header label ("<th>Change</th><th></th>") as that label's
+    colspan, as Markdown headers always are; and a row label left blank under a label as that label's rowspan
+    even across rows that hold no value (a "Current" sub-row left empty), where the default reading stops.
     """
     t_, h, lab = schema.T, schema.H, schema.L
     g0 = tg.g
@@ -952,20 +1136,27 @@ def build_triples(
     g = [list(r) for r in g0[t_:]]
     ext = _section_extent(g[h:], c)
     title = " ".join(r[0].text for r in g0[:t_])
-    if tg.kind != "html":  # Markdown cannot express spans
+    if tg.kind != "html" or span_blanks:  # Markdown cannot express spans
         for i in range(min(h, len(g))):
             for j in range(lab + 1, c):
-                if not g[i][j].text and g[i][j - 1].text:
+                # an HTML header spans only into a cell written blank; a row cut short leaves no cell to span
+                if not g[i][j].text and g[i][j - 1].text and (tg.kind != "html" or g[i][j].id >= 0):
                     g[i][j] = g[i][j - 1]
     for j in range(lab):  # row-label spans (not from section rows)
+        src = -1  # span_blanks: the last row whose label in column j can span down
         for i in range(h + 1, len(g)):
-            if (
-                not g[i][j].text
-                and g[i - 1][j].text
-                and any(x.text for x in g[i][lab:])
-                and not is_section_row(g0[t_ + i - 1], ext)
-            ):
-                g[i][j] = g[i - 1][j]
+            if g[i - 1][j].text:
+                src = -1 if is_section_row(g0[t_ + i - 1], ext) else i - 1
+            # A child label belongs to its parent path. Reset inferred spans when
+            # that path changes; explicit HTML rowspans already contain text.
+            if path_of(g[i][:j]) != path_of(g[i - 1][:j]):
+                src = -1
+                continue
+            if not g[i][j].text and any(x.text for x in g[i][lab:]):
+                if g[i - 1][j].text and src == i - 1:
+                    g[i][j] = g[i - 1][j]
+                elif span_blanks and src >= 0 and not any(x.text for x in g[i - 1][lab:]):
+                    g[i][j] = g[src][j]  # across a value-less row left blank in this column
     head = g[:h]
 
     def is_const(r: Sequence[Slot]) -> bool:
@@ -1009,7 +1200,8 @@ def build_triples(
         for j in range(lab, c):
             v = row[j].text
             nv = nx_norm(v)
-            if (nv in NX_EMPTY and not (keep_marks and nv)) or (
+            # keep_marks keeps empty markers ("-", "n/a", "$ -"); a bare currency symbol ("$") stays out.
+            if (is_empty(nv) and not (keep_marks and _trim(_RE_CUR_SYM.sub("", nv)))) or (
                 j > 0 and row[j].id >= 0 and row[j].id == row[j - 1].id
             ):
                 continue
@@ -1312,9 +1504,10 @@ class TableNextEvents:
     minor: int = 0
     items: list[tuple[str, str, str, str]] = field(default_factory=list)  # (type, a, b, severity|info|detail)
 
-    def push(self, sev: str | None, kind: str, a: object = "", b: object = "") -> None:
+    def push(self, sev: str | None, kind: str, a: object = "", b: object = "", weight: int = 1) -> None:
+        """Record one event; ``weight`` is how many events of its class it costs on the floor."""
         if sev:
-            setattr(self, sev, getattr(self, sev) + 1)
+            setattr(self, sev, getattr(self, sev) + weight)
         self.items.append((kind, str(a), str(b), sev or "info"))
 
 
@@ -1441,17 +1634,96 @@ class _Read:
     hits: int
 
 
+def _drop_table_copies(reads: list[_Read], used: list[int], G: Sequence[Triple], ev: TableNextEvents) -> list[int]:
+    """Output tables written twice: the copy leaves the match and costs one minor "duplicated table", plus a
+    "contradicting copy" event per cell it states wrongly where the kept version is right.
+
+    A copy holds the same cell keys (``COPY_SHARE`` both ways) and mostly the same values as an output table that
+    fits the reference better (ties: the first). A reference with several tables of one layout allows as many
+    output tables of that layout: twin tables with the same slip in a header are not copies of each other. The
+    layout of an output table is its twins among the reference tables; without one, the reference tables tying for
+    the largest share of keys in common with it (keys in common over the larger key count) when they share half
+    their keys with each other, else the first of them; when it shares none and the output holds as many tables as
+    the reference, the largest group of reference twins. A table is a copy once the kept tables of its layout fill
+    it, counting the later tables of that layout whose values differ from every kept table and from it: a table
+    written twice next to its real twin is still a copy."""
+    if len(used) < 2:
+        return used
+    ref_keys: dict[int, set[str]] = {}
+    ref_val: dict[str, str] = {}
+    for x in G:
+        ref_keys.setdefault(x.gi, set()).add(_key(x.k))
+        ref_val.setdefault(_key(x.k), x.v)
+    keys = {ti: {_key(x.k) for x in reads[ti].tr.triples} for ti in used}
+    vals = {ti: {_key(x.k): x.v for x in reads[ti].tr.triples} for ti in used}
+
+    def twins(a: set[str], b: set[str], share: float = COPY_SHARE) -> bool:
+        return len(a) >= MIN_VALUES and len(a & b) >= share * max(len(a), len(b))
+
+    refs = list(ref_keys.values())
+    same_count = len(used) == len(refs)  # as many output tables as reference tables
+    groups = [[j for j, h in enumerate(refs) if twins(g, h)] for g in refs]
+
+    def layout(a: set[str]) -> set[int]:  # the reference tables of the layout of ``a``
+        if tw := {j for j, g in enumerate(refs) if twins(a, g)}:  # its twins among the reference tables
+            return tw
+        share = [len(a & g) / max(len(a), len(g)) for g in refs]
+        if max(share, default=0) > 0:  # those tying for the largest share of keys in common, when one layout
+            tie = [j for j, x in enumerate(share) if x == max(share)]
+            return set(tie) if all(twins(refs[i], refs[j], 0.5) for i in tie for j in tie) else set(tie[:1])
+        return set(max(groups, key=len, default=[])) if same_count else set()
+
+    lay = {ti: layout(keys[ti]) for ti in used}
+
+    def same_pair(a: int, b: int) -> int:  # values of ``a`` that ``b`` states the same
+        return sum(1 for key, v in vals[a].items() if nx_norm(vals[b].get(key, "")) == nx_norm(v))
+
+    kept: list[int] = []
+    for ti in sorted(used, key=lambda t: (-reads[t].hits, t)):
+
+        def same_values(k: int, ti: int = ti) -> int:
+            return same_pair(ti, k)
+
+        # the kept table it copies: among those with its keys, the one stating most of its values
+        twin = max((k for k in kept if twins(keys[ti], keys[k])), key=same_values, default=None)
+        if twin is not None:
+            same = same_values(twin)
+            # the layout's free slots, less those owed to later tables of it with values of their own
+            owed = sum(
+                1
+                for tj in used
+                if tj != ti
+                and tj not in kept
+                and lay[tj] & lay[ti]
+                and all(same_pair(tj, k) < 0.5 * len(vals[tj]) for k in [*kept, ti])
+            )
+            if same < 0.5 * len(vals[ti]) or sum(1 for k in kept if lay[k] & lay[ti]) + owed < len(lay[ti]):
+                twin = None
+        if twin is None:
+            kept.append(ti)
+            continue
+        ev.push("minor", "duplicated table", ti, twin)
+        for k, v in vals[ti].items():
+            good, ref = vals[twin].get(k), ref_val.get(k)
+            if good is None or ref is None or nx_norm(v) == nx_norm(good) or value_sim(ref, good) < 1:
+                continue
+            if value_sim(ref, v) < 1:
+                sev = "critical" if re.search(r"[0-9]", ref) else "major"
+                ev.push(sev, "contradicting copy", k, v)
+    return sorted(kept)
+
+
 def _value_bag(tg: TableGrid) -> dict[str, int]:
     m: dict[str, int] = {}
     for r in tg.g:
         for x in r:
             v = nx_norm(x.text)
-            if v not in NX_EMPTY:
+            if not is_empty(v):
                 m[v] = m.get(v, 0) + 1
     return m
 
 
-_RE_ROWSPAN = re.compile(rf"rowspan{_S}*={_S}*[\"']?0*(?:[2-9]|[1-9][0-9])", re.I)
+_RE_ROWSPAN = re.compile(rf"rowspan{_S}*={_S}*[\"']?0*(?:[2-9]|[1-9][0-9])", re.IGNORECASE)
 
 
 _RE_DIGITS = re.compile(r"[0-9]+")
@@ -1540,9 +1812,9 @@ def merge_label_span_groups(expected_markdown: str | None) -> str | None:
     md = expected_markdown or ""
     changed = False
 
-    def merge(m: re.Match[str]) -> str:
+    def merge(table: str) -> str:
         nonlocal changed
-        cells = parse_tables(m.group(0))[0].cells
+        cells = parse_tables(table)[0].cells
         nr = max((x.r + x.rs for x in cells), default=0)
         groups: dict[int, int] = {}  # first row -> row count
         for x in cells:
@@ -1552,7 +1824,7 @@ def merge_label_span_groups(expected_markdown: str | None) -> str | None:
                 if all(lo <= y.r and y.r + y.rs <= hi and y.cs == 1 for y in inside):
                     groups[lo] = x.rs
         if not groups:
-            return m.group(0)
+            return table
         changed = True
         out, r = ["<table>"], 0
         while r < nr:
@@ -1573,7 +1845,7 @@ def merge_label_span_groups(expected_markdown: str | None) -> str | None:
             r += n
         return "\n".join(out + ["</table>"])
 
-    merged = _RE_TABLE.sub(merge, md)
+    merged = _sub_tables(md, merge)
     return merged if changed else None
 
 
@@ -1593,32 +1865,39 @@ def score_table_next(
     only number the columns (``drop_column_index_rows`` drops them by default). A side may print "(1)" as its own
     header row or inside the header text ("(1) Acc Yr 2014"), and "(1) | Losses Paid" or "(1) Losses Paid"; the
     reading where both sides agree scores highest, so a faithful output never loses points to either rule.
+    When no reading scores 1, every reading is scored again with the output's blank cells read as spans
+    (``span_blanks``: see ``build_triples`` and ``merge_empty_stub_column``) and the best is kept.
     See ``_score_readings`` for the other readings."""
+    expected_markdown = _RE_COMMENT.sub(" ", expected_markdown or "")
+    output_markdown = _RE_COMMENT.sub(" ", output_markdown or "")
     serials, index_rows, marks, spaceless = _normalizations_apply(expected_markdown, output_markdown)
     best: TableNextResult | None = None
-    for attach in (True, False) if marks else (True,):
-        for spaced in (True, False) if spaceless else (True,):
-            for join in (False, True) if serials else (False,):
-                for drop in (True, False) if index_rows else (True,):
-                    tokens = (_ATTACH_MARKS.set(attach), _SPACELESS_KEYS.set(spaced))
-                    try:
-                        res = _score_readings(
-                            expected_markdown,
-                            output_markdown,
-                            max_top_title_rows=max_top_title_rows,
-                            allow_splitting_ambiguous_merged_tables=allow_splitting_ambiguous_merged_tables,
-                            trm_unsupported=trm_unsupported,
-                            allow_merged_sub_rows=allow_merged_sub_rows,
-                            join_serials=join,
-                            drop_index=drop,
-                        )
-                    finally:
-                        _ATTACH_MARKS.reset(tokens[0])
-                        _SPACELESS_KEYS.reset(tokens[1])
-                    if best is None or res.score > best.score:
-                        best = res
-                    if best.score >= 1.0:
-                        return best
+    # the span reading only changes a table that holds a blank cell
+    for blanks in (False, True) if _RE_BLANK_CELL.search(output_markdown) else (False,):
+        for attach in (True, False) if marks else (True,):
+            for spaced in (True, False) if spaceless else (True,):
+                for join in (False, True) if serials else (False,):
+                    for drop in (True, False) if index_rows else (True,):
+                        tokens = (_ATTACH_MARKS.set(attach), _SPACELESS_KEYS.set(spaced))
+                        try:
+                            res = _score_readings(
+                                expected_markdown,
+                                output_markdown,
+                                max_top_title_rows=max_top_title_rows,
+                                allow_splitting_ambiguous_merged_tables=allow_splitting_ambiguous_merged_tables,
+                                trm_unsupported=trm_unsupported,
+                                allow_merged_sub_rows=allow_merged_sub_rows,
+                                join_serials=join,
+                                drop_index=drop,
+                                span_blanks=blanks,
+                            )
+                        finally:
+                            _ATTACH_MARKS.reset(tokens[0])
+                            _SPACELESS_KEYS.reset(tokens[1])
+                        if best is None or res.score > best.score:
+                            best = res
+                        if best.score >= 1.0:
+                            return best
     assert best is not None
     return best
 
@@ -1656,6 +1935,7 @@ def _score_readings(
     allow_merged_sub_rows: bool,
     join_serials: bool,
     drop_index: bool,
+    span_blanks: bool = False,
 ) -> TableNextResult:
     """The best of the alternate readings of the pair, under one choice of the two grid normalizations.
 
@@ -1692,6 +1972,7 @@ def _score_readings(
             segmentation=segmentation,
             join_serials=join_serials,
             drop_index=drop_index,
+            span_blanks=span_blanks,
         )
 
     spans = [True, False] if output_markdown and _RE_ROWSPAN.search(output_markdown) else [True]
@@ -1731,6 +2012,7 @@ def _score_readings(
             merged_subrows=True,
             join_serials=join_serials,
             drop_index=drop_index,
+            span_blanks=span_blanks,
         )
         if alt is not None and alt.score > res.score:
             res = alt
@@ -1761,13 +2043,16 @@ def _score_table_next(  # noqa: C901 - one scoring pass
     merged_subrows: bool = False,
     join_serials: bool = False,
     drop_index: bool = True,
+    span_blanks: bool = False,
 ) -> TableNextResult | None:
     """One reading of the pair. ``merge_labels`` ("ref" or "out") joins the first two columns of that side's
     tables whose two-cell row labels the other side writes in one cell; None when there is no such table.
     ``segmentation`` ("bands" or "stitch") splits both sides at mid-table header bands or joins consecutive
     output tables of the same width. ``merged_subrows`` marks a reference read with its first-column span
     groups merged into one row (``allow_merged_sub_rows``). ``join_serials`` and ``drop_index`` choose the grid
-    normalizations (see ``score_table_next``)."""
+    normalizations (see ``score_table_next``). ``span_blanks`` also reads each output table with its blank
+    cells as spans (``build_triples``) and with an empty stub column joined (``merge_empty_stub_column``),
+    whichever fits the reference best."""
 
     def index_rows(tg: TableGrid) -> TableGrid:
         return drop_column_index_rows(tg) if drop_index else tg
@@ -1858,6 +2143,21 @@ def _score_table_next(  # noqa: C901 - one scoring pass
             unwrapped.append(u[0] if u else t)
         o_grids = unwrapped
     ref_cells = sum(len({x.id for r in t.g for x in r if x.text}) for t in g_grids)  # serial cells count too
+    # an output table written whole in the other number convention (1.284,5 for 1,284.5) is read in the
+    # reference's, one minor event, when that makes more of its number cells equal reference cells
+    ref_locale = _locale(g_grids) or "us"
+    ref_texts = {nx_norm(x.text) for t in g_grids for r in t.g for x in r if _RE_DIGITS.search(x.text)}
+
+    def ref_hits(tg: TableGrid) -> int:
+        return sum(1 for r in tg.g for x in r if x.text and nx_norm(x.text) in ref_texts)
+
+    for ti, tg in enumerate(o_grids):
+        loc = _locale([tg])
+        if loc in ("us", "eu") and ref_locale in ("us", "eu") and loc != ref_locale:
+            swapped = _swap_separators(tg)
+            if ref_hits(swapped) > ref_hits(tg):
+                o_grids[ti] = swapped
+                ev.push("minor", "locale format", ti, f"{loc} -> {ref_locale}")
     if join_serials:
         g_grids = [join_serial_column(t) for t in g_grids]
         o_grids = [join_serial_column(t) for t in o_grids]
@@ -1939,7 +2239,7 @@ def _score_table_next(  # noqa: C901 - one scoring pass
             pair: set[int] = pair,
             ref_idx: list[int] = ref_idx,
         ) -> tuple[Reading, int]:
-            own = infer_schema(otg.g, max_title)
+            own = infer_schema(otg.g, max_title, True)
             c, rr = len(otg.g[0]), len(otg.g)
             lead = 0
             while lead < rr - 1 and is_title_row(otg.g[lead]):
@@ -1963,12 +2263,15 @@ def _score_table_next(  # noqa: C901 - one scoring pass
             add(own)
             best: Reading | None = None
             bh = -1
+            # blank cells read as spans (``span_blanks``) only when that fits more reference cells
+            spans = (False, True) if span_blanks and any(not x.text for r in otg.g for x in r) else (False,)
             for s in cand:
                 for pf in ([], prefixes) if prefixes else ([],):
-                    tr = build_triples(otg, s, pf, keep_marks=marks)
-                    h = fit(tr.triples, pair or None)
-                    if h > bh:
-                        best, bh = tr, h
+                    for sb in spans:
+                        tr = build_triples(otg, s, pf, keep_marks=marks, span_blanks=sb)
+                        h = fit(tr.triples, pair or None)
+                        if h > bh:
+                            best, bh = tr, h
             if own.H == 0:  # a headerless fragment (a table continued after a break) takes the reference's column keys
                 for gi in ref_idx:
                     rg, rs_, rt = gts[gi]
@@ -1989,6 +2292,12 @@ def _score_table_next(  # noqa: C901 - one scoring pass
             return best, bh
 
         a_tr, a_h = orient(tg)
+        stub = merge_empty_stub_column(tg) if span_blanks else None
+        if stub is not None:  # the empty stub column joined to its neighbor, when that fits the reference better
+            s_tr, s_h = orient(stub)
+            keyless = not any(x.rk for x in a_tr.triples) and any(x.rk for x in s_tr.triples)
+            if s_h > a_h or (s_h == a_h and keyless):
+                tg, a_tr, a_h = stub, s_tr, s_h  # the read keeps the joined grid
         b_tr, b_h = orient(transpose_grid(tg))
         pick = a_tr
         if b_h > a_h:
@@ -2015,6 +2324,7 @@ def _score_table_next(  # noqa: C901 - one scoring pass
         if keep and len(keep) < len(used):
             ev.push(None, "unpaired output table ignored", "", len(used) - len(keep))
             used = keep
+    used = _drop_table_copies(reads, used, G, ev)
     PT = [reads[ti] for ti in used]
     P: list[Triple] = []
     for ti, rd in enumerate(PT):
@@ -2065,6 +2375,11 @@ def _score_table_next(  # noqa: C901 - one scoring pass
             continue
         alias[gl] = best[0]
         taken.add(best[0])
+        # These boundaries carry no word separation: currency/scale and a numeric
+        # parenthesized suffix. Keep every symbol, word and digit in the comparison.
+        typography = r"(?<=[£$€¥]) +(?=[a-z])|(?<=[a-z]) +(?=\([0-9]+\)(?:$|\|))"
+        if re.sub(typography, "", gl) == re.sub(typography, "", best[0]):
+            continue
         gi0 = next(x.gi for x in G if gl in x.k)
         sim = 1 - OSA.distance(gl, best[0]) / max(len(gl), len(best[0]), 1)  # a transposition is one typo
         if sim < 0.8 and gl in g_rks and _relabelled(gl, best[0]):
@@ -2253,15 +2568,16 @@ def _score_table_next(  # noqa: C901 - one scoring pass
     per_row: set[str] = set()
     for row_k, col, sev, kind, a_txt, b_txt in cell_ev:
         ev.items.append((kind, a_txt, b_txt, "detail"))
-        if col_count[col + "|" + sev] >= 3:
+        if col_count[col + "|" + sev] >= SYSTEMATIC_CELLS:
             continue
         if row_k + "|" + sev not in per_row:
             per_row.add(row_k + "|" + sev)
             ev.push(sev, kind if sev == "minor" else "cell errors in row", row_k, "")
     for col_sev, n in col_count.items():
-        if n >= 3:
+        if n >= SYSTEMATIC_CELLS:
             col, sev = col_sev.split("|")[:2]
-            ev.push(sev, "systematic column error", col, n)
+            # costs as the row events it replaces just below the threshold, so a third error never raises the score
+            ev.push(sev, "systematic column error", col, n, weight=SYSTEMATIC_CELLS - 1)
     for gi in sorted(pos_matched):
         ev.push("minor", "column headers differ", gi, "")
     seen_case: set[str] = set()
@@ -2338,13 +2654,25 @@ def _score_table_next(  # noqa: C901 - one scoring pass
     used_t = sorted({P[m[1]].ti for m in M})
     for ti in used_t:
         pt = PT[ti].tr
-        if pt.transposed:
-            ev.push("critical", "table transposed", ti, "")
         gis = sorted({G[m[0]].gi for m in M if P[m[1]].ti == ti})
+        if pt.transposed:
+            # every cell of its reference tables found here under the same two labels with the same value
+            # (letter case or number format aside): a layout change, major; otherwise critical
+            kept = all(
+                (mm := gm.get(i)) is not None
+                and P[mm[1]].ti == ti
+                and not mm[4]
+                and mm[3] >= 0.999
+                and value_sim(x.v, P[mm[1]].v, _pct_key(x)) >= 0.9
+                for i, x in enumerate(G)
+                if x.gi in gis
+            )
+            ev.push("major" if kept else "critical", "table transposed", ti, "")
         for _ in range(1, len(gis)):
             ev.push("major", "tables merged", ti, len(gis))
         if pt.borrowed:  # a continuation fragment has no header of its own; alone, the header is missing
-            if len(gis) == 1 and len({P[m[1]].ti for m in M if G[m[0]].gi == gis[0]}) == 1:
+            # a reference part with no header rows either has nothing to miss
+            if len(gis) == 1 and gts[gis[0]][2].H > 0 and len({P[m[1]].ti for m in M if G[m[0]].gi == gis[0]}) == 1:
                 ev.push("critical", "header rows missing", gts[gis[0]][2].H, 0)
         elif len(gis) == 1 and pt.H != gts[gis[0]][2].H:
             ev.push("major", "header rows differ", gts[gis[0]][2].H, pt.H)
@@ -2372,7 +2700,9 @@ def _score_table_next(  # noqa: C901 - one scoring pass
         if (
             g_title
             and nx_norm(pt.title) != nx_norm(g_title)
-            and nx_norm(re.sub(rf"\A#+{_S}*|\*\*", "", PT[ti].tg.before)) != nx_norm(g_title)
+            and all(
+                nx_norm(re.sub(rf"\A#+{_S}*|\*\*", "", b)) != nx_norm(g_title) for b in PT[ti].tg.before.split("\x1f")
+            )
         ):
             ev.push("major", "title missing", g_title, "")
     for gi in range(len(gts)):

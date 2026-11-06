@@ -185,7 +185,7 @@ def test_lost_unit_and_reworded_label_are_major():
 
 def test_number_format_and_case_are_minor():
     body = [r[:] for r in BODY]
-    body[0][1] = "1284"
+    body[0][1] = "1 284"
     s, ev = score(with_body(body))
     assert ev == {"number format changed": 1} and s == pytest.approx(0.99)
     body = [[r[0].upper(), *r[1:]] for r in BODY]
@@ -201,10 +201,58 @@ def test_row_reorder_and_column_swap_are_errors():
     assert ev["column out of order"] == 1 and s == pytest.approx(0.95)
 
 
-def test_transposition_and_header_flattening_are_errors():
-    rows = [HEAD, *BODY]
-    s, ev = score(html([list(col) for col in zip(*rows, strict=True)], head=0))
-    assert ev["table transposed"] == 1 and s == pytest.approx(0.9)
+def test_dropped_thousands_separator_costs_nothing():
+    body = [[r[0], *(v.replace(",", "") for v in r[1:])] for r in BODY]  # 1,284 -> 1284
+
+    assert score(with_body(body)) == (1.0, {})
+
+
+@pytest.mark.parametrize("out", ["1.284", "12,84", "1285"])
+def test_a_dotted_moved_or_changed_number_is_still_wrong(out: str):
+    body = [r[:] for r in BODY]
+    body[0][1] = out  # for 1,284: a decimal point, a moved comma, a digit changed
+
+    s, ev = score(with_body(body))
+
+    assert ev == {"cell errors in row": 1} and s == pytest.approx(0.9)
+
+
+def test_separators_swapped_on_some_cells_are_wrong_numbers():
+    body = [r[:] for r in BODY]
+    body[0][1] = "1.284"  # European grouping on one cell, the rest of the table US
+    body[0][2] = "1.352"
+
+    s, ev = score(with_body(body))
+
+    assert ev == {"cell errors in row": 1} and "locale format" not in ev and s <= 0.9
+
+
+def transposed(rows: list[list[str]]) -> str:
+    return html([list(col) for col in zip(*rows, strict=True)], head=0)
+
+
+def test_transposed_table_keeping_every_association_is_major():
+    s, ev = score(transposed([HEAD, *BODY]))
+
+    assert ev == {"table transposed": 1} and s == pytest.approx(0.95)
+
+
+def test_transposed_table_missing_a_row_stays_critical():
+    s, ev = score(transposed([HEAD, *BODY[:-1]]))  # "Africa" left out
+
+    assert ev["table transposed"] == 1 and ev["row missing"] == 1 and s == pytest.approx(0.8)
+
+
+def test_transposed_table_with_a_wrong_value_stays_critical():
+    body = [r[:] for r in BODY]
+    body[1][1] = "864"  # Europe 2023, for 846
+
+    s, ev = score(transposed([HEAD, *body]))
+
+    assert ev["table transposed"] == 1 and s == pytest.approx(0.8)
+
+
+def test_header_flattening_is_an_error():
     ref = html(
         [
             ["", "Q1", "Q1", "Q2", "Q2"],
@@ -511,3 +559,47 @@ def test_column_with_only_a_header_does_not_shift_the_values():
     out = html([["Risk", "Credit", "to", "Debit"], *([r[0], r[1], "", r[2]] for r in rows)])
     s, ev = score(out, ref=ref)
     assert ev == {"empty rows or columns added": 1} and s == pytest.approx(0.99)
+
+
+def test_duplicated_table_costs_a_minor_and_a_wrong_copy_its_wrong_values():
+    wrong = html([HEAD, *[["Europe", "864", "901"] if r[0] == "Europe" else r for r in BODY]])
+    same, same_types = score(REF + "\n\nAs above:\n\n" + REF)
+    assert same_types == {"duplicated table": 1} and same == pytest.approx(0.99)
+    after, after_types = score(REF + "\n\n" + wrong)
+    before, _ = score(wrong + "\n\n" + REF)
+    assert after_types == {"duplicated table": 1, "contradicting copy": 1}
+    assert after == pytest.approx(before) == pytest.approx(0.89)
+
+
+def test_reference_with_two_tables_of_one_layout_keeps_both():
+    second = html([HEAD, *[[r[0], r[2], r[1]] for r in BODY]])
+    s, types = score(REF + "\n\n" + second, ref=REF + "\n\n" + second)
+    assert s == 1.0 and "duplicated table" not in types
+
+
+LOCALE_REF = html(
+    [
+        ["Region", "2023", "2024", "Share 2024 (%)"],
+        ["North America", "1,284", "1,352", "44.0"],
+        ["Europe", "846", "901", "29.3"],
+        ["Asia-Pacific", "2,512", "3,618", "20.1"],
+    ]
+)
+
+
+def _european(table: str, cells: list[str]) -> str:
+    for v in cells:
+        table = table.replace(f">{v}<", ">" + v.translate(str.maketrans(".,", ",.")) + "<")
+    return table
+
+
+def test_table_written_whole_in_the_other_number_convention_is_one_minor():
+    out = _european(LOCALE_REF, ["1,284", "1,352", "2,512", "3,618", "44.0", "29.3", "20.1"])
+    s, types = score(out, ref=LOCALE_REF)
+    assert types == {"locale format": 1} and s == pytest.approx(0.99)
+
+
+def test_partly_converted_table_keeps_its_wrong_numbers():
+    out = _european(LOCALE_REF, ["1,284", "1,352", "44.0"])  # one row converted, the others not
+    s, types = score(out, ref=LOCALE_REF)
+    assert "locale format" not in types and s < 0.9

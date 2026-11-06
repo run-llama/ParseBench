@@ -313,3 +313,60 @@ def test_latex_markup_tokenizes_like_the_same_text_written_without_latex(latex: 
 def test_superscript_before_a_hyphen_tokenizes_the_same_in_every_markup(text: str, pred: bool) -> None:
     """'⁶' counted as a letter before NFKC, so '10⁶-kilobase' joined to '106kilobase'; bare '^6' was dropped."""
     assert content_tokens(text, pred=pred) == ["106", "kilobase"]
+
+
+@pytest.mark.parametrize("cls", ["Page-header", "Page-footer"])
+def test_split_header_band_under_one_prediction_scores_as_one_passing_group(cls: str) -> None:
+    """GT boxes one nav tab each, one band prediction: without grouping only one tab can localize."""
+    tabs = [(cls, (100.0 * k, 0.0, 100.0 * k + 35, 10.0), _row_words(0, 100 * k, 2)) for k in range(5)]
+    page = _text_page(tabs, [((0.0, 0.0, 435.0, 10.0), [f"w{n}" for n in range(10)], "a")])
+    rows = score_page(page, h_min=10.0).element_rows
+    assert len({r["group_id"] for r in rows}) == 1 and rows[0]["group_id"] is not None
+    assert all(r["why"] == "group" for r in rows)
+
+
+def test_header_piece_without_gt_words_joins_the_band_group() -> None:
+    """A header piece with no GT words was not a member and counted as swallowed, so no piece of the band grouped."""
+    tabs = [("Page-header", (100.0 * k, 0.0, 100.0 * k + 35, 10.0), _row_words(0, 100 * k, 2)) for k in range(2)]
+    page = _text_page([*tabs, ("Page-header", (200.0, 0.0, 235.0, 10.0), [])], [])
+    page.elements[2].tokens = ("pageid", "14993")
+    page.pred_boxes = np.array([(0.0, 0.0, 235.0, 10.0)])
+    page.pred_tokens, page.pred_units = [["w0", "w1", "w2", "w3", "pageid", "14993"]], ["a"]
+    rows = score_page(page, h_min=10.0).element_rows
+    assert [r["why"] for r in rows] == ["group"] * 3
+
+
+def test_two_nav_rows_ordered_column_by_column_each_group_under_their_band() -> None:
+    """GT reading order interleaves the pieces of two stacked nav rows; a consecutive-order gate refused both bands."""
+    pieces = [
+        ("Page-footer", (100.0 * k, 12.0 * row, 100.0 * k + 35, 12.0 * row + 10), _row_words(12 * row, 100 * k, 2))
+        for k in range(3)
+        for row in range(2)
+    ]
+    rows_words = [[f"w{2 * n + m}" for n in range(6) if n % 2 == row for m in range(2)] for row in range(2)]
+    page = _text_page(pieces, [((0.0, 12.0 * r, 235.0, 12.0 * r + 10), rows_words[r], f"u{r}") for r in range(2)])
+    rows = score_page(page, h_min=10.0).element_rows
+    assert all(r["why"] == "group" for r in rows)
+    assert len({r["group_id"] for r in rows}) == 2
+
+
+def test_header_and_body_text_under_one_prediction_form_no_group() -> None:
+    """A unit spanning a header and the paragraph below must not credit the header through the paragraph's hull."""
+    page = _text_page(
+        [
+            ("Page-header", (0.0, 0.0, 35.0, 10.0), _row_words(0, 0, 2)),
+            ("Text", (0.0, 12.0, 75.0, 22.0), _row_words(12, 0, 4)),
+        ],
+        [((0.0, 0.0, 200.0, 22.0), [f"w{n}" for n in range(6)], "a")],
+    )
+    assert [r["group_id"] for r in score_page(page, h_min=10.0).element_rows] == [None, None]
+
+
+def test_box_only_header_piece_keeps_its_own_verdict() -> None:
+    """A grade-box header is not text-checked; a group with a pooled token F1 below 0.8 must not fail it."""
+    tabs = [("Page-header", (100.0 * k, 0.0, 100.0 * k + 35, 10.0), _row_words(0, 100 * k, 2)) for k in range(3)]
+    page = _text_page(tabs, [((0.0, 0.0, 235.0, 10.0), ["w0", "w1", "w2", "w3", "x", "y", "z"], "a")])
+    page.elements[0].caption = True
+    rows = score_page(page, h_min=10.0).element_rows
+    assert rows[0]["group_id"] == rows[1]["group_id"] is not None
+    assert [r["why"] for r in rows[:2]] == ["group", "group_token_f1_below_threshold"]

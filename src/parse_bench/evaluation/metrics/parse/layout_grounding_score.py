@@ -18,6 +18,8 @@ from parse_bench.evaluation.metrics.layoutdet.overlap import compute_layout_iou,
 METRIC_NAME = "layout_grounding_pass_rate"
 
 TEXTLIKE = frozenset({"Text", "List-item", "Caption", "Footnote", "Code", "Key-Value Region", "Document Index"})
+# GT splits a nav bar or running header into one box per tab; one band prediction is a correct header
+FURNITURE_TEXT = frozenset({"Page-header", "Page-footer"})
 L_IOA_GT = 0.5
 L_IOA_PRED = 0.2
 A_F1 = 0.8
@@ -122,6 +124,7 @@ class Page:
     pred_angles: list[float | None] = field(default_factory=list)
     skip_boxes: np.ndarray = field(default_factory=lambda: np.zeros((0, 4)))
     skip_angles: list[float | None] = field(default_factory=list)
+    skip_match: list[bool] = field(default_factory=list)  # True: neutral only for a prediction matching the box
     page: int = 1
     chain_tolerance: float = CHAIN_OVERLAP_POINTS
 
@@ -222,7 +225,11 @@ def score_page(page: Page, h_min: float) -> PageScore:
     frame = {"page_width": 1.0, "page_height": 1.0}
     iou_gp, ioa_g, ioa_pg = compute_layout_overlaps(g_boxes, p_boxes, g_angles, p_angles, **frame)
     iou_pp, ioa_pp, _ = compute_layout_overlaps(p_boxes, p_boxes, p_angles, p_angles, **frame)
-    _, _, ioa_ps = compute_layout_overlaps(s_boxes, p_boxes, s_angles, p_angles, **frame)
+    _, ioa_s, ioa_ps = compute_layout_overlaps(s_boxes, p_boxes, s_angles, p_angles, **frame)
+    # A prediction mostly inside a skip box is neutral; a match-only box also needs the GT match test.
+    shield = ioa_ps >= NESTED_IOA
+    match_only = np.array(page.skip_match or [False] * len(s_boxes), dtype=bool)
+    shield[:, match_only] &= ioa_s[match_only].T >= L_IOA_GT
     w_boxes = np.asarray(page.word_boxes, dtype=float).reshape(-1, 4)
     centers = (w_boxes[:, :2] + w_boxes[:, 2:]) / 2
     in_pred = (
@@ -264,7 +271,9 @@ def score_page(page: Page, h_min: float) -> PageScore:
         return _ms_diff(page.pred_tokens[j], _ms_diff(others, gt_toks(gi)))
 
     matches = [_element_test(gi, e, iou_gp, ioa_g, ioa_pg, in_pred, toks, merge_aware) for gi, e in enumerate(elems)]
-    _group_text(page, matches, ioa_g, in_pred, toks, g_hull, p_hull, shape_iou)
+    # body text and header/footer pieces group separately, so a unit spanning both forms no group
+    group_id = _group_text(page, matches, ioa_g, in_pred, toks, g_hull, p_hull, shape_iou, _is_text, 0)
+    _group_text(page, matches, ioa_g, in_pred, toks, g_hull, p_hull, shape_iou, _is_furniture, group_id, furniture=True)
 
     used: dict[int, int] = {}
     for gi, mt in enumerate(matches):
@@ -275,7 +284,9 @@ def score_page(page: Page, h_min: float) -> PageScore:
     for j in range(n_p):
         if j in used:
             continue
-        kind, reason = _triage(j, used, elems, matches, iou_pp, ioa_pp, ioa_pg, ioa_ps, in_pred, w_boxes, p_boxes)
+        kind, reason = _triage(
+            j, used, elems, matches, iou_pp, ioa_pp, ioa_pg, ioa_ps, shield, in_pred, w_boxes, p_boxes
+        )
         penalty = float(np.sqrt(_area(p_boxes[j]))) if kind == "extra" else 0.0
         extra += penalty
         pred_rows.append({"page": page.page, "pred_index": j, "kind": kind, "reason": reason, "penalty": penalty})
@@ -359,6 +370,10 @@ def _is_text(e: Element) -> bool:
     return e.cls in TEXTLIKE and bool(e.words)
 
 
+def _is_furniture(e: Element) -> bool:
+    return e.cls in FURNITURE_TEXT
+
+
 def _group_text(
     page: Page,
     matches: list[_Match],
@@ -368,17 +383,27 @@ def _group_text(
     g_hull: np.ndarray,
     p_hull: np.ndarray,
     shape_iou: Callable[[Sequence[int], Sequence[int]], float],
-) -> None:
+    member: Callable[[Element], bool],
+    group_id: int,
+    *,
+    furniture: bool = False,
+) -> int:
+    """Group ``member`` elements that share prediction units; return the next free group id.
+
+    Text members must be consecutive in reading order. Header/footer pieces (``furniture``) need not be:
+    GT orders two stacked nav rows column by column, interleaving the pieces of one printed row. A
+    member without GT words joins by box and checks its content text.
+    """
     elems = page.elements
     unit_map: dict[Hashable, list[int]] = {}
     for j, key in enumerate(page.pred_units):
         unit_map.setdefault(key, []).append(j)
     units = list(unit_map.values())
     if not units:
-        return
+        return group_id
     in_unit = np.stack([in_pred[:, js].any(axis=1) for js in units], axis=1)  # (W, U)
     exclusive = in_unit.sum(axis=1) == 1
-    text_ids = [i for i, e in enumerate(elems) if _is_text(e)]
+    text_ids = [i for i, e in enumerate(elems) if member(e)]
     uf = _UnionFind(len(elems) + len(units))
     for k, js in enumerate(units):
         unit_words = in_unit[:, k]
@@ -393,6 +418,9 @@ def _group_text(
             hw = [w for w in elems[i].words if unit_words[w]]
             if hw and _prf(toks(hw), unit_tokens)[1] > GROUP_RECALL:
                 uf.union(i, len(elems) + k)
+            elif not elems[i].words and (ioa_g[i, js] >= L_IOA_GT).any():
+                if _prf(list(elems[i].tokens), unit_tokens)[1] > GROUP_RECALL:
+                    uf.union(i, len(elems) + k)
     comps: dict[int, tuple[list[int], list[list[int]]]] = {}
     for i in text_ids:
         comps.setdefault(uf.find(i), ([], []))[0].append(i)
@@ -400,24 +428,24 @@ def _group_text(
         comp = comps.get(uf.find(len(elems) + k))
         if comp:
             comp[1].append(js)
-    group_id = 0
     for mem, unit_list in comps.values():
         segs = [j for js in unit_list for j in js]
         if not segs or (len(mem) < 2 and len(segs) < 2):
             continue
         mem.sort()
-        if any(b - a != 1 for a, b in zip(mem, mem[1:], strict=False)):
+        if not furniture and any(b - a != 1 for a, b in zip(mem, mem[1:], strict=False)):
             continue
         seg_words = np.asarray(in_pred[:, segs].any(axis=1), dtype=bool)
         swallows_non_text = any(
             seg_words[e.words].sum() > len(e.words) / 2 if e.words else (ioa_g[i, segs] >= L_IOA_GT).any()
             for i, e in enumerate(elems)
-            if not _is_text(e)
+            if not member(e)
         )
         if swallows_non_text:
             continue
         member_words = [w for i in mem for w in elems[i].words]
-        f1 = _prf(toks(member_words), [t for j in segs for t in page.pred_tokens[j]])[2]
+        wordless = [t for i in mem if not elems[i].words for t in elems[i].tokens]
+        f1 = _prf(toks(member_words) + wordless, [t for j in segs for t in page.pred_tokens[j]])[2]
         nodes = np.concatenate([g_hull[mem], p_hull[segs]])
         overlap = np.minimum(nodes[:, None, 2], nodes[None, :, 2]) > np.maximum(nodes[:, None, 0], nodes[None, :, 0])
         cols = _UnionFind(len(nodes))
@@ -431,12 +459,15 @@ def _group_text(
             mt = matches[i]
             mt.group = group_id
             mt.iou = shape_iou(gs, ps) if ps else 0.0
-            mt.localized, mt.applicable, mt.f1, mt.passed = True, True, f1, f1 >= A_F1
+            # a box-only (caption) member is localized by the group and keeps its exemption from the text check
+            mt.localized, mt.applicable, mt.f1 = True, not elems[i].caption, f1
+            mt.passed = not mt.applicable or f1 >= A_F1
             mt.m = list(segs)
             words = np.asarray(elems[i].words, dtype=int)
             mt.lock = words[seg_words[words]]
             mt.why = "group" if mt.passed else "group_token_f1_below_threshold"
         group_id += 1
+    return group_id
 
 
 def _triage(
@@ -448,6 +479,7 @@ def _triage(
     ioa_pp: np.ndarray,
     ioa_pg: np.ndarray,
     ioa_ps: np.ndarray,
+    shield: np.ndarray,
     in_pred: np.ndarray,
     w_boxes: np.ndarray,
     p_boxes: np.ndarray,
@@ -462,7 +494,7 @@ def _triage(
         if len(held) and _iou(p_boxes[j], _ubox(w_boxes[held])) >= TIGHT_IOU:
             return "neutral", f"tight child of table #{k}"
         return "extra", f"garbage child of table #{k}"
-    if ioa_ps.shape[1] and (ioa_ps[j] >= NESTED_IOA).any():
+    if shield[j].any():
         return "neutral", "on ignore/optional element"
     for gi, mt in enumerate(matches):
         if j not in mt.m and len(mt.lock) and in_pred[mt.lock, j].any():

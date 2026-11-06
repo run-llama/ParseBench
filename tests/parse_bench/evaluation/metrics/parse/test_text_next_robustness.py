@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from parse_bench.evaluation.metrics.parse.text_next import score_text_next
 
 REF = (
@@ -113,6 +115,73 @@ def test_added_negation_is_critical() -> None:
     assert res.events.critical == 1
 
 
+@pytest.mark.parametrize("reference, output", [("não", "nao"), ("nao", "não"), ("ningún", "ningun")])
+def test_negator_accent_loss_is_minor_without_erasing_the_transcription_error(reference: str, output: str) -> None:
+    prefix = "The quoted instruction 7 reads "
+    suffix = " before the remaining words on this page."
+    result = score_text_next(prefix + reference + suffix, prefix + output + suffix)
+    assert result.events.kinds() == {"accent only": 1}
+    assert (result.events.critical, result.events.minor) == (0, 1)
+    assert result.critical == 1.0
+    assert result.score < 1.0
+
+
+@pytest.mark.parametrize(
+    "notes",
+    [
+        ("No action may be taken on this item.",),
+        ("The speaker should return the card after speaking.", "No action may be taken on this item."),
+    ],
+)
+def test_copied_negative_notes_are_repetition_not_an_added_negation(notes: tuple[str, ...]) -> None:
+    reference = REF + "\n\n" + "\n\n".join(notes)
+    output = reference + "\n\n" + "\n\n".join(reversed(notes))
+    result = score_text_next(reference, output)
+    assert result.events.kinds().get("repeated text") == 1
+    assert "negator in added text" not in result.events.kinds()
+    assert "numbers out of sequence" not in result.events.kinds()
+    assert (result.events.critical, result.events.major) == (0, 1)
+    assert result.score < 1.0
+
+
+def test_recombined_source_fragments_do_not_hide_an_invented_negative_claim() -> None:
+    reference = "The board did not approve the plan. The board will approve the report."
+    result = score_text_next(reference, reference + " The board did not approve the report.")
+    assert result.events.kinds().get("negator in added text") == 1
+    assert result.events.critical >= 1
+
+
+def test_negator_diagnostic_does_not_claim_a_semantic_flip_for_an_omitted_compound() -> None:
+    reference = "方案针对企业不同场景组网需求，通过网络提供服务。"
+    result = score_text_next(reference, reference.replace("企业不同场景组网需求，通过", ""))
+    assert result.events.kinds() == {"negator in changed text": 1, "omitted passage": 1}
+    assert result.events.critical == 2
+    assert result.score < 1.0
+
+
+@pytest.mark.parametrize(
+    "reference, output",
+    [
+        ("The board approved the plan.", "The board did not approve the plan."),
+        ("Os resultados não convergem para a solução.", "Os resultados convergem para a solução."),
+        ("系统不支持此功能。", "系统支持此功能。"),
+        ("企业场景不同。", "企业场景同。"),
+        ("No fees apply. The board approved the plan.", "No fees apply. The board not approved the plan."),
+    ],
+)
+def test_actual_negation_edits_stay_critical_even_when_a_negator_appears_elsewhere(reference: str, output: str) -> None:
+    result = score_text_next(reference, output)
+    assert result.events.critical >= 1
+    assert result.score < 1.0
+
+
+@pytest.mark.parametrize("original, replacement", [("approved", "rejected"), ("1,250", "1,260")])
+def test_negator_fairness_does_not_forgive_real_value_or_lexical_inversions(original: str, replacement: str) -> None:
+    result = score_text_next(REF, REF.replace(original, replacement))
+    assert result.events.critical >= 1
+    assert result.score < 1.0
+
+
 def test_unrelated_word_change_is_not_a_flip() -> None:
     res = score_text_next(REF, REF.replace("margin fell", "margin fall"))
     assert "meaning flipped" not in res.events.kinds()
@@ -156,3 +225,22 @@ def test_space_or_apostrophe_thousands_read_like_commas() -> None:
 
 def test_other_digits_with_spaces_are_still_wrong() -> None:
     assert score_text_next(REF, REF.replace("1,250", "12 50")).events.critical == 1
+
+
+def test_dropped_thousands_separator_costs_nothing() -> None:
+    res = score_text_next(REF, REF.replace("1,250", "1250"))
+
+    assert res.score == 1.0 and res.events.kinds() == {}
+
+
+def test_a_dotted_number_is_not_its_comma_free_form() -> None:
+    plain = REF.replace("1,250", "1250")
+
+    assert kinds(plain, plain.replace("1250", "1.250")) == {"wrong number or identifier": 1}
+    assert kinds(REF, REF.replace("1,250", "1.250")) == {"number written differently": 1}
+
+
+def test_an_added_separator_is_still_a_format_change() -> None:
+    plain = REF.replace("1,250", "1250")
+
+    assert kinds(plain, REF) == {"number written differently": 1}
