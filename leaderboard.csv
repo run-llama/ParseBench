@@ -80,6 +80,7 @@ Datalab Accurate,Commercial - Startup APIs,72.88,90.66,63.20,85.76,73.41,51.38,1
 Datalab Balanced,Commercial - Startup APIs,72.82,91.02,63.12,85.70,72.94,51.31,0.4,,,,,,yes
 Datalab Fast,Commercial - Startup APIs,62.92,85.15,54.85,84.64,42.47,47.48,0.4,,,,,,yes
 Reducto,Commercial - Startup APIs,67.83,70.33,56.99,86.37,56.75,68.71,2.38,3,1.7,2.1,2.5,,no
+Reducto (r-1-mini),Commercial - Startup APIs,66.14,88.23,1.47,88.92,75.82,76.25,0.1,0.1,0.1,0.1,0.1,,yes
 Reducto (r-1),Commercial - Startup APIs,61.49,85.00,2.74,88.91,73.51,57.31,1,1,1,1,1,,yes
 Extend,Commercial - Startup APIs,55.75,85.05,1.59,84.08,47.36,60.67,2.5,,,,,,no
 Extend (2.0),Commercial - Startup APIs,73.50,85.26,76.02,86.20,50.24,69.79,2.5,,,,,,yes
