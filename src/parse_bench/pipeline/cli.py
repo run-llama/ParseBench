@@ -323,6 +323,7 @@ class PipelineCLI:
         _SHARED_INFERENCE_GROUPS = {eg: ig for ig, egs in _SHARED_EVAL_GROUPS.items() for eg in egs}
 
         # Run evaluation per category
+        failed_groups: list[str] = []
         for i, g in enumerate(groups, 1):
             print("\n" + "=" * 60)
             print(f"Category {i}/{len(groups)}: {g}")
@@ -343,7 +344,12 @@ class PipelineCLI:
 
             if exit_code != 0:
                 print(f"\nEvaluation failed for group '{g}' with exit code {exit_code}", file=sys.stderr)
-                # Continue with other groups
+                # EvaluationCLI.run catches Ctrl-C and returns 130; stop instead of
+                # starting the next group.
+                if exit_code == 130:
+                    return exit_code
+                # Continue with other groups, but report the failure in the exit code.
+                failed_groups.append(g)
 
             # Generate detailed report for this group
             analysis_cli = AnalysisCLI()
@@ -392,6 +398,10 @@ class PipelineCLI:
         if open_report and dashboard_path.exists():
             print(f"\nOpening: {dashboard_path.absolute()}")
             webbrowser.open(f"file://{dashboard_path.absolute()}")
+
+        if failed_groups:
+            print(f"\nEvaluation failed for: {', '.join(failed_groups)}", file=sys.stderr)
+            return 1
 
         print("\n" + "=" * 60)
         print("Pipeline Complete!")
