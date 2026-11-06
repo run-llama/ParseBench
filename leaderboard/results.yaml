@@ -596,6 +596,10 @@ rows:
 - provider: rakedoc-nano
   status: unverified
   note: no published outputs in the results repo
+- provider: rakedoc-nano-2
+  status: verified
+  pipeline: rakedoc_nano_2
+  results_revision: refs/pr/7
 - provider: aeddix-alpine-ocr (KDL pipeline)
   status: unverified
   note: no published outputs in the results repo

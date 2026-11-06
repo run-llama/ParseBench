@@ -2795,6 +2795,23 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # rakedoc-nano-2 (cloudraker/rakedoc-nano-2, fine-tune of
+    # KDLAI/KDL-Frontier-Parser-nano-v2): same provider and emission as
+    # rakedoc_nano; serve the model as "rakedoc-nano-2".
+    register_fn(
+        PipelineSpec(
+            pipeline_name="rakedoc_nano_2",
+            provider_name="rakedoc_nano",
+            product_type=ProductType.PARSE,
+            config={
+                "endpoint_url": "",  # via RAKEDOC_NANO_ENDPOINT_URL
+                "model": "rakedoc-nano-2",
+                "dpi": 144,
+                "timeout": 900,
+            },
+        )
+    )
+
     # =========================================================================
     # aeddix-alpine-ocr (aeddix-labs/aeddix-alpine-ocr, fine-tune of
     # opendatalab/MinerU2.5-Pro-2605-1.2B) through the kdl_frontier_nano
