@@ -80,6 +80,7 @@ Datalab Accurate,Commercial - Startup APIs,72.88,90.66,63.20,85.76,73.41,51.38,1
 Datalab Balanced,Commercial - Startup APIs,72.82,91.02,63.12,85.70,72.94,51.31,0.4,,,,,,yes
 Datalab Fast,Commercial - Startup APIs,62.92,85.15,54.85,84.64,42.47,47.48,0.4,,,,,,yes
 Reducto,Commercial - Startup APIs,67.83,70.33,56.99,86.37,56.75,68.71,2.38,3,1.7,2.1,2.5,,no
+Reducto (r-1-mini),Commercial - Startup APIs,66.14,88.23,1.47,88.92,75.82,76.25,0.1,0.1,0.1,0.1,0.1,,yes
 Reducto (r-1),Commercial - Startup APIs,61.49,85.00,2.74,88.91,73.51,57.31,1,1,1,1,1,,yes
 Extend,Commercial - Startup APIs,55.75,85.05,1.59,84.08,47.36,60.67,2.5,,,,,,no
 Extend (2.0),Commercial - Startup APIs,73.50,85.26,76.02,86.20,50.24,69.79,2.5,,,,,,yes
@@ -107,7 +108,7 @@ Docling-models,VLM - Open Weight,50.65,66.41,52.76,66.93,1.03,66.11,,,,,,docling
 Chandra-ocr-2,VLM - Open Weight,70.59,89.20,62.77,85.45,64.37,51.18,,,,,,datalab-to/chandra-ocr-2,yes
 PaddleOCR-VL-1.6,VLM - Open Weight,50.90,67.79,50.62,82.39,44.92,8.78,,,,,,PaddlePaddle/PaddleOCR-VL-1.6,yes
 PaddleOCR-VL-1.5,VLM - Open Weight,49.36,67.61,43.38,82.46,44.55,8.79,,,,,,PaddlePaddle/PaddleOCR-VL-1.5,yes
-Surya OCR 2,VLM - Open Weight,60.15,82.74,19.04,87.84,63.59,47.53,,,,,,datalab-to/surya-ocr-2,yes
+Surya OCR 2,VLM - Open Weight,60.63,82.74,19.04,87.84,63.59,49.93,,,,,,datalab-to/surya-ocr-2,yes
 HunyuanOCR 1.5,VLM - Open Weight,62.14,65.32,55.98,84.26,47.78,57.35,,,,,,tencent/HunyuanOCR,yes
 Gemma-4-31B-it,VLM - Open Weight,62.4,80.6,15,89.9,69.3,57.4,,,,,,google/gemma-4-31B-it,no
 TeleOCR,VLM - Open Weight,57.52,72.77,9.97,84.59,45.74,74.55,,,,,,StarDoc-AI/TeleOCR,yes
@@ -115,12 +116,12 @@ Gemma-4-26B-A4B-it,VLM - Open Weight,58.5,70,14.2,83.8,65.1,59.2,,,,,,google/gem
 Nemotron-3-Nano-Omni-30B-A3B (Thinking),VLM - Open Weight,48.51,70.44,31.47,80.97,59.69,0,,,,,,nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16,no
 LightOnOCR-2-1B,VLM - Open Weight,48,75.5,13.5,87.8,63.2,0,,,,,,lightonai/LightOnOCR-2-1B,no
 Nemotron-3.5-Parse,VLM - Open Weight,75.07,84.62,63.85,88.04,69.06,69.78,,,,,,nvidia/Nemotron-3.5-Parse,yes
-LightOnOCR-3-4B,VLM - Open Weight,75.39,83.63,66.35,90.07,68.08,68.80,,,,,,lightonai/LightOnOCR-3-4B,yes
-LightOnOCR-3-0.8B,VLM - Open Weight,74.54,84.42,64.55,88.82,66.44,68.48,,,,,,lightonai/LightOnOCR-3-0.8B,yes
-LightOnOCR-3-1B,VLM - Open Weight,70.97,84.82,56.38,88.61,64.47,60.55,,,,,,lightonai/LightOnOCR-3-1B,yes
-Qianfan-OCR,VLM - Open Weight,42.67,72.30,0.90,76.74,40.53,22.88,,,,,,baidu/Qianfan-OCR,yes
+LightOnOCR-3-4B,VLM - Open Weight,75.60,83.63,66.35,90.07,68.08,69.85,,,,,,lightonai/LightOnOCR-3-4B,yes
+LightOnOCR-3-0.8B,VLM - Open Weight,74.74,84.42,64.55,88.82,66.44,69.47,,,,,,lightonai/LightOnOCR-3-0.8B,yes
+LightOnOCR-3-1B,VLM - Open Weight,71.16,84.82,56.38,88.61,64.47,61.54,,,,,,lightonai/LightOnOCR-3-1B,yes
+Qianfan-OCR,VLM - Open Weight,42.25,72.30,0.90,76.74,40.53,20.76,,,,,,baidu/Qianfan-OCR,yes
 MinerU2.5-Pro-2605-1.2B,VLM - Open Weight,69.27,77.61,59.12,88.23,47.15,74.24,,,,,,opendatalab/MinerU2.5-Pro-2605-1.2B,yes
-Unlimited-OCR,VLM - Open Weight,33.60,70.25,1.01,87.18,0.23,9.31,,,,,,baidu/Unlimited-OCR,yes
+Unlimited-OCR,VLM - Open Weight,33.12,70.25,1.01,87.18,0.23,6.91,,,,,,baidu/Unlimited-OCR,yes
 Jina-OCR-v1,VLM - Open Weight,45.72,74.90,7.52,85.55,60.64,0.00,,,,,,jinaai/jina-ocr-v1,yes
 MinerU2.5-2509-1.2B,VLM - Open Weight,45.44,71.81,1.01,81.01,2.08,71.31,,,,,,opendatalab/MinerU2.5-2509-1.2B,yes
 Qwen3.6-35B-A3B,VLM - Open Weight,37.35,19.04,4.00,80.61,41.81,41.27,,,,,,Qwen/Qwen3.6-35B-A3B,yes
@@ -153,4 +154,4 @@ pypdf,Open Source - Local,14.87,0.00,0.00,62.50,0.91,10.92,,,,,,,no
 pdf-inspector,Open Source - Local,26.59,26.64,5.29,56.06,35.07,9.91,,,,,,,no
 LiteParse (no OCR),Open Source - Local,36.9,42.4,1.8,70.0,38.5,31.8,,,,,,,no
 Warp Ingest,Open Source - Local,39.33,57.50,2.45,72.24,42.94,21.50,,,,,,,yes
-Upstage Document Parse 2 (Enhanced),VLM - Proprietary,80.63,89.48,77.50,87.67,76.68,71.84,3,3,3,3,3,,yes
+Upstage Document Parse 2 (Enhanced),VLM - Proprietary,80.64,89.48,77.50,87.68,76.68,71.84,3,3,3,3,3,,yes

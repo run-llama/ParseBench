@@ -26,7 +26,7 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | 1 | LlamaParse Agentic Plus | LlamaParse | 86.69 | 93.27 | 92.19 | 89.74 | 82.84 | 75.43 | 5.62¢ |
 | 2 | LlamaParse Agentic | LlamaParse | 82.83 | 90.90 | 81.20 | 87.84 | 84.81 | 69.42 | 1.25¢ |
 | 3 | Pulse Ultra 2 † | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
-| 4 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.63 | 89.48 | 77.50 | 87.67 | 76.68 | 71.84 | 3.00¢ |
+| 4 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.64 | 89.48 | 77.50 | 87.68 | 76.68 | 71.84 | 3.00¢ |
 | 5 | anyformat (Standard) | Commercial - Startup APIs | 80.05 | 86.84 | 85.01 | 86.39 | 79.25 | 62.74 | 4.30¢ |
 | 6 | KDL-Frontier-Parser-nano-v2 | VLM - Open Weight | 79.07 | 86.19 | 69.14 | 87.77 | 76.91 | 75.33 | — |
 | 7 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 78.80 | 94.26 | 70.89 | 91.25 | 77.06 | 60.56 | 6.13¢ |

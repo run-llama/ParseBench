@@ -106,6 +106,17 @@ class LayoutTestRule(BaseModel):
         default=None,
         description="Reading order index (0-based position in reading sequence)",
     )
+    granularity: Literal["region", "line", "word", "cell"] | None = Field(
+        default=None,
+        description=(
+            "Geometric granularity of the box: None or 'region' for a semantic region (paragraph, table, "
+            "figure, ...), 'line' for one text line, 'word' for one word, 'cell' for one table cell"
+        ),
+    )
+    parent_test_id: str | None = Field(
+        default=None,
+        description="Id of the layout rule this line or word box belongs to",
+    )
 
     def to_layout_annotation(self) -> LayoutAnnotation:
         """Convert to LayoutAnnotation (coordinates remain normalized)."""
@@ -314,6 +325,13 @@ class ParseTestCase(BaseTestCase):
             "A rowspanning title row consumes 1 slot from the cap "
             "regardless of its original rowspan. The bottom-<th> title "
             "strip is independent and not governed by this field."
+        ),
+    )
+    allow_merged_sub_rows: bool = Field(
+        default=False,
+        description=(
+            "When True, table_next also accepts one output row per first-column rowspan "
+            "group of the reference, with the sub-rows stacked as lines in its cells."
         ),
     )
 
