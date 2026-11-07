@@ -23,7 +23,7 @@ from functools import lru_cache
 from typing import Any, Literal, overload
 
 import numpy as np
-from lxml import html
+from lxml import etree
 
 from parse_bench.evaluation.metrics.base import Metric
 from parse_bench.evaluation.metrics.parse.table_pairing import assign_tables, page_blocking_active
@@ -603,76 +603,87 @@ def html_to_cells(table_html: str) -> list[dict[str, Any]] | None:
     Returns None if parsing fails.
     """
     try:
-        parser = html.HTMLParser(remove_comments=True, encoding="utf-8")
-        doc = html.fromstring(table_html, parser=parser)
+        # A plain etree parser skips lxml.html's per-element Python class lookup.
+        parser = etree.HTMLParser(remove_comments=True, encoding="utf-8")
+        doc = etree.fromstring(table_html, parser=parser)
     except Exception:
         return None
 
-    # Find the <table> element (lxml may wrap in <html><body>)
-    if doc.tag == "table":
-        tree = doc
-    else:
-        tables = doc.xpath(".//table")
-        if not tables:
-            return None
-        tree = tables[0]
+    # Find the first <table> element (lxml wraps fragments in <html><body>)
+    tree = None if doc is None else next(doc.iter("table"), None)
+    if tree is None:
+        return None
 
     table_cells: list[dict[str, Any]] = []
     occupied_columns_by_row: dict[int, set[int]] = defaultdict(set)
     current_row = -1
+    sup_sub_maps = {"sup": _ASCII_TO_SUPERSCRIPT, "sub": _ASCII_TO_SUBSCRIPT}
+    # Tables repeat cell text (empty, "-", units), so normalize each distinct text once.
+    normalized_texts: dict[str, str] = {}
 
-    stack: list[tuple[Any, bool]] = [(tree, False)]
-    while stack:
-        current, in_header = stack.pop()
+    # Cells inside a <thead> or <th> (including the <th> itself) are headers.
+    header_cells: set[Any] = set()
+    for header in tree.iter("thead", "th"):
+        # A <th> inside a <thead> is already covered with its subtree.
+        if header in header_cells:
+            continue
+        header_cells.update(header.iter("td", "th"))
 
+    # Convert <sup>/<sub> digit content inside cells to Unicode equivalents
+    # so that "Name<sup>1</sup>" becomes "Name¹", matching sources
+    # that already use Unicode superscripts. Done in one pass before the walk.
+    sup_subs = list(tree.iter("sup", "sub"))
+    # Most tables have no <sup>/<sub>, so only collect the cells when needed.
+    cells = set(tree.iter("td", "th")) if sup_subs else set()
+    for sup_sub in sup_subs:
+        if next(sup_sub.iterancestors("td", "th"), None) not in cells:
+            continue
+        char_map = sup_sub_maps[sup_sub.tag]
+        converted = "".join(char_map.get(c, "") for c in (sup_sub.text or ""))
+        # Replace element with converted text in parent's tree
+        parent = sup_sub.getparent()
+        prev = sup_sub.getprevious()
+        if prev is not None:
+            prev.tail = (prev.tail or "") + converted + (sup_sub.tail or "")
+        else:
+            parent.text = (parent.text or "") + converted + (sup_sub.tail or "")
+        parent.remove(sup_sub)
+
+    occupied = occupied_columns_by_row[current_row]
+    current_column = 0
+    for current in tree.iter("tr", "td", "th"):
         if current.tag == "tr":
             current_row += 1
+            occupied = occupied_columns_by_row[current_row]
+            current_column = 0
 
-        if current.tag in ("td", "th"):
-            colspan = int(current.attrib.get("colspan", "1"))
-            rowspan = int(current.attrib.get("rowspan", "1"))
+        else:
+            colspan = int(current.get("colspan", "1"))
+            rowspan = int(current.get("rowspan", "1"))
             row_nums = list(range(current_row, current_row + rowspan))
 
-            occupied = occupied_columns_by_row[current_row]
-            if occupied:
-                max_occ = max(occupied)
-                current_column = min(set(range(max_occ + 2)).difference(occupied))
-            else:
-                current_column = 0
+            # Occupied columns only grow within a row, so resume the free-column search.
+            while current_column in occupied:
+                current_column += 1
 
             column_nums = list(range(current_column, current_column + colspan))
             for rn in row_nums:
                 occupied_columns_by_row[rn].update(column_nums)
 
-            # Convert <sup>/<sub> digit content to Unicode equivalents
-            # so that "Name<sup>1</sup>" becomes "Name¹", matching sources
-            # that already use Unicode superscripts.
-            _map = {"sup": _ASCII_TO_SUPERSCRIPT, "sub": _ASCII_TO_SUBSCRIPT}
-            for sup_sub in current.xpath(".//sup | .//sub"):
-                char_map = _map[sup_sub.tag]
-                converted = "".join(char_map.get(c, "") for c in (sup_sub.text or ""))
-                # Replace element with converted text in parent's tree
-                prev = sup_sub.getprevious()
-                if prev is not None:
-                    prev.tail = (prev.tail or "") + converted + (sup_sub.tail or "")
-                else:
-                    sup_sub.getparent().text = (sup_sub.getparent().text or "") + converted + (sup_sub.tail or "")
-                sup_sub.getparent().remove(sup_sub)
-            # Gather text from element and all descendants
-            cell_text = normalize_cell_text(" ".join(current.itertext()))
+            # Gather text from element and all descendants (most cells have no children)
+            raw_text = " ".join(current.itertext()) if len(current) else current.text or ""
+            cell_text = normalized_texts.get(raw_text)
+            if cell_text is None:
+                cell_text = normalized_texts[raw_text] = normalize_cell_text(raw_text)
 
             table_cells.append(
                 {
                     "row_nums": row_nums,
                     "column_nums": column_nums,
-                    "is_column_header": current.tag == "th" or in_header,
+                    "is_column_header": current in header_cells,
                     "cell_text": cell_text,
                 }
             )
-
-        children = list(current)
-        for child in children[::-1]:
-            stack.append((child, in_header or current.tag in ("th", "thead")))
 
     return table_cells
 
