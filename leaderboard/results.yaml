@@ -380,6 +380,14 @@ rows:
   pipeline: docai_default
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
   note: 'incomplete published outputs: content 0/506, formatting 0/476, grounding 0/500'
+- provider: Sangfor Agentic OCR
+  status: verified
+  pipeline: x2knowledge_v1
+  results_revision: refs/pr/5
+- provider: Sangfor Agentic OCR Fast
+  status: verified
+  pipeline: x2knowledge_fast_v1
+  results_revision: refs/pr/5
 - provider: Mistral OCR 4 (Annotation)
   status: unverified
   pipeline: mistral_ocr_4_annotation

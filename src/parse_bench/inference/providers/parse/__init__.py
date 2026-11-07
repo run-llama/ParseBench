@@ -72,6 +72,7 @@ _PROVIDER_MODULES = [
     "upstage",
     "warp_ingest",
     "wevisdoc",
+    "x2knowledge",
     "oi_parser",
 ]
 
