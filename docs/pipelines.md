@@ -437,7 +437,7 @@ These run entirely locally and do not require API keys.
 | `pymupdf_html` | PyMuPDF HTML extraction | None |
 | `liteparse_markdown` | LiteParse Markdown (no OCR; layout blocks via `--extract-blocks`; the leaderboard's *LiteParse (no OCR)* row) | `pip install "parse-bench[liteparse]"` (or `LITEPARSE_BIN=/path/to/lit`) |
 | `liteparse_text` | LiteParse plain text (no OCR) | same as above |
-| `pymupdf4llm_markdown` | PyMuPDF4LLM Markdown with native HTML tables and RapidOCR at 150 DPI | Python 3.12, `pymupdf4llm==1.28.2`, and `rapidocr==3.9.2` |
+| `pymupdf4llm_markdown` | PyMuPDF4LLM Markdown with native HTML tables and RapidOCR at 150 DPI | Python 3.12, `pymupdf==2.1`, and `rapidocr==3.10.0` |
 | `warp_ingest` | Warp-Ingest local parser | `warp-ingest[ocr]>=2.0.1` installed |
 | `tesseract_eng` | Tesseract OCR (English) | `tesseract` installed |
 | `tesseract_fast` | Tesseract OCR (fast) | `tesseract` installed |
