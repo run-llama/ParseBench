@@ -50,6 +50,10 @@ All notable changes to `parse-bench` are recorded here. The format follows
   layout, downloaded to `./data/<name>`.
 
 ### Fixed
+- `tables_values` rules no longer crash scoring when the table is matched but too few cells match exactly.
+  That failure path returned a third tuple item, which the metric read as a score
+  (`could not convert string to float`), so the page lost every rule result instead of failing this one rule.
+  Such pages are now scored, with the rule reported as failed.
 - Layout attribution no longer crashes on layout rules without an `ro_index`.
   `LayoutDetectionEvaluator` dumps rules with `ro_index=None`, which
   `parse_gt_elements` kept, so the reading-order sort raised `TypeError` and
