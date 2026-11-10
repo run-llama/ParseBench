@@ -62,6 +62,11 @@ All notable changes to `parse-bench` are recorded here. The format follows
   each of your own PDFs, budgeted from its text layer. See `docs/repetition-overshoot.md`.
 - `--dataset` on `download`, `status` and `run` accepts any HuggingFace dataset repo id (`org/name`) in the ParseBench
   layout, downloaded to `./data/<name>`.
+- `--dataset parsebench2` on `download`, `status` and `run` for ParseBench 2 (`llamaindex/ParseBench2`, 13 subsets,
+  downloaded to `./data_parsebench2`). `parse-bench run <pipeline> --dataset parsebench2` runs inference on each
+  subset folder and scores every subset with results with the extended scorers (`evaluation run --next`) into the six
+  dimensions and the overall score, written to `output/parsebench2/_score/<pipeline>/_next_score.json`. `--group`
+  takes subset names (`charts,tables`) to run only those.
 
 ### Fixed
 - `tables_values` rules no longer crash scoring when the table is matched but too few cells match exactly.

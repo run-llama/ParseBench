@@ -141,6 +141,24 @@ uv run parse-bench download --test
 uv run parse-bench status
 ```
 
+### ParseBench 2
+
+[ParseBench 2](https://huggingface.co/datasets/llamaindex/ParseBench2) has 4,320 test cases in 13 subsets, scored in six
+dimensions (text, formatting, tables, charts, layout, forms) with severity-aware metrics. One command downloads it to
+`./data_parsebench2`, runs every subset and writes the overall score to
+`output/parsebench2/_score/<pipeline>/_next_score.json`:
+
+```bash
+uv run parse-bench run llamaparse_agentic --dataset parsebench2
+
+# Only some subsets; every subset with results is still scored
+uv run parse-bench run llamaparse_agentic --dataset parsebench2 --group charts,tables
+
+uv run parse-bench status --dataset parsebench2
+```
+
+Scores are not comparable with ParseBench v1 scores.
+
 ### Repetition tests
 
 `repetition_overshoot` is a built-in rule that fails an output repeating anything (a dot leader, a unit, a token, a
