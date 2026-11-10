@@ -849,7 +849,7 @@ class TablesValuesRule(ParseTestRule):
         cell_threshold = self.table_values_match_threshold
 
         if match_ratio < cell_threshold:
-            return (  # type: ignore[return-value]
+            return (
                 False,
                 f"Best match: GT variation {best_variation_idx} with pred table {best_pred_idx} "
                 f"scored {best_score:.3f} (>= {threshold:.3f}), "
@@ -857,7 +857,6 @@ class TablesValuesRule(ParseTestRule):
                 f"{matching_cells}/{total_cells} "
                 f"({match_ratio:.3f}) below threshold "
                 f"{cell_threshold:.3f}",
-                f"({match_ratio:.3f}) below threshold {cell_threshold:.3f}",
             )
 
         return (
