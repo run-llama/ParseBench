@@ -14,6 +14,8 @@ from parse_bench.data.download import (
 )
 from parse_bench.evaluation.next_score import NEXT_SUBSETS
 from parse_bench.pipeline.cli import PipelineCLI
+from parse_bench.test_cases.markdown_attribution_schema import MarkdownAttributionRule
+from parse_bench.test_cases.schema import LayoutDetectionTestCase, LayoutTestRule
 
 
 def _write_cases(root: Path, subsets: dict[str, str]) -> None:
@@ -78,6 +80,29 @@ def test_run_scores_every_subset_with_results(tmp_path: Path) -> None:
     next_arg = mock_eval_cls.return_value.run.call_args.kwargs["next"]
     assert set(next_arg) == {"charts", "tables"}
     assert next_arg["tables"]["test_cases_dir"] == str((data_dir / PARSEBENCH2_SUBSETS["tables"]).resolve())
+
+
+def test_layout_case_with_markdown_attribution_rule_loads() -> None:
+    """layout_extended/v0.7 markdown_block_layout pages carry their layout rules next to a markdown_attribution rule."""
+    region = {"page": 1, "bbox": [0.13, 0.2, 0.08, 0.011]}
+    case = LayoutDetectionTestCase.model_validate(
+        {
+            "test_id": "markdown_block_layout_v0.4/page",
+            "group": "markdown_block_layout_v0.4",
+            "file_path": "page.pdf",
+            "test_rules": [
+                {"type": "layout", **region, "canonical_class": "Section-header", "id": "ref-0"},
+                {
+                    "type": "markdown_attribution",
+                    "id": "markdown-attribution-v1",
+                    "references": [
+                        {"id": "ref-0", "text": "Agreement", "kind": "Section-header", "regions": [region], "order": 0}
+                    ],
+                },
+            ],
+        }
+    )
+    assert [type(r) for r in case.test_rules] == [LayoutTestRule, MarkdownAttributionRule]
 
 
 def test_unknown_subset_and_test_flag_are_rejected() -> None:

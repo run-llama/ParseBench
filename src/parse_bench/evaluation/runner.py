@@ -35,6 +35,7 @@ from parse_bench.evaluation.evaluators.layoutdet import LayoutDetectionEvaluator
 from parse_bench.evaluation.evaluators.parse import ParseEvaluator
 from parse_bench.evaluation.evaluators.qa import QAEvaluator
 from parse_bench.evaluation.layout_adapters import create_layout_adapter_for_result
+from parse_bench.evaluation.markdown_attribution import derived_aggregates as md_attribution_derived_aggregates
 from parse_bench.evaluation.metric_aggregation import add_precision_recall_f1_aggregates
 from parse_bench.evaluation.stats import build_operational_stats
 from parse_bench.schemas.evaluation import EvaluationResult, EvaluationSummary
@@ -1527,6 +1528,9 @@ class EvaluationRunner:
             weight_sum = sum(item[1] for item in weighted_values)
             if weight_sum > 0:
                 aggregate[f"micro_{metric_name}"] = weighted_sum / weight_sum
+
+        # Markdown attribution's F comes from the pooled H and C, never page Fs.
+        aggregate.update(md_attribution_derived_aggregates(aggregate))
 
         # Add _predicted aggregates (only docs where tables were predicted)
         for key, values in predicted_values.items():

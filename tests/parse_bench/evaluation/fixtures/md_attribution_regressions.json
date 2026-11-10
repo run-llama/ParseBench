@@ -1,0 +1,289 @@
+{
+ "layout_0065": {
+  "rule": {
+   "type": "markdown_attribution",
+   "id": "markdown-attribution-v1",
+   "max_diffs": 0,
+   "tags": [],
+   "layout_ids": [],
+   "layout_bindings": {},
+   "version": 1,
+   "text_match_threshold": 0.92,
+   "ambiguity_margin": 0.04,
+   "max_merge_elements": 6,
+   "references": [
+    {
+     "id": "7fbe6a392085b708",
+     "text": "The Clorox Company’s integrated annual report highlights our financial and sustainability performance. Unless otherwise noted, fiscal year financial performance is presented in accordance with GAAP in the U.S., which include principles for determining materiality related to financial reporting. For any non-GAAP financial information, we have provided reconciliations to the most comparable GAAP measure starting on page 20. The sustainability information focuses on performance related to the company’s identified sustainability priorities. For purposes of this reporting, prioritization is based on how much a topic influences our business success, including alignment with our corporate strategy and purpose; potential impact on our operations, consumers, business partners and other stakeholders; potential sustainability impacts; and the importance of the topic to our stakeholders. Key sustainability priorities may include, but are not limited to, topics that could have a significant financial impact on our company.",
+     "kind": "Text",
+     "regions": [
+      {
+       "page": 1,
+       "bbox": [
+        0.08049242424242424,
+        0.24959150326797386,
+        0.39457070707070707,
+        0.289624183006536
+       ]
+      }
+     ],
+     "order": 15,
+     "spans": []
+    },
+    {
+     "id": "cc508faa6e3fa5dc",
+     "text": "Review of Nonfinancial Information",
+     "kind": "Section-header",
+     "regions": [
+      {
+       "page": 1,
+       "bbox": [
+        0.08112373737373738,
+        0.5625,
+        0.20170454545454544,
+        0.012254901960784314
+       ]
+      }
+     ],
+     "order": 16,
+     "spans": []
+    },
+    {
+     "id": "30fdcf55ae60f599",
+     "text": "We believe voluntary assurance strengthens our reporting process and enhances the credibility of our nonfinancial information. As in past years, we engaged a third party to review the following nonfinancial key performance indicators, selected based on their priority to Clorox: certain GHG emissions, renewable electricity consumption, energy consumption and percentage of electricity from renewable energy in the U.S. and Canada. Items that underwent assurance are indicated with an [diamond icon] throughout this report.",
+     "kind": "Text",
+     "regions": [
+      {
+       "page": 1,
+       "bbox": [
+        0.08080808080808081,
+        0.5829248366013072,
+        0.40183080808080807,
+        0.15236928104575165
+       ]
+      }
+     ],
+     "order": 17,
+     "spans": []
+    },
+    {
+     "id": "97e677568143ed67",
+     "text": "Third-Party Sustainability Frameworks",
+     "kind": "Section-header",
+     "regions": [
+      {
+       "page": 1,
+       "bbox": [
+        0.5366161616161617,
+        0.3321078431372549,
+        0.22727272727272727,
+        0.015931372549019607
+       ]
+      }
+     ],
+     "order": 18,
+     "spans": []
+    }
+   ]
+  },
+  "markdown": "**Review of Nonfinancial Information**\n\nWe believe voluntary assurance strengthens our reporting process and enhances the credibility of our nonfinancial information. As in past years, we engaged a third party to review the following nonfinancial key performance indicators, selected based on their priority to Clorox: certain GHG emissions, renewable electricity consumption, energy consumption and percentage of electricity from renewable energy in the U.S. and Canada. Items that underwent assurance are indicated with an 💠 throughout this report.\n\n**Third-Party Sustainability Frameworks**",
+  "items": [
+   {
+    "md": "**Review of Nonfinancial Information**",
+    "layout_segments": [
+     {
+      "x": 63.36,
+      "y": 344.28,
+      "w": 160.33,
+      "h": 7.2,
+      "r": null,
+      "confidence": 0.875,
+      "label": "paragraph_title",
+      "start_index": 0,
+      "end_index": 37
+     }
+    ]
+   },
+   {
+    "md": "We believe voluntary assurance strengthens our reporting process and enhances the credibility of our nonfinancial information. As in past years, we engaged a third party to review the following nonfinancial key performance indicators, selected based on their priority to Clorox: certain GHG emissions, renewable electricity consumption, energy consumption and percentage of electricity from renewable energy in the U.S. and Canada. Items that underwent assurance are indicated with an 💠 throughout this report.",
+    "layout_segments": [
+     {
+      "x": 63.36,
+      "y": 357.03,
+      "w": 323.14,
+      "h": 92.67,
+      "r": null,
+      "confidence": 0.947,
+      "label": "text",
+      "start_index": 0,
+      "end_index": 510
+     }
+    ]
+   },
+   {
+    "md": "**Third-Party Sustainability Frameworks**",
+    "layout_segments": [
+     {
+      "x": 424.51,
+      "y": 203.38,
+      "w": 180.33,
+      "h": 9.33,
+      "r": null,
+      "confidence": 0.822,
+      "label": "paragraph_title",
+      "start_index": 0,
+      "end_index": 40
+     }
+    ]
+   }
+  ],
+  "page": {
+   "width": 792.0,
+   "height": 612.0
+  }
+ },
+ "layout_0050": {
+  "rule": {
+   "type": "markdown_attribution",
+   "id": "markdown-attribution-v1",
+   "max_diffs": 0,
+   "tags": [],
+   "layout_ids": [],
+   "layout_bindings": {},
+   "version": 1,
+   "text_match_threshold": 0.92,
+   "ambiguity_margin": 0.04,
+   "max_merge_elements": 6,
+   "references": [
+    {
+     "id": "0c61aacfe1b956c2",
+     "text": "Case 1:21-cv-07302-KPF Document 27 Filed 11/16/21 Page 1 of 2",
+     "kind": "Page-header",
+     "regions": [
+      {
+       "page": 1,
+       "bbox": [
+        0.1948529411764706,
+        0.017045454545454544,
+        0.6102941176470589,
+        0.014835858585858586
+       ]
+      }
+     ],
+     "order": 0,
+     "optional": true,
+     "spans": []
+    },
+    {
+     "id": "9e4fedaf1b9f6724",
+     "text": "UNITED STATES DISTRICT COURT\nSOUTHERN DISTRICT OF NEW YORK",
+     "kind": "Section-header",
+     "regions": [
+      {
+       "page": 1,
+       "bbox": [
+        0.11805555555555555,
+        0.09406565656565656,
+        0.3668300653594771,
+        0.029356060606060608
+       ]
+      }
+     ],
+     "order": 1,
+     "spans": []
+    },
+    {
+     "id": "f6380e4da7e048bf",
+     "text": "SAMUEL PIERRE,",
+     "kind": "Text",
+     "regions": [
+      {
+       "page": 1,
+       "bbox": [
+        0.1270424836601307,
+        0.14551767676767677,
+        0.1715686274509804,
+        0.013888888888888888
+       ]
+      }
+     ],
+     "order": 2,
+     "spans": []
+    },
+    {
+     "id": "40514cdc57870e4b",
+     "text": "Plaintiff,",
+     "kind": "Text",
+     "regions": [
+      {
+       "page": 1,
+       "bbox": [
+        0.36233660130718953,
+        0.17803030303030304,
+        0.07883986928104575,
+        0.014204545454545454
+       ]
+      }
+     ],
+     "order": 3,
+     "spans": []
+    }
+   ]
+  },
+  "markdown": "UNITED STATES DISTRICT COURT\n\nSOUTHERN DISTRICT OF NEW YORK\n\nSAMUEL PIERRE,",
+  "items": [
+   {
+    "md": "# UNITED STATES DISTRICT COURT",
+    "layout_segments": [
+     {
+      "x": 72.48,
+      "y": 74.83,
+      "w": 208.69,
+      "h": 8.58,
+      "r": null,
+      "confidence": 0.875,
+      "label": "paragraph_title",
+      "start_index": 0,
+      "end_index": 29
+     }
+    ]
+   },
+   {
+    "md": "SOUTHERN DISTRICT OF NEW YORK",
+    "layout_segments": [
+     {
+      "x": 72.72,
+      "y": 88.89,
+      "w": 223.71,
+      "h": 8.58,
+      "r": null,
+      "confidence": 0.906,
+      "label": "paragraph_title",
+      "start_index": 0,
+      "end_index": 28
+     }
+    ]
+   },
+   {
+    "md": "SAMUEL PIERRE,",
+    "layout_segments": [
+     {
+      "x": 78.12,
+      "y": 114.05,
+      "w": 104.87,
+      "h": 12.04,
+      "r": null,
+      "confidence": 0.613,
+      "label": "text",
+      "start_index": 0,
+      "end_index": 13
+     }
+    ]
+   }
+  ],
+  "page": {
+   "width": 612.0,
+   "height": 792.0
+  }
+ }
+}

@@ -840,12 +840,19 @@ type ParseRule = (
     | ParseDiagramCountRule
     | ParsePageDecorationRule
     | ParseRepetitionOvershootRule
+    | MarkdownAttributionRule
 )
 
 # Any registered rule model (built-in or extension) or its raw dict payload.
 type ParseRuleInput = ParseRuleBase | dict[str, Any]
 
+# After ParseRuleBase: the attribution schema subclasses it.
+from parse_bench.test_cases.markdown_attribution_schema import MarkdownAttributionRule  # noqa: E402
+
 _RULE_TYPE_TO_MODEL: dict[str, type[ParseRuleBase]] = {
+    # Document-level metric rule; ParseEvaluator dispatches it separately so N/A
+    # never becomes a binary pass/fail in the existing rule scorer.
+    "markdown_attribution": MarkdownAttributionRule,
     TestType.PRESENT.value: ParsePresenceRule,
     TestType.ABSENT.value: ParsePresenceRule,
     TestType.UNEXPECTED_SENTENCE.value: ParseUnexpectedSentenceRule,
