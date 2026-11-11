@@ -28,6 +28,10 @@ All notable changes to `parse-bench` are recorded here. The format follows
   plain text, and no longer pairs with a later span's `~~`. `a.`, `b)` and `i.` are list markers like `1.`, and a marker
   inside the item's opening style (`~~a. Violation~~`) reads the same as one outside it (`a. ~~Violation~~`). Scores on
   strikeout pages written this way rise (four audited LlamaParse pages go from 0.00–0.71 to 1.00).
+- `formatting_v2`: Markdown delimiters inside HTML table cells stay literal (`<td>**x**</td>` is not bold), and a link
+  label counts as underlined only where the reference underlines that text; elsewhere link markup is neutral.
+  `table_next`: a non-numeric cell that only partly matches is charged as "value partly differs", not "unit lost"
+  (same severity).
 - Visual Grounding attribution for PARSE results no longer depends on whether the raw provider response is
   present. Cross-evaluation evaluated a synthetic layout result and re-resolved its adapter from it, which only
   sees `raw_output`; LlamaParse-style adapters then lost the pages read from `ParseOutput.layout_pages` and fell

@@ -2695,7 +2695,9 @@ def _score_table_next(  # noqa: C901 - one scoring pass
                     (rk0, col, "minor", "letter case changed" if vs == 0.95 else "number format changed", v, pv)
                 )
             elif vs == 0.5:
-                cell_ev.append((rk0, col, "major", "unit lost", v, pv))
+                # Leading-number parsing also accepts numbered prose; 0.5 can be a text ratio.
+                kind = "unit lost" if is_numeric(v) and is_numeric(pv) else "value partly differs"
+                cell_ev.append((rk0, col, "major", kind, v, pv))
             elif re.search(r"[0-9]", v) and (sc == 0 or nx_digits(v) != nx_digits(pv)):
                 cell_ev.append((rk0, col, "critical", "wrong or misplaced number", " / ".join(G[i].k) + ": " + v, pv))
             elif sc >= 0.8:

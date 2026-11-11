@@ -43,7 +43,7 @@ import re
 import unicodedata
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from parse_bench.schemas.evaluation import MetricValue
@@ -65,6 +65,7 @@ SHORT_LINE_TOKENS = 12  # a false heading made of a whole short line is minor, o
 
 B, I, U, S, SUP, SUB, M, C = 1, 2, 4, 8, 16, 32, 64, 128  # noqa: E741 - style bits, named as the tags
 F = 256  # inside an inline formula ($..$): a context bit, not a scored style
+L = 512  # inside a markdown link label: a context bit, read as underline only where the reference underlines
 KIND_NAMES = {
     B: "bold",
     I: "italic",
@@ -81,7 +82,7 @@ WORD_SPLIT = B | I | U | S | M | C
 LANE_OF = {"inline": "inline", "heading": "headings", "list": "lists"}
 
 # Private-use sentinels: open/close of each style, a neutral non-word placeholder and a cell break.
-_TRACKED = (B, I, U, S, SUP, SUB, M, C, F)
+_TRACKED = (B, I, U, S, SUP, SUB, M, C, F, L)
 _OPEN = {k: chr(0xE100 + 2 * n) for n, k in enumerate(_TRACKED)}
 _CLOSE = {k: chr(0xE101 + 2 * n) for n, k in enumerate(_TRACKED)}
 _SENT = {**{v: (k, 1) for k, v in _OPEN.items()}, **{v: (k, -1) for k, v in _CLOSE.items()}}
@@ -422,6 +423,7 @@ _TABLE = _rx(r"<table(?![A-Za-z0-9_])[^>]*>([\s\S]*?)</table[ \t]*>", re.IGNOREC
 _ROW_END = _rx(r"</tr[ \t]*>", re.IGNORECASE)
 _CELL_TAG = _rx(r"</?(?:td|th)(?![A-Za-z0-9_])[^>]*>", re.IGNORECASE)
 _TABLE_TAG = _rx(r"</?(?:tr|thead|tbody|tfoot|caption|colgroup|col)(?![A-Za-z0-9_])[^>]*>", re.IGNORECASE)
+_HTML_LITERAL_MARKDOWN = _rx(r"[*_~^=$\\`]")
 _BR = _rx(r"<br[ \t]*/?>", re.IGNORECASE)
 _BLOCK_TAG = _rx(
     r"</?(?:p|div|section|article|blockquote|figure|figcaption|header|footer|page_header|page_footer|page_number|hr)(?![A-Za-z0-9_])[^>]*>",
@@ -479,7 +481,17 @@ def _html_lists(md: str) -> str:
 
 def _tables(md: str) -> str:
     def one(m: re.Match[str]) -> str:
-        body = _ROW_END.sub("\n", m.group(1).replace("\n", " "))
+        # HTML cell text keeps Markdown delimiters literal. Encode text-node punctuation
+        # before the pipe-row projection; styled_chars decodes it after Markdown parsing.
+        raw = m.group(1)
+        parts: list[str] = []
+        pos = 0
+        for tag in _TAG.finditer(raw):
+            parts.append(_HTML_LITERAL_MARKDOWN.sub(lambda c: f"&#{ord(c.group())};", raw[pos : tag.start()]))
+            parts.append(tag.group())
+            pos = tag.end()
+        parts.append(_HTML_LITERAL_MARKDOWN.sub(lambda c: f"&#{ord(c.group())};", raw[pos:]))
+        body = _ROW_END.sub("\n", "".join(parts).replace("\n", " "))
         body = _CELL_TAG.sub(" | ", body)
         body = _TABLE_TAG.sub(" ", body)
         rows = body.split("\n")
@@ -494,7 +506,7 @@ def _prepare(md: str) -> str:
     md = _HTML_COMMENT.sub(" ", md)
     md = _DISPLAY_MATH.sub("\n\n", md)
     md = _IMAGE.sub(" ", md)
-    md = _LINK.sub(lambda m: m.group(1), md)
+    md = _LINK.sub(lambda m: _wrap(L, m.group(1)), md)  # the URL is never scored; the label keeps a link bit
     md = _HTML_HEADING.sub(lambda m: "\n\n" + "#" * int(m.group(1)) + " " + m.group(2).replace("\n", " ") + "\n\n", md)
     md = _tables(md)
     md = _html_lists(md)
@@ -1052,6 +1064,16 @@ def _relocate(ref: Doc, out: Doc, match: list[int], scope: Scope) -> set[int]:
     return respelled
 
 
+def _links_as_underline(ref: Doc, out: Doc, match: Sequence[int]) -> None:
+    """An output link label counts as underlined where the aligned reference text is underlined (a link is
+    usually drawn underlined, and link markup can't carry ``<u>``); elsewhere link markup is neutral."""
+    for i, j in enumerate(match):
+        if j >= 0 and ref.toks[i].has(U):
+            o = out.toks[j]
+            if o.has(L) and not o.has(U):
+                out.toks[j] = replace(o, bits=[b | U if b & L else b for b in o.bits])
+
+
 def score_docs(ref: Doc, out: Doc, scope: Scope = FULL, skip: frozenset[int] = frozenset()) -> FormattingResult:  # noqa: C901 - one scoring pass
     rk = [t.key for t in ref.toks]
     hk = [t.key for t in out.toks]
@@ -1059,6 +1081,7 @@ def score_docs(ref: Doc, out: Doc, scope: Scope = FULL, skip: frozenset[int] = f
     match = align(rk, hk, pinned)
     out = Doc(list(out.toks), out.units)  # _relocate may merge split output tokens
     respelled = set() if scope.decoration else _relocate(ref, out, match, scope)
+    _links_as_underline(ref, out, match)
     back = [-1] * len(hk)
     for i, j in enumerate(match):
         if j >= 0:
