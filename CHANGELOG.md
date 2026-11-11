@@ -21,6 +21,13 @@ All notable changes to `parse-bench` are recorded here. The format follows
   rewording. A `th` row of column numbers that holds a formula is a header row, and a reference whose values are all
   empty markers ("None", "N/A") is scored. About 1.5% of page scores change on saved outputs; the Tables score of a
   system moves by about 0.1 point or less.
+- `table_next`: a whole cell holding one of the protocol's bracketed mark words reads as the mark it names:
+  `[yes]`, `[checked]`, `[icon: bullet]` as checked, `[unchecked]` / `[empty]` as unchecked, `[no]` / `[cross]` as `✗`.
+  Against a reference `●` these words scored 0.6, below an empty cell; they now score 0.95 like `✓`.
+- `formatting_v2`: a strike written with a space inside its delimiters (`~~Risk ~~Factors`) reads as struck instead of
+  plain text, and no longer pairs with a later span's `~~`. `a.`, `b)` and `i.` are list markers like `1.`, and a marker
+  inside the item's opening style (`~~a. Violation~~`) reads the same as one outside it (`a. ~~Violation~~`). Scores on
+  strikeout pages written this way rise (four audited LlamaParse pages go from 0.00–0.71 to 1.00).
 - Visual Grounding attribution for PARSE results no longer depends on whether the raw provider response is
   present. Cross-evaluation evaluated a synthetic layout result and re-resolved its adapter from it, which only
   sees `raw_output`; LlamaParse-style adapters then lost the pages read from `ParseOutput.layout_pages` and fell

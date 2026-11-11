@@ -393,6 +393,61 @@ _CHECK_STATE = {
     **dict.fromkeys(("[x]", "✓", "•", "◉", "■"), "✓"),
     **dict.fromkeys(("[ ]", "[]", "☐", "○", "□", "◯"), "☐"),
 }
+# The table protocol writes a mark that stands for a value as a bracketed word ("[yes]", "[checked]", "[icon: bullet]"),
+# so a whole cell holding one of these words reads as the mark state it names; "[no]" / "[cross]" read as "✗".
+_RE_BRACKET_MARK = re.compile(r"\[(?:icon:\s*)?([a-z][a-z ]*?)\]")
+_BRACKET_MARK_STATE = {
+    **dict.fromkeys(
+        (
+            "yes",
+            "check",
+            "checked",
+            "checkmark",
+            "check mark",
+            "tick",
+            "ticked",
+            "selected",
+            "filled",
+            "bullet",
+            "dot",
+            "filled dot",
+            "filled circle",
+            "filled square",
+            "present",
+            "included",
+            "on",
+            "true",
+        ),
+        "✓",
+    ),
+    **dict.fromkeys(
+        (
+            "unchecked",
+            "not checked",
+            "unselected",
+            "not selected",
+            "empty",
+            "empty box",
+            "blank",
+            "open circle",
+            "empty circle",
+            "absent",
+            "off",
+        ),
+        "☐",
+    ),
+    **dict.fromkeys(("no", "cross", "x mark", "false"), "✗"),
+}
+
+
+def _mark_state(v: str) -> str:
+    """``v`` (a normalized cell) as its checkbox state when it is one mark glyph or one bracketed mark word."""
+    if (state := _CHECK_STATE.get(v)) is not None:
+        return state
+    m = _RE_BRACKET_MARK.fullmatch(v)
+    return _BRACKET_MARK_STATE.get(m[1], v) if m else v
+
+
 _BASE = [
     (re.compile(r"\*\*|__|~~"), ""),
     (re.compile(r"(?<![\w*])\*(?=[^\s*])([^*]*?[^\s*])\*(?![\w*])"), r"\1"),
@@ -444,7 +499,7 @@ def nx_norm(s: str) -> str:
     v = _NORM.get(s)
     if v is None:
         v = _post(_base(s)).lower()
-        v = _CHECK_STATE.get(v, v)
+        v = _mark_state(v)
         if len(_NORM) > 200_000:
             _NORM.clear()
         _NORM[s] = v

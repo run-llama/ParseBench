@@ -192,6 +192,10 @@ _TRIPLE = _rx(r"(\*\*\*|___)(?=" + _NS + r")([\s\S]+?)(?<=" + _NS + r")\1")
 _BOLD_STAR = _rx(r"\*\*(?=" + _NS + r")([\s\S]+?)(?<=" + _NS + r")\*\*")
 _BOLD_UND = _rx(r"(?<![A-Za-z0-9_])__(?=" + _NS + r")([\s\S]+?)(?<=" + _NS + r")__(?![A-Za-z0-9_])")
 _STRIKE = _rx(r"~~(?=[^ \t\n~])([\s\S]+?)(?<=[^ \t\n~])~~")
+# A strike whose delimiters sit against spaces ("~~Risk ~~Factors", "~~ means~~") is not a GFM strike, but the
+# writer plainly meant one: read the span inside as struck and keep the padding outside it. It runs before _STRIKE
+# and cannot cross a line or another "~~", so a padded closer never pairs with a later span's delimiter.
+_STRIKE_PADDED = _rx(r"~~([ \t]*)([^\s~](?:[^\n~]*[^\s~])?)([ \t]*)~~")
 _MARK = _rx(r"==(?=[^ \t\n=])([\s\S]+?)(?<=[^ \t\n=])==")
 _ITAL_STAR = _rx(r"\*(?=[^ \t\n*])([\s\S]+?)(?<=[^ \t\n*])\*")
 _ITAL_UND = _rx(r"(?<![A-Za-z0-9_])_(?=[^ \t\n_])([\s\S]+?)(?<=[^ \t\n_])_(?![A-Za-z0-9_])")
@@ -259,6 +263,7 @@ def _markdown_inline(text: str) -> str:
     text = _TRIPLE.sub(lambda m: _OPEN[B] + _OPEN[I] + m.group(2) + _CLOSE[I] + _CLOSE[B], text)
     text = _BOLD_STAR.sub(lambda m: _wrap(B, m.group(1)), text)
     text = _BOLD_UND.sub(lambda m: _wrap(B, m.group(1)), text)
+    text = _STRIKE_PADDED.sub(lambda m: m.group(1) + _wrap(S, m.group(2)) + m.group(3), text)
     text = _STRIKE.sub(lambda m: _wrap(S, m.group(1)), text)
     text = _MARK.sub(lambda m: _wrap(M, m.group(1)), text)
     text = _ITAL_STAR.sub(lambda m: _wrap(I, m.group(1)), text)
@@ -428,7 +433,11 @@ _ATX_CLOSE = _rx(r"[ \t]+#+$")
 _SETEXT = _rx(r"^ {0,3}(=+|-+)[ \t]*$")
 _HR = _rx(r"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
 _QUOTE = _rx(r"^ {0,3}>[ \t]?")
-_ITEM = _rx(r"^([ \t]*)([-*+•◦▪●○■‣∙–—·]|[0-9]{1,3}[.)]|\([0-9]{1,3}\)|\([a-z]{1,4}\)|\([A-Z]\)|[a-z]\))[ \t]+(.*)$")
+_MARKER = r"[-*+•◦▪●○■‣∙–—·]|[0-9]{1,3}[.)]|\([0-9]{1,3}\)|\([a-z]{1,4}\)|\([A-Z]\)|[a-z][.)]|[ivx]{1,4}[.)]"
+_ITEM = _rx(r"^([ \t]*)(" + _MARKER + r")[ \t]+(.*)$")
+# "~~a. Violation~~" / "**1.** Scope": a list marker inside the item's opening style. The marker is list syntax either
+# way, so the opener moves after it ("a. ~~Violation~~") and both spellings read as the same styled item.
+_STYLED_MARKER = _rx(r"^([ \t]*)(~~|\*\*|<(?:s|del|strike|b|strong|u|ins)>)(" + _MARKER + r")[ \t]+(?=\S)")
 # "&bull; item" at a line start: decoded here so it gets the same list-item role as a literal "•" line
 _LEAD_ENTITY = _rx(r"^[ \t]*&(#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]{1,7});(?=[ \t])", re.MULTILINE)
 _ENTITY_BULLETS = frozenset("•◦▪●○■‣∙–—·")
@@ -586,6 +595,7 @@ def parse(md: str) -> Doc:
             in_list = False
             blank_before = False
             continue
+        line = _STYLED_MARKER.sub(r"\1\3 \2", line)
         im = _ITEM.match(line)
         if im:
             ind = _indent(im.group(1))
