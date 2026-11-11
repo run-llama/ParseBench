@@ -32,6 +32,8 @@ All notable changes to `parse-bench` are recorded here. The format follows
   label counts as underlined only where the reference underlines that text; elsewhere link markup is neutral.
   `table_next`: a non-numeric cell that only partly matches is charged as "value partly differs", not "unit lost"
   (same severity).
+- `layout_grounding_pass_rate`: a predicted box on an ignore/optional element inside a table (a checkbox mark) is
+  neutral instead of a garbage child of the table.
 - Visual Grounding attribution for PARSE results no longer depends on whether the raw provider response is
   present. Cross-evaluation evaluated a synthetic layout result and re-resolved its adapter from it, which only
   sees `raw_output`; LlamaParse-style adapters then lost the pages read from `ParseOutput.layout_pages` and fell
