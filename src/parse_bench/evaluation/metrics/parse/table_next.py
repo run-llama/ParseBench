@@ -26,8 +26,13 @@ Scores (each in [0, 1]):
 
 Policy: row reorder, column swap, transposition, header flattening, table split/merge, number
 format (a whole table in the other decimal convention is one minor) and case changes are errors
-(graded by severity); output format (Markdown vs HTML, attributes, th vs td markup) is not. Output
-tables that share nothing with the reference are ignored (references are not exhaustive).
+(graded by severity); output format (Markdown vs HTML, attributes, th vs td markup) is not, and
+neither is a blank cell drawn as a dash, wherever it sits (value, row label, corner, section row).
+A reworded label costs once per table; a label that reads as another one is critical: its number
+changed ("2025" read "2024" or "202.5"), or it is another name of the reference (headers swapped
+or shifted, so the values sit under the wrong label). Output tables that share nothing with the
+reference are ignored (references are not exhaustive). A reference with fewer than
+three values is also scored on its empty markers ("-", "n/a", "None"): a table of markers is scored.
 
 test.json flags: ``max_top_title_rows`` caps the leading title rows stripped per table (default 1,
 0 = none); ``allow_splitting_ambiguous_merged_tables`` splits side-by-side tables emitted as one
@@ -47,7 +52,7 @@ import re
 import unicodedata
 from collections.abc import Callable, Iterable, Sequence
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import numpy as np
@@ -67,7 +72,7 @@ COPY_SHARE = 0.9  # an output table sharing this share of its cell keys with a b
 SYSTEMATIC_CELLS = 3  # errors of one severity in one column charged as one column event (costing 2)
 ORDER_PENALTY = 0.3
 BIG_COMPONENT = 400  # connected components larger than this are matched greedily
-MIN_VALUES = 3  # with 1 to MIN_VALUES - 1 non-empty reference values, dash cells ("-", "n/a") count as values
+MIN_VALUES = 3  # with fewer non-empty reference values, empty markers ("-", "n/a", "none") count as values
 
 # ---------------------------------------------------------------------------
 # JavaScript compatibility
@@ -352,6 +357,7 @@ def parse_tables(md: str | None, row_spans: bool = True) -> list[ParsedTable]:
 # ---------------------------------------------------------------------------
 
 NX_EMPTY = frozenset({"", "-", "--", "---", "n/a", "na", "none", "nan"})
+DASH_MARKS = frozenset({"-", "--", "---"})  # normalized text of a cell holding only a dash: a drawn empty cell
 _RE_CUR_SYM = re.compile("[$€£¥]")
 
 
@@ -1036,6 +1042,23 @@ def _infer_labels(rows: Grid, h: int, c: int) -> tuple[int, bool]:
     return lab, sec
 
 
+_COLUMN_NUMBER = re.compile(rf"\A{_S}*\(([0-9]{{1,3}})\)")
+
+
+def _numbers_columns(r: Sequence[Slot]) -> bool:
+    """A row whose cells each open with a column number in parentheses, counting up by one from cell to cell
+    ("(1) | (2) | (3) = (1) x (2)"): a header row of column references, with or without a formula after them."""
+    ns = []
+    for j, x in enumerate(r):
+        if not x.text or (j > 0 and x.id >= 0 and x.id == r[j - 1].id):
+            continue
+        m = _COLUMN_NUMBER.match(x.text)
+        if not m:
+            return False
+        ns.append(int(m.group(1)))
+    return len(ns) >= 2 and all(b == a + 1 for a, b in zip(ns, ns[1:], strict=False))
+
+
 def infer_schema(g: Grid, max_title: int, extra_titles: bool = False) -> Schema:
     """Title rows, header rows and label columns of a grid. ``extra_titles`` (the output side) also strips more
     rows that are one cell spanning the whole width, up to 4 title rows in all: title lines written into the table."""
@@ -1052,9 +1075,11 @@ def infer_schema(g: Grid, max_title: int, extra_titles: bool = False) -> Schema:
     if any(x.th for r in rows for x in r):
         while th_h < len(rows) and all(x.th or not x.text for x in rows[th_h]):
             th_h += 1
-    k = 0  # an all-number th row is data
+    k = 0  # an all-number th row is data, unless it numbers the columns ("(1) | (2) | (3) = (1) x (2)")
     while k < th_h and not (
-        rows[k][0].text and all(is_numeric(x.text) and not _is_year(x.text) for x in rows[k] if x.text)
+        rows[k][0].text
+        and all(is_numeric(x.text) and not _is_year(x.text) for x in rows[k] if x.text)
+        and not _numbers_columns(rows[k])
     ):
         k += 1
     th_h = k
@@ -1729,12 +1754,44 @@ _RE_ROWSPAN = re.compile(rf"rowspan{_S}*={_S}*[\"']?0*(?:[2-9]|[1-9][0-9])", re.
 _RE_DIGITS = re.compile(r"[0-9]+")
 
 
+# a decimal point or comma between two digits
+_RE_INNER_SEP = re.compile(r"(?<=[0-9])[.,](?=[0-9])")
+_SWAP_SEP = str.maketrans(".,", ",.")
+
+
 def _only_numbers_differ(a: str, b: str) -> bool:
-    return (
-        bool(nx_digits(a) and nx_digits(b))
-        and nx_digits(a) != nx_digits(b)
-        and _RE_DIGITS.sub("#", a) == _RE_DIGITS.sub("#", b)
-    )
+    """Two labels with the same words around different numbers ("fy 2024" and "fy 2023"), or with the same digits
+    read as another number because a decimal point or comma was inserted, moved or dropped ("35" and "3.5").
+    A label written in the other decimal convention ("4.625%" and "4,625%") is a format, not another number."""
+    da, db = nx_digits(a), nx_digits(b)
+    if not (da and db) or da == db:
+        return False
+    if _RE_DIGITS.sub("#", a) == _RE_DIGITS.sub("#", b):
+        return True
+    return _RE_INNER_SEP.sub("", a) == _RE_INNER_SEP.sub("", b) and nx_digits(b.translate(_SWAP_SEP)) != da
+
+
+def _in_order(short: Sequence[str], long_: Sequence[str]) -> bool:
+    """Every word of ``short`` appears in ``long_``, in the same order."""
+    it = iter(long_)
+    return all(w in it for w in short)
+
+
+def _names_another(pl: str, gl: str, heads: set[str], labels: Iterable[str], p_has: set[str]) -> bool:
+    """Output label ``pl`` carries the values of reference label ``gl`` but reads as another reference name: a
+    row-label header of the reference (``heads``), or one of its ``labels`` that the output otherwise lacks, alone
+    or after other words ("limit $2,000" for "$2,000"). The values then sit under the wrong label (headers swapped
+    or shifted). A label cut short, extended or written in another word order keeps the words of ``gl`` and stays
+    a rewording; a name that is part of ``gl`` too says nothing."""
+    wp, wg = pl.split(" "), gl.split(" ")
+    if not pl or _in_order(wg, wp) or _in_order(wp, wg) or sorted(wp) == sorted(wg):
+        return False
+
+    def named(n: str) -> bool:
+        ws = n.split(" ")
+        return _in_order(ws, wp) and not _in_order(ws, wg)
+
+    return any(named(n) for n in heads) or any(n and n != gl and n not in p_has and named(n) for n in labels)
 
 
 def _relabelled(a: str, b: str) -> bool:
@@ -1867,39 +1924,55 @@ def score_table_next(
     reading where both sides agree scores highest, so a faithful output never loses points to either rule.
     When no reading scores 1, every reading is scored again with the output's blank cells read as spans
     (``span_blanks``: see ``build_triples`` and ``merge_empty_stub_column``) and the best is kept.
+    An output with more dash-only cells than the reference drew some of the reference's blank cells as dashes;
+    when no reading scores 1 it is scored again with its dash-only cells read as blank (``dash_blanks``), so a
+    dash in a blank label, corner or section-row cell is not read as text.
     See ``_score_readings`` for the other readings."""
     expected_markdown = _RE_COMMENT.sub(" ", expected_markdown or "")
     output_markdown = _RE_COMMENT.sub(" ", output_markdown or "")
     serials, index_rows, marks, spaceless = _normalizations_apply(expected_markdown, output_markdown)
+    dashes = _n_dash_cells(output_markdown) > _n_dash_cells(expected_markdown)
+    blank_cell = bool(_RE_BLANK_CELL.search(output_markdown))
     best: TableNextResult | None = None
-    # the span reading only changes a table that holds a blank cell
-    for blanks in (False, True) if _RE_BLANK_CELL.search(output_markdown) else (False,):
-        for attach in (True, False) if marks else (True,):
-            for spaced in (True, False) if spaceless else (True,):
-                for join in (False, True) if serials else (False,):
-                    for drop in (True, False) if index_rows else (True,):
-                        tokens = (_ATTACH_MARKS.set(attach), _SPACELESS_KEYS.set(spaced))
-                        try:
-                            res = _score_readings(
-                                expected_markdown,
-                                output_markdown,
-                                max_top_title_rows=max_top_title_rows,
-                                allow_splitting_ambiguous_merged_tables=allow_splitting_ambiguous_merged_tables,
-                                trm_unsupported=trm_unsupported,
-                                allow_merged_sub_rows=allow_merged_sub_rows,
-                                join_serials=join,
-                                drop_index=drop,
-                                span_blanks=blanks,
-                            )
-                        finally:
-                            _ATTACH_MARKS.reset(tokens[0])
-                            _SPACELESS_KEYS.reset(tokens[1])
-                        if best is None or res.score > best.score:
-                            best = res
-                        if best.score >= 1.0:
-                            return best
+    # the span reading only changes a table that holds a blank cell (one written blank, or a dash read as blank)
+    readings = [
+        (dash, blanks, attach, spaced, join, drop)
+        for dash in ((False, True) if dashes else (False,))
+        for blanks in ((False, True) if blank_cell or dash else (False,))
+        for attach in ((True, False) if marks else (True,))
+        for spaced in ((True, False) if spaceless else (True,))
+        for join in ((False, True) if serials else (False,))
+        for drop in ((True, False) if index_rows else (True,))
+    ]
+    for dash, blanks, attach, spaced, join, drop in readings:
+        tokens = (_ATTACH_MARKS.set(attach), _SPACELESS_KEYS.set(spaced))
+        try:
+            res = _score_readings(
+                expected_markdown,
+                output_markdown,
+                max_top_title_rows=max_top_title_rows,
+                allow_splitting_ambiguous_merged_tables=allow_splitting_ambiguous_merged_tables,
+                trm_unsupported=trm_unsupported,
+                allow_merged_sub_rows=allow_merged_sub_rows,
+                join_serials=join,
+                drop_index=drop,
+                span_blanks=blanks,
+                dash_blanks=dash,
+            )
+        finally:
+            _ATTACH_MARKS.reset(tokens[0])
+            _SPACELESS_KEYS.reset(tokens[1])
+        if best is None or res.score > best.score:
+            best = res
+        if best.score >= 1.0:
+            return best
     assert best is not None
     return best
+
+
+def _n_dash_cells(markdown: str) -> int:
+    """Cells of the tables of ``markdown`` that hold only a dash."""
+    return sum(1 for t in parse_tables(markdown) for x in t.cells if nx_norm(x.text) in DASH_MARKS)
 
 
 def _normalizations_apply(expected_markdown: str | None, output_markdown: str | None) -> tuple[bool, bool, bool, bool]:
@@ -1936,6 +2009,7 @@ def _score_readings(
     join_serials: bool,
     drop_index: bool,
     span_blanks: bool = False,
+    dash_blanks: bool = False,
 ) -> TableNextResult:
     """The best of the alternate readings of the pair, under one choice of the two grid normalizations.
 
@@ -1973,6 +2047,7 @@ def _score_readings(
             join_serials=join_serials,
             drop_index=drop_index,
             span_blanks=span_blanks,
+            dash_blanks=dash_blanks,
         )
 
     spans = [True, False] if output_markdown and _RE_ROWSPAN.search(output_markdown) else [True]
@@ -2013,6 +2088,7 @@ def _score_readings(
             join_serials=join_serials,
             drop_index=drop_index,
             span_blanks=span_blanks,
+            dash_blanks=dash_blanks,
         )
         if alt is not None and alt.score > res.score:
             res = alt
@@ -2044,6 +2120,7 @@ def _score_table_next(  # noqa: C901 - one scoring pass
     join_serials: bool = False,
     drop_index: bool = True,
     span_blanks: bool = False,
+    dash_blanks: bool = False,
 ) -> TableNextResult | None:
     """One reading of the pair. ``merge_labels`` ("ref" or "out") joins the first two columns of that side's
     tables whose two-cell row labels the other side writes in one cell; None when there is no such table.
@@ -2052,7 +2129,7 @@ def _score_table_next(  # noqa: C901 - one scoring pass
     groups merged into one row (``allow_merged_sub_rows``). ``join_serials`` and ``drop_index`` choose the grid
     normalizations (see ``score_table_next``). ``span_blanks`` also reads each output table with its blank
     cells as spans (``build_triples``) and with an empty stub column joined (``merge_empty_stub_column``),
-    whichever fits the reference best."""
+    whichever fits the reference best. ``dash_blanks`` reads the output's dash-only cells as blank cells."""
 
     def index_rows(tg: TableGrid) -> TableGrid:
         return drop_column_index_rows(tg) if drop_index else tg
@@ -2069,6 +2146,12 @@ def _score_table_next(  # noqa: C901 - one scoring pass
         drop_span_copy_rows(index_rows(t)) for t in (clean_grid(x) for x in parse_tables(expected_markdown)) if t.g
     ]
     o_parsed = parse_tables(output_markdown, row_spans)
+    if dash_blanks:
+        o_parsed = [
+            replace(t, cells=[replace(x, text="") if nx_norm(x.text) in DASH_MARKS else x for x in t.cells])
+            for t in o_parsed
+        ]
+        ev.push(None, "dash cells read as blank")
     if segmentation == "stitch":
         o_parsed, free, glued = stitch_continuations(o_parsed, output_markdown or "")
         ev.push(None, "tables stitched", "", free + glued)
@@ -2166,9 +2249,9 @@ def _score_table_next(  # noqa: C901 - one scoring pass
     for tg in g_grids:
         schema = infer_schema(tg.g, max_title)
         gts.append((tg, schema, build_triples(tg, schema)))
-    # a table of dashes with one or two values (a footer factor): its dash cells are scored too, so one stray
-    # value does not decide the page; output tables are then read the same way
-    marks = 0 < sum(len(t[2].triples) for t in gts) < MIN_VALUES
+    # a table of dashes with at most two values (a footer factor, a column of "None"): its dash cells are scored
+    # too, so the page is not decided by one stray value or left unscored; output tables are read the same way
+    marks = sum(len(t[2].triples) for t in gts) < MIN_VALUES
     if marks:
         gts = [(tg, schema, build_triples(tg, schema, keep_marks=True)) for tg, schema, _ in gts]
     G: list[Triple] = []
@@ -2357,6 +2440,7 @@ def _score_table_next(  # noqa: C901 - one scoring pass
     taken: set[str] = set()
     reworded: set[int] = set()
     g_rks = {x.rk for x in G}
+    g_heads = {k for _, s, rd in gts for k in rd.col_key[: s.L] if k}  # the reference's row-label headers
     alias_w: dict[str, float] = {}  # output row label -> content weight of its cells
     for gl in (lab for lab in g_labels if lab not in p_has):
         gc = g_by[gl]
@@ -2386,6 +2470,8 @@ def _score_table_next(  # noqa: C901 - one scoring pass
             alias_w[best[0]] = LCSseq.similarity(gl, best[0]) / max(1, len(gl))  # relabelled: label recall
         if _only_numbers_differ(gl, best[0]):  # same words, another year or number: the values are misattributed
             ev.push("critical", "label number changed", gl, best[0])
+        elif _names_another(best[0], gl, g_heads, g_labels, p_has):
+            ev.push("critical", "values under another label", gl, best[0])
         elif gi0 not in reworded:
             reworded.add(gi0)
             ev.push("minor" if sim >= 0.8 else "major", "label reworded", gl, best[0])
@@ -2652,6 +2738,12 @@ def _score_table_next(  # noqa: C901 - one scoring pass
     for _ in range(co_ev):
         ev.push("major", "column out of order")
     used_t = sorted({P[m[1]].ti for m in M})
+
+    def same_rows(ti: int) -> bool:
+        """Most matched cells of output table ``ti`` sit in a row with the reference's own row label."""
+        pairs = [G[m[0]].rk == P[m[1]].rk for m in M if P[m[1]].ti == ti]
+        return 2 * sum(pairs) > len(pairs)
+
     for ti in used_t:
         pt = PT[ti].tr
         gis = sorted({G[m[0]].gi for m in M if P[m[1]].ti == ti})
@@ -2687,7 +2779,12 @@ def _score_table_next(  # noqa: C901 - one scoring pass
         elif len(gis) == 1 and not pt.transposed:  # wording over the row labels
             ga = re.sub(r":\Z", "", gts[gis[0]][2].label_head)
             ob = re.sub(r":\Z", "", pt.label_head)
-            if ga != ob:
+            ob = "" if ob in DASH_MARKS else ob  # a dash drawn in the blank corner cell
+            gh, oh = gts[gis[0]][2].col_key[: gts[gis[0]][1].L], pt.col_key[: pt.schema.L]
+            if ga != ob and gh != oh and sorted(gh) == sorted(oh) and same_rows(ti):
+                # the label columns kept their cells and exchanged their headers
+                ev.push("critical", "column headers swapped", ga, ob)
+            elif ga != ob:
                 mild = not ga or not ob or key_sim(ga, ob) > 0 or ratio(ga, ob) >= 0.8
                 ev.push("minor" if mild else "major", "row-label header differs", ga, ob)
         g_meta = gts[G[next(m for m in M if P[m[1]].ti == ti)[0]].gi]

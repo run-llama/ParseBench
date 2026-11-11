@@ -14,6 +14,13 @@ All notable changes to `parse-bench` are recorded here. The format follows
 ## [Unreleased]
 
 ### Scoring (changes evaluation numbers)
+- `table_next`: a blank cell drawn as a dash is no longer an error wherever it sits (row label, section row, corner
+  cell), as was already the case for values; a dash written over a value is still a wrong value. A label that takes
+  another name of the reference (headers swapped or shifted, so the values sit under the wrong label) or whose number
+  changes by an inserted decimal point ("2025" read "202.5") is now a critical error, where it was read as a
+  rewording. A `th` row of column numbers that holds a formula is a header row, and a reference whose values are all
+  empty markers ("None", "N/A") is scored. About 1.5% of page scores change on saved outputs; the Tables score of a
+  system moves by about 0.1 point or less.
 - Visual Grounding attribution for PARSE results no longer depends on whether the raw provider response is
   present. Cross-evaluation evaluated a synthetic layout result and re-resolved its adapter from it, which only
   sees `raw_output`; LlamaParse-style adapters then lost the pages read from `ParseOutput.layout_pages` and fell
