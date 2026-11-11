@@ -538,3 +538,18 @@ def test_decoration_reference_needs_a_known_kind_and_markdown():
     assert decoration_reference({"decorations": {"kind": "bold", "reference_md": "x"}}) is None
     assert decoration_reference({"decorations": {"kind": "underline", "reference_md": ""}}) is None
     assert decoration_reference(None) is None
+
+
+def test_strike_with_space_inside_its_delimiters_still_reads_as_struck() -> None:
+    # "~~Risk ~~Factors" is not a GFM strike; it read as plain text and could pair with a later span's "~~"
+    ref = "The ~~Customer Privacy &~~ Data and ~~Risk~~ Factors apply. Keep ~~this~~ and ~~that~~ here."
+    out = "The ~~Customer Privacy & ~~Data and ~~ Risk ~~Factors apply. Keep ~~this~~ and ~~that~~ here."
+    assert score_formatting(ref, out).score == 1.0
+    assert score_formatting("~~two\nlines~~ ok", "~~two\nlines~~ ok").score == 1.0  # strikes across a line still pair
+
+
+def test_letter_list_marker_reads_the_same_inside_or_outside_the_strike() -> None:
+    # "a." was not list syntax, so a marker outside the strike cost a "partly lost" event per struck item
+    ref = "Rules:\n\na. ~~Violation of the policy~~\nb. ~~Second struck item~~\n1. ~~Numbered one~~\n"
+    out = "Rules:\n\n~~a. Violation of the policy~~\n~~b. Second struck item~~\n~~1. Numbered one~~\n"
+    assert score_formatting(ref, out).score == score_formatting(out, ref).score == 1.0
