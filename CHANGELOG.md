@@ -6,6 +6,11 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `leaderboard-v2.csv`, the ParseBench 2 leaderboard (the systems ranked in the ParseBench 2 paper, all six dimensions
+  scored), and its top 10 in the README. `scripts/update_readme.py` regenerates both README tables, between
+  `LEADERBOARD:START`/`END` and `LEADERBOARD-V2:START`/`END`.
+
 ## [2.0.0] - 2026-11-11
 
 ParseBench 2: `--dataset parsebench-2` runs the 13 ParseBench 2 subsets and scores them into six dimensions and an

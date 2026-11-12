@@ -1,0 +1,45 @@
+Provider,Category,Overall,Text,Formatting,Tables,Charts,Visual_Grounding,Forms,Cost_Per_Page
+LlamaParse (Agentic Plus),Document Parsers,90.06,90.27,93.60,94.61,92.58,87.54,81.77,2.813
+LlamaParse (Agentic),Document Parsers,86.05,87.01,92.75,89.85,77.39,88.34,80.95,1.250
+Claude Opus 5.5,Vision Models,85.74,92.69,89.45,94.11,74.12,86.24,77.84,6.492
+LlamaParse (Cost Effective),Document Parsers,84.59,85.50,91.94,87.19,73.07,88.64,81.21,0.375
+Gemini 4 argon (low),Vision Models,84.19,89.68,89.20,92.78,68.20,88.10,77.19,2.683
+Reducto,Document Parsers,83.94,81.86,82.80,84.94,89.07,84.10,80.89,3.001
+Extend (Parse 2),Document Parsers,83.19,80.18,83.34,84.21,85.08,84.82,81.52,2.501
+Pulse (Ultra 2),Document Parsers,82.73,86.09,88.75,84.73,86.80,73.54,76.45,1.500
+Extend (Parse Light),Document Parsers,81.59,78.29,78.69,81.42,85.35,84.66,81.16,0.625
+Datalab (Accurate),Document Parsers,81.29,91.14,92.54,90.29,67.83,70.14,75.80,1.000
+Datalab (Balanced),Document Parsers,81.05,90.26,92.58,89.53,67.60,70.33,76.02,0.400
+Datalab (Fast),Document Parsers,78.28,87.17,91.96,84.06,61.47,69.43,75.61,0.400
+Infinity-Parser2 Pro,Open Weight,77.08,85.60,78.75,86.18,55.64,82.36,73.97,
+GPT-5.6 terra (low),Vision Models,77.06,81.00,87.94,79.56,76.30,62.48,75.09,3.116
+LightOnOCR-3 4B,Open Weight,77.05,84.12,81.58,78.16,62.90,80.53,75.00,
+Databricks AI Parse,Document Parsers,76.90,79.25,79.38,81.31,64.20,83.75,73.53,0.438
+Reducto (r-1),Document Parsers,76.76,87.76,92.30,89.35,25.23,87.65,78.25,1.000
+Gemini 3 Flash (minimal),Vision Models,76.63,86.71,86.14,88.91,57.97,66.26,73.76,0.885
+Chandra 2,Open Weight,76.21,77.19,88.82,85.49,62.48,69.63,73.65,
+LightOnOCR-3 0.8B,Open Weight,75.89,81.02,80.92,78.56,61.22,79.20,74.42,
+Gemini 3.7 Flash (low),Vision Models,75.59,86.71,86.61,89.41,33.94,80.93,75.92,0.845
+MinerU2.5-Pro,Open Weight,75.59,76.64,79.04,80.56,63.96,82.23,71.12,
+Gemini 3.8 Flash (low),Vision Models,75.51,87.07,86.66,88.79,33.30,81.27,75.98,0.848
+Gemini 3.5 Flash,Vision Models,74.73,88.51,86.17,89.96,31.12,75.25,77.37,4.967
+Gemini 3.6 Flash,Vision Models,74.68,88.18,85.85,89.84,30.38,76.01,77.83,4.159
+Muse Ember 1.0 (low),Vision Models,74.49,90.22,85.98,88.99,60.49,43.80,77.47,0.160
+Infinity-Parser2 Flash,Open Weight,74.39,80.75,78.31,75.43,56.62,81.44,73.78,
+GPT-6.1 terra (low),Vision Models,74.26,87.35,88.38,92.24,46.69,51.85,79.05,1.155
+Claude Sonnet 5.5,Vision Models,73.78,91.38,86.30,90.90,38.59,57.91,77.58,3.130
+GPT-6 luna (low),Vision Models,73.47,84.73,89.19,81.53,47.88,61.68,75.79,0.127
+Nemotron Parse 3.5,Open Weight,73.45,81.16,82.10,69.50,60.12,76.40,71.44,
+Mistral OCR 4.1 (annotation),Document Parsers,72.54,84.51,81.97,81.82,29.83,81.82,75.31,0.500
+Reducto (r-1-mini),Document Parsers,71.63,85.10,91.65,86.08,1.35,87.92,77.67,0.100
+LandingAI,Document Parsers,70.82,86.16,79.94,84.73,38.77,58.39,76.93,3.001
+PaddleOCR-VL 1.6,Open Weight,70.28,73.51,79.44,73.04,57.45,70.11,68.14,
+Claude Haiku 5.5,Vision Models,70.11,89.21,87.45,83.44,12.13,73.02,75.42,0.155
+Extend (Parse),Document Parsers,69.40,79.98,78.82,88.56,2.61,84.71,81.74,2.501
+GPT-5.6 luna (low),Vision Models,69.12,80.68,88.60,76.74,40.68,53.97,74.05,0.296
+Mistral OCR 4.1,Document Parsers,67.84,85.06,81.98,81.77,1.22,81.82,75.21,0.400
+Reducto (non-agentic),Document Parsers,66.28,79.06,79.83,73.45,1.54,83.81,80.01,2.248
+Azure Document Intelligence (layout),Document Parsers,66.14,79.84,77.86,77.58,1.49,83.80,76.28,1.000
+Gemini 3.1 Flash-Lite,Vision Models,62.72,83.96,79.26,79.73,12.22,48.14,73.03,0.389
+Qwen3.8 27B,Open Weight,61.58,81.61,77.30,36.70,41.32,63.53,69.04,
+Gemini 3.5 Flash-Lite,Vision Models,61.42,79.15,78.66,72.22,5.05,62.18,71.26,0.717
