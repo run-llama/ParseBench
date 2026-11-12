@@ -155,6 +155,7 @@ def test_shared_labels_pipelines_are_registered() -> None:
 
     for name, model, env in (
         ("lightonocr3_4b_vllm", "lightonocr-3-4b", "LIGHTONOCR_3_4B_SERVER_URL"),
+        ("lightonocr3_1b_vllm", "lightonocr-3-1b", "LIGHTONOCR_3_1B_SERVER_URL"),
         ("lightonocr3_0_8b_vllm", "lightonocr-3-0.8b", "LIGHTONOCR_3_0_8B_SERVER_URL"),
     ):
         pipeline = get_pipeline(name)

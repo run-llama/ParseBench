@@ -34,6 +34,7 @@ from parse_bench.schemas.layout_detection_output import (
     LayoutTableContent,
     LayoutTextContent,
 )
+from parse_bench.schemas.layout_ontology import CANONICAL_TO_CORE, CanonicalLabel
 from parse_bench.schemas.parse_output import ParseLayoutPageIR, ParseOutput
 from parse_bench.schemas.pipeline_io import InferenceResult
 from parse_bench.test_cases.schema import TestCase
@@ -1255,13 +1256,25 @@ class Qwen3VLLayoutAdapter(LayoutAdapter):
         )
 
 
+def _canonical_to_core(label: str) -> CanonicalLabel | None:
+    try:
+        return CANONICAL_TO_CORE.get(CanonicalLabel(label))
+    except ValueError:
+        return None
+
+
 def _parse_with_layout_to_layout_output(
     inference_result: InferenceResult,
     *,
     model: LayoutDetectionModel,
     page_filter: int | None = None,
+    collapse_to_core: bool = False,
 ) -> LayoutOutput:
-    """Shared conversion for LLM parse_with_layout adapters (Google/OpenAI/Anthropic)."""
+    """Shared conversion for LLM parse_with_layout adapters (Google/OpenAI/Anthropic).
+
+    ``collapse_to_core`` maps Canonical17 labels outside Core11 (``Code``, ``Document Index``, ...)
+    to their Core11 class; otherwise they pass through and the label mapper rejects the page.
+    """
     # Handle LayoutOutput (e.g. from multi-task re-evaluation)
     if isinstance(inference_result.output, LayoutOutput):
         return filter_layout_output(inference_result.output, page_filter)
@@ -1294,6 +1307,10 @@ def _parse_with_layout_to_layout_output(
 
                 lookup_key = str_label.lower().replace("-", "_")
                 qwen_enum = QWEN3VL_STR_TO_LABEL.get(lookup_key)
+                if qwen_enum is None and collapse_to_core:
+                    core = _canonical_to_core(str_label)
+                    if core is not None:
+                        qwen_enum = QWEN3VL_STR_TO_LABEL.get(core.value.lower().replace("-", "_"))
                 int_label = str(int(qwen_enum)) if qwen_enum is not None else str_label
 
                 # Convert normalized [0,1] xywh -> pixel xyxy
@@ -3331,6 +3348,7 @@ class LightOnOcr3LayoutAdapter(Gemma4LayoutAdapter):
             inference_result,
             model=LayoutDetectionModel.OPENAI_COMPATIBLE_VLM_LAYOUT,
             page_filter=page_filter,
+            collapse_to_core=True,
         )
 
 

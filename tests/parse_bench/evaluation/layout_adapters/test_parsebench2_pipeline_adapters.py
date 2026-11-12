@@ -21,8 +21,8 @@ from parse_bench.schemas.pipeline_io import InferenceRequest, InferenceResult
 from parse_bench.schemas.product import ProductType
 
 
-def _result(pipeline_name: str, raw_output: dict) -> InferenceResult:
-    segment = LayoutSegmentIR(x=0.1, y=0.2, w=0.3, h=0.1, label="Section-header")
+def _result(pipeline_name: str, raw_output: dict, label: str = "Section-header") -> InferenceResult:
+    segment = LayoutSegmentIR(x=0.1, y=0.2, w=0.3, h=0.1, label=label)
     page = ParseLayoutPageIR(
         page_number=1,
         width=1000,
@@ -60,6 +60,7 @@ def _result(pipeline_name: str, raw_output: dict) -> InferenceResult:
         ("gemini_4_argon_thinking_low_parse_with_layout_file", GoogleLayoutAdapter),
         ("muse_ember_1_0_reasoning_low_parse_with_layout_file", MetaLayoutAdapter),
         ("lightonocr3_4b_vllm", LightOnOcr3LayoutAdapter),
+        ("lightonocr3_1b_vllm", LightOnOcr3LayoutAdapter),
         ("lightonocr3_0_8b_vllm", LightOnOcr3LayoutAdapter),
         ("infinity_parser2_pro_deep", InfinityParser2LayoutAdapter),
         ("infinity_parser2_flash_deep", InfinityParser2LayoutAdapter),
@@ -90,3 +91,10 @@ def test_adapter_writes_qwen3vl_index_labels(pipeline_name: str, model: LayoutDe
 def test_lightonocr3_matcher_reads_served_model() -> None:
     assert LightOnOcr3LayoutAdapter.matches(_result("unregistered", {"_config": {"model": "lightonocr-3-4b"}}))
     assert not LightOnOcr3LayoutAdapter.matches(_result("unregistered", {"_config": {"model": "loocr-grounding"}}))
+
+
+def test_lightonocr3_collapses_labels_outside_core11() -> None:
+    """``Code`` has no Qwen3-VL class; passed through, the label mapper failed the whole page."""
+    result = _result("lightonocr3_4b_vllm", {}, label="Code")
+    [prediction] = create_layout_adapter_for_result(result).to_layout_output(result).predictions
+    assert prediction.label == str(int(QWEN3VL_STR_TO_LABEL["text"]))

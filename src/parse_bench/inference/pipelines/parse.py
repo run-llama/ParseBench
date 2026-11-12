@@ -1330,10 +1330,11 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
-    # LightOnOCR-3 4B / 0.8B with labels through the shared layout label map (ParseBench 2
-    # leaderboard). Same request settings as lightonocr_3_vllm_parse; each size is its own server.
+    # LightOnOCR-3 4B / 1B / 0.8B with labels through the shared layout label map (ParseBench
+    # leaderboards). Same request settings as lightonocr_3_vllm_parse; each size is its own server.
     for _loocr_name, _loocr_model, _loocr_env in (
         ("4b", "lightonocr-3-4b", "LIGHTONOCR_3_4B_SERVER_URL"),
+        ("1b", "lightonocr-3-1b", "LIGHTONOCR_3_1B_SERVER_URL"),
         ("0_8b", "lightonocr-3-0.8b", "LIGHTONOCR_3_0_8B_SERVER_URL"),
     ):
         register_fn(

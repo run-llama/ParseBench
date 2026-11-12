@@ -317,6 +317,7 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 |---|---|---|
 | `lightonocr_3_vllm_parse` | LightOnOCR-3 grounding prompt, parse + layout from one pass (400 DPI, 5M pixel cap) | `LIGHTONOCR_3_SERVER_URL` |
 | `lightonocr3_4b_vllm` | LightOnOCR-3 4B, same request, labels through the shared layout label map (ParseBench 2 leaderboard) | `LIGHTONOCR_3_4B_SERVER_URL` |
+| `lightonocr3_1b_vllm` | LightOnOCR-3 1B, same request, labels through the shared layout label map (ParseBench leaderboard) | `LIGHTONOCR_3_1B_SERVER_URL` |
 | `lightonocr3_0_8b_vllm` | LightOnOCR-3 0.8B, same request, labels through the shared layout label map (ParseBench 2 leaderboard) | `LIGHTONOCR_3_0_8B_SERVER_URL` |
 
 ### Chandra OCR 2
