@@ -809,7 +809,7 @@ def test_stop_words_do_not_reword_a_label():
     assert score(table(with_cell(0, 1, "Score 2018")), [chart]).score == 1.0
 
 
-def test_colour_group_series_merged_into_one_column_is_free():
+def test_colour_group_series_merged_into_one_column_is_one_minor():
     # bars coloured by group (one series per group, disjoint countries) in one output column
     chart = {
         "title": "Innovation scores",
@@ -825,8 +825,7 @@ def test_colour_group_series_merged_into_one_column_is_free():
     rows = [["Country", "Score in 2025", "Score in 2018"], ["Ireland", "251", "166"], ["Denmark", "191", "138"]]
     rows += [["Malta", "183", "135"], ["Italy", "172", "146"]]
     res = score(table(rows, title="Innovation scores"), [chart])
-    # every bar is stated; the Agentic prompt asks for a group column rather than one series per colour
-    assert kinds(res) == {} and res.score == 1.0
+    assert kinds(res) == {"colour groups merged": 1} and res.score == pytest.approx(0.99)
 
 
 def test_change_column_under_a_spanning_header_is_not_a_repeated_point():

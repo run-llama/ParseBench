@@ -86,19 +86,6 @@ LABELED_TOL = 0.01  # full tables: relative tolerance when data labels are print
 UNLABELED_TOL = 0.01  # ... and when values are read from the axis (relative part; RANGE_TOL usually dominates)
 RANGE_TOL = 0.02  # unlabeled charts: absolute tolerance as a share of the chart's value range (bar baseline 0 included)
 OFF_FACTOR = 3.0  # an error up to 3x the tolerance is "value off" (major), beyond it a "wrong value" (critical)
-# A reference read off the axis by a model (``chart_tables_source`` review_accept / review_fixed / auto_spot), not
-# measured from the PDF's vector drawing: both sides are estimates, so a reading within 3x RANGE_TOL is a pass.
-ESTIMATED_RANGE_TOL = 0.06
-ESTIMATED_SOURCES = frozenset({"review_accept", "review_fixed", "auto_spot"})
-# A bar, stacked-bar, area or combo segment this small next to the chart's largest value is a few pixels tall and
-# carries no readable value: left out by the output, it is not charged (given, it is still scored).
-SLIVER_SHARE = 0.02
-SLIVER_TYPES = ("bar", "area", "combo")
-# headers of a column that restates more of the chart: a share or percent, an interval or error-bar bound
-_EXTRA_READING = re.compile(
-    r"%|percent|share|confidence|interval|\bci\b|lower|upper|\bmin(imum)?\b|\bmax(imum)?\b|error|bound|±|std",
-    re.IGNORECASE,
-)  # stacked bars and (stacked) areas: running totals are an accepted reading
 CELL_EVENT_REF = 10  # floors charge per-cell events as if the chart had at most this many cells
 FLOOR_SCOPE = "page"  # per-cell scaling counts the cells of the chart ("chart") or of the whole page ("page")
 CONTINUOUS_TYPES = ("line", "area", "scatter")  # unlabeled: extra x positions are a denser sampling, not invented
@@ -1309,10 +1296,9 @@ class ChartSpec:
     series: list[tuple[str, list[str]]] = field(default_factory=list)
     relative_tolerance: float | None = None
     optional: frozenset[int] = frozenset()  # series flagged ``optional`` (derived, e.g. the 100 - Yes of a Yes/No bar)
-    estimated: bool = False  # the reference was read off the axis by a model (see ``ESTIMATED_SOURCES``)
 
     @classmethod
-    def from_dict(cls, d: Mapping[str, Any], estimated: bool = False) -> ChartSpec:
+    def from_dict(cls, d: Mapping[str, Any]) -> ChartSpec:
         series: list[tuple[str, list[str]]] = []
         optional: set[int] = set()
         for s in d.get("series") or ():
@@ -1333,7 +1319,6 @@ class ChartSpec:
             series=series,
             relative_tolerance=None if tol is None else float(tol),
             optional=frozenset(optional),
-            estimated=estimated,
         )
 
     @property
@@ -2490,7 +2475,7 @@ def chart_tol(chart: ChartSpec, nums: Sequence[float]) -> _Tol:
         return _Tol(chart.tol, 0.0, True)
     vals = [*nums, 0.0] if nums and (min(nums) >= 0 or max(nums) <= 0) else list(nums)
     rng = (max(vals) - min(vals)) if vals else 0.0
-    return _Tol(chart.tol, (ESTIMATED_RANGE_TOL if chart.estimated else RANGE_TOL) * rng, False)
+    return _Tol(chart.tol, RANGE_TOL * rng, False)
 
 
 # --- one chart against one grid -----------------------------------------------------------------------------------
@@ -3360,7 +3345,9 @@ def _fit_view(  # noqa: C901 - one pass over the matching steps
         if b_chain[b0] and _marker_name(b_chain[b0][-1]) and not KB[b0][0]:
             # a single series under a colour or "Series 1" name: the reader still has the values (major)
             _charge(ev, pen, "major", "legend lost", ch.names[0], " / ".join(b_chain[b0]), unit)
-    # colour groups read as one value column (with or without a group column) state every bar: no charge
+    if ch.virtual is not None and ch.virtual in bmap.values():
+        # every bar is there, in one column: only the colour coding of the groups is lost
+        _charge(ev, pen, "minor", "colour groups merged", ch.names[ch.virtual], "", unit)
     free_a = [a for a in A if a not in amap and not derived(a_chain[a])]
     rank = {a: k for k, a in enumerate(A)}
     for ci in range(len(ch.cats)):
@@ -3448,21 +3435,32 @@ def _fit_view(  # noqa: C901 - one pass over the matching steps
     opt_bound = 0  # matched points of optional (trendline) series: scored, so they count as reference points
     cut_a: set[int] = set()
     typo_seen: set[tuple[str, int]] = set()
+    unit_pos: dict[tuple[str, int], tuple[set[int], set[int]]] = {}
+    for (ua, ub), (_, (gr, gc)) in cells.items():
+        for key in (("a", ua), ("b", ub)):
+            rs, cs = unit_pos.setdefault(key, (set(), set()))
+            rs.add(gr)
+            cs.add(gc)
 
-    def unreadable(ci: int, si: int) -> bool:
-        """A reference 0 (nothing drawn) or a sliver segment (see ``SLIVER_SHARE``): an output that leaves it out,
-        blank or row-less, reads the chart the same way."""
+    def blank_zero(ci: int, si: int, a: int, b: int) -> bool:
+        """A reference 0 left blank (or ``-``) at the crossing of its bound row and column: a zero-height bar or
+        segment is not drawn, so an empty cell is the same reading."""
         num = ch.known[(ci, si)][0]
-        if num is None:
+        if num != 0 or ("a", a) not in unit_pos or ("b", b) not in unit_pos:
             return False
-        if num == 0:
-            return True
-        kind = ch.spec.chart_type.lower()
-        return any(t in kind for t in SLIVER_TYPES) and abs(num) <= SLIVER_SHARE * ch.max_abs
+        (ra, ca), (rb, cb) = unit_pos[("a", a)], unit_pos[("b", b)]
+        if len(ra) == 1 and len(cb) == 1:
+            gr, gc = next(iter(ra)), next(iter(cb))
+        elif len(ca) == 1 and len(rb) == 1:
+            gr, gc = next(iter(rb)), next(iter(ca))
+        else:
+            return False
+        x = g.rows[gr][gc] if gr < len(g.rows) and gc < len(g.rows[gr]) else None
+        return x is not None and (not x or bool(_EMPTY_CELL.fullmatch(x)))
 
     for (ci, si), (_, text) in ch.known.items():
         ma, mb = inv_a.get(ci), inv_b.get(si)
-        if (ma is None or mb is None or (ma, mb) not in cells) and unreadable(ci, si):
+        if ma is not None and mb is not None and (ma, mb) not in cells and blank_zero(ci, si, ma, mb):
             tot += 1.0
             values.append(1.0)
             labels.append(1.0)
@@ -3599,18 +3597,6 @@ def _fit_view(  # noqa: C901 - one pass over the matching steps
                 return True
         return False
 
-    # every required series is in the output: a column next to them that states more of what the chart shows (a
-    # printed total, the share printed beside a count, an error-bar or interval bound) is not invented data
-    complete = bool(bmap) and {si for si in range(len(ch.names)) if si not in ch.optional} <= set(bmap.values())
-
-    def extra_reading(chain: Sequence[str], ucells: Sequence[tuple[int, int]]) -> bool:
-        if derived(chain):
-            return True
-        head = " ".join(chain)
-        if _EXTRA_READING.search(head):
-            return True
-        return bool(ucells) and all("%" in cells[c][0] for c in ucells) and not any("%" in e for e in head)
-
     for side, units, cmap, chains, keys in sides:
         if side == "b" and ch.single and not single_well:
             continue
@@ -3627,8 +3613,6 @@ def _fit_view(  # noqa: C901 - one pass over the matching steps
                 "%" in cells[c][0] for c in ucells
             ):
                 continue  # the share half of a "N (P%)" column: the chart plotted the other half
-            if side == "b" and complete and extra_reading(chains[u], ucells):
-                continue
             if derived(chains[u]):
                 if label not in seen_extra:
                     seen_extra.add(label)
@@ -3994,8 +3978,7 @@ def chart_tables_of(metadata: Mapping[str, Any] | None) -> list[ChartSpec]:
     raw = (metadata or {}).get("chart_tables") or []
     if isinstance(raw, Mapping):
         raw = [raw]
-    estimated = (metadata or {}).get("chart_tables_source") in ESTIMATED_SOURCES
-    return [ChartSpec.from_dict(c, estimated=estimated) for c in raw if isinstance(c, Mapping)]
+    return [ChartSpec.from_dict(c) for c in raw if isinstance(c, Mapping)]
 
 
 def score_chart_next(
