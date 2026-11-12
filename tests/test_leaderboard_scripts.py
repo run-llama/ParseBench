@@ -138,10 +138,34 @@ def test_apply_writes_scores_and_records_harness(tmp_path: Path) -> None:
     assert load_map(map_path).scored_with == "b" * 40
 
 
-def test_rows_missing_more_than_one_percent_are_incomplete() -> None:
-    assert lb_apply._incomplete({"coverage": {"Tables": (501, 503)}}) is False  # 2 pages: scored 0, still verified
-    assert lb_apply._incomplete({"coverage": {"Content_Faithfulness": (85, 506)}}) is True
-    assert lb_apply._incomplete({"coverage": {}}) is False
+def test_compare_passes_a_matching_row_with_missing_pages(tmp_path: Path) -> None:
+    """Missing pages score 0 in the re-score; they alone do not fail verification."""
+    csv_path, map_path = tmp_path / "lb.csv", tmp_path / "results.yaml"
+    from common import write_csv
+
+    write_csv(["Provider", "Category", "Overall", *DIMENSIONS, "Verified"], [_row("A")], csv_path)
+    save_map(_map(MapEntry("A", "verified", "pa", SHA)), map_path)
+    details = {c: {"published": 503, "total": 503, "error": None} for c in DIMENSIONS}
+    details["Charts"]["published"] = 400
+    rescore = tmp_path / "rescore.json"
+    rescore.write_text(
+        json.dumps(
+            {
+                "scored_with": "b" * 40,
+                "data_repo": "org/data",
+                "data_revision": SHA,
+                "results_repo": "org/results",
+                "results": {"pa": {"scores": dict.fromkeys(DIMENSIONS, 50.0), "details": details}},
+            }
+        )
+    )
+    args = lb_apply.argparse.Namespace(rescore=rescore, csv=csv_path, map=map_path, report=None, tolerance=0.5)
+    assert lb_apply.cmd_compare(args) == 0
+
+    data = json.loads(rescore.read_text())
+    data["results"]["pa"]["scores"]["Tables"] = 49.0  # off by more than the tolerance
+    rescore.write_text(json.dumps(data))
+    assert lb_apply.cmd_compare(args) == 1
 
 
 def test_merge_combines_shards_from_one_run(tmp_path: Path) -> None:

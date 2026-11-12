@@ -121,11 +121,11 @@ rows:
   pipeline: anthropic_opus_4_6_parse_with_layout_file
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Anthropic Opus 4.7
-  status: unverified
+  status: verified
   pipeline: anthropic_opus_4_7_parse_with_layout_file
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Anthropic Opus 4.8
-  status: unverified
+  status: verified
   pipeline: anthropic_opus_4_8_parse_with_layout_file
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Anthropic Opus 5.5 (Effort High)
@@ -141,7 +141,7 @@ rows:
   pipeline: anthropic_opus_5_5_effort_low_parse_with_layout_file
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Anthropic Fable 5
-  status: unverified
+  status: verified
   pipeline: anthropic_fable_5_parse_with_layout_file
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Anthropic Fable 5.1
@@ -149,7 +149,7 @@ rows:
   pipeline: anthropic_fable_5_1_parse_with_layout_file
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Anthropic Sonnet 5
-  status: unverified
+  status: verified
   pipeline: anthropic_sonnet_5_parse_with_layout_file
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Anthropic Sonnet 5.5
@@ -293,11 +293,11 @@ rows:
   pipeline: openai_gpt_5_4_nano_parse_with_layout_file
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Amazon Nova 2 Lite
-  status: unverified
+  status: verified
   pipeline: amazon_nova_2_lite_parse_with_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Tencent Hy4 (Thinking High)
-  status: unverified
+  status: verified
   pipeline: hy4_parse_with_layout
   results_revision: refs/pr/9
 - provider: AWS Textract
@@ -321,7 +321,7 @@ rows:
   pipeline: reducto_agentic
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Pulse Ultra 2
-  status: unverified
+  status: verified
   pipeline: pulse_ultra_2
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Datalab Accurate
@@ -348,7 +348,7 @@ rows:
   pipeline: reducto_r1
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Extend
-  status: unverified
+  status: verified
   pipeline: extend_parse
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Extend (2.0)
@@ -360,22 +360,22 @@ rows:
   pipeline: extend_parse_light
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: LandingAI
-  status: unverified
+  status: verified
   pipeline: landingai_parse
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Firecrawl
   status: unverified
   note: no published outputs in the results repo
 - provider: oi-parser
-  status: unverified
+  status: verified
   pipeline: oi_parser
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: DocAI
-  status: unverified
+  status: verified
   pipeline: docai_default
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Mistral OCR 4 (Annotation)
-  status: unverified
+  status: verified
   pipeline: mistral_ocr_4_annotation
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Mistral OCR 4
@@ -387,7 +387,7 @@ rows:
   pipeline: databricks_ai_parse
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Nutrient DWS (Agentic)
-  status: unverified
+  status: verified
   pipeline: nutrient_dws_agentic
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Infinity-Parser2-Pro
@@ -402,7 +402,7 @@ rows:
   status: unverified
   note: no published outputs in the results repo
 - provider: Qwen3-VL-8B-Instruct
-  status: unverified
+  status: verified
   pipeline: qwen3vl_parse
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: MiniCPM-OCR 1.0
@@ -428,11 +428,11 @@ rows:
   pipeline: hpd_parsing_vllm_parse
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Falcon-OCR
-  status: unverified
+  status: verified
   pipeline: falconocr_pipeline
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Docling-models
-  status: unverified
+  status: verified
   pipeline: docling_parse
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Chandra-ocr-2
@@ -456,7 +456,7 @@ rows:
   pipeline: hunyuanocr_1_5
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Gemma-4-31B-it
-  status: unverified
+  status: verified
   pipeline: gemma4_31b_vllm_with_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: TeleOCR
@@ -464,15 +464,15 @@ rows:
   pipeline: teleocr_vllm
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Gemma-4-26B-A4B-it
-  status: unverified
+  status: verified
   pipeline: gemma4_26b_vllm_with_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Nemotron-3-Nano-Omni-30B-A3B (Thinking)
-  status: unverified
+  status: verified
   pipeline: nemotron_omni_30b_vllm_thinking
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: LightOnOCR-2-1B
-  status: unverified
+  status: verified
   pipeline: lightonocr_vllm
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Nemotron-3.5-Parse
@@ -520,15 +520,15 @@ rows:
   pipeline: mineru_diffusion
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: DeepSeek-OCR-2
-  status: unverified
+  status: verified
   pipeline: deepseekocr2_vllm
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: PaddleOCR-VL
-  status: unverified
+  status: verified
   pipeline: paddleocr_vl_pipeline
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: OvisOCR2
-  status: unverified
+  status: verified
   pipeline: ovisocr2_vllm
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Gemma-4-E4B-it
@@ -536,7 +536,7 @@ rows:
   pipeline: gemma4_e4b_vllm_with_layout
   results_revision: f3ab4cd819627561a8d0609081576a1bd6dda5c5
 - provider: Granite Vision 4.1 4B
-  status: unverified
+  status: verified
   pipeline: granite_vision_4_1_4b
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: WeVisDoc-2B
@@ -552,19 +552,19 @@ rows:
   pipeline: qwen3_5_4b_vllm_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Qwen3.5-9B
-  status: unverified
+  status: verified
   pipeline: qwen3_5_9b_vllm_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Qwen3.5-0.8B
-  status: unverified
+  status: verified
   pipeline: qwen3_5_0_8b_vllm_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: Qwen3.5-2B
-  status: unverified
+  status: verified
   pipeline: qwen3_5_2b_vllm_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: GLM-OCR
-  status: unverified
+  status: verified
   pipeline: glmocr_pipeline
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
 - provider: KDL-Frontier-Parser-nano
