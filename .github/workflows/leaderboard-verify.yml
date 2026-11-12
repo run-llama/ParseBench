@@ -7,13 +7,16 @@ name: Leaderboard verification
 # Runs on pull_request_target so it can comment on fork PRs (and read HF_TOKEN
 # while the results repo is private). That is safe only because no code from the
 # PR is executed: the job checks out the base branch and reads the PR's
-# leaderboard.csv and leaderboard/results.yaml as data.
+# leaderboard data files (leaderboard.csv, leaderboard/results.yaml and their ParseBench 2 counterparts
+# leaderboard-v2.csv, leaderboard/results-v2.yaml) as data.
 
 on:
   pull_request_target:
     paths:
       - leaderboard.csv
       - leaderboard/results.yaml
+      - leaderboard-v2.csv
+      - leaderboard/results-v2.yaml
 
 permissions:
   contents: read
@@ -42,10 +45,10 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:pr-head"
-          cp leaderboard.csv "$RUNNER_TEMP/base_leaderboard.csv"
-          cp leaderboard/results.yaml "$RUNNER_TEMP/base_results.yaml"
-          git show pr-head:leaderboard.csv > leaderboard.csv
-          git show pr-head:leaderboard/results.yaml > leaderboard/results.yaml
+          for f in leaderboard.csv leaderboard/results.yaml leaderboard-v2.csv leaderboard/results-v2.yaml; do
+            if [ -f "$f" ]; then cp "$f" "$RUNNER_TEMP/base_$(basename "$f")"; fi
+            if git cat-file -e "pr-head:$f" 2>/dev/null; then git show "pr-head:$f" > "$f"; fi
+          done
 
       - uses: astral-sh/setup-uv@v5
         with:
@@ -64,6 +67,15 @@ jobs:
             --base-csv "$RUNNER_TEMP/base_leaderboard.csv" --base-map "$RUNNER_TEMP/base_results.yaml"
           echo "data_revision=$(grep -m1 '^data_revision:' leaderboard/results.yaml | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
+      - name: Check every ParseBench 2 row is mapped to published outputs
+        id: check_v2
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          uv run python scripts/leaderboard/check.py --board v2 --hf \
+            --base-csv "$RUNNER_TEMP/base_leaderboard-v2.csv" --base-map "$RUNNER_TEMP/base_results-v2.yaml"
+          echo "data_revision=$(grep -m1 '^data_revision:' leaderboard/results-v2.yaml | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
       - name: Cache the ground truth
         if: steps.check.outputs.pipelines != ''
         uses: actions/cache@v4
@@ -81,7 +93,37 @@ jobs:
       - name: Compare submitted values with the re-score
         id: compare
         if: steps.check.outputs.pipelines != ''
-        run: uv run python scripts/leaderboard/apply.py compare rescore.json --tolerance 0.5 --report report.md
+        run: uv run python scripts/leaderboard/apply.py compare rescore.json --tolerance 0.5 --report report-v1.md
+
+      - name: Cache the ParseBench 2 ground truth
+        if: steps.check_v2.outputs.pipelines != ''
+        uses: actions/cache@v4
+        with:
+          path: .cache/leaderboard-gt-v2
+          key: leaderboard-gt-v2-${{ steps.check_v2.outputs.data_revision }}
+
+      - name: Re-score changed ParseBench 2 rows
+        if: steps.check_v2.outputs.pipelines != ''
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          PIPELINES: ${{ steps.check_v2.outputs.pipelines }}
+        run: |
+          uv run python scripts/leaderboard/rescore.py run --board v2 --pipelines "$PIPELINES" \
+            --gt-cache .cache/leaderboard-gt-v2 --out rescore-v2.json
+
+      - name: Compare submitted ParseBench 2 values with the re-score
+        id: compare_v2
+        if: always() && steps.check_v2.outputs.pipelines != ''
+        run: |
+          uv run python scripts/leaderboard/apply.py compare rescore-v2.json --board v2 --tolerance 0.5 \
+            --report report-v2.md
+
+      - name: Combine the reports
+        if: always()
+        run: |
+          for f in report-v1.md report-v2.md; do
+            if [ -f "$f" ]; then cat "$f" >> report.md; echo >> report.md; fi
+          done
 
       - name: Post the report on the pull request
         if: always() && hashFiles('report.md') != ''

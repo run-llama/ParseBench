@@ -1,0 +1,149 @@
+# Maps every leaderboard-v2.csv row to the published outputs it was scored from.
+#
+#   provider          exact `Provider` value of the leaderboard-v2.csv row
+#   status            verified   -> outputs are in `results_repo` and the row is re-scored from them
+#                     unverified -> no published outputs; scores are kept as submitted
+#   pipeline          folder under results/ in `results_repo` (verified rows only)
+#   results_revision  `results_repo` commit (or refs/pr/N for a pending submission)
+#
+# `scored_with` is the ParseBench commit the verified rows were last re-scored at.
+# Maintained by scripts/leaderboard/; see leaderboard/README.md.
+
+results_repo: llamaindex/ParseBench-2-results
+data_repo: llamaindex/ParseBench-2
+data_revision: a12c9785cd8cd015b5284e0ad0d74722091762f2
+scored_with: f3dab82c35203e85770021e594c5b23f41af3842+dirty
+rows:
+- provider: LlamaParse (Agentic Plus)
+  status: unverified
+  note: outputs not yet published
+- provider: LlamaParse (Agentic)
+  status: unverified
+  note: outputs not yet published
+- provider: Claude Opus 5.5
+  status: unverified
+  note: outputs not yet published
+- provider: LlamaParse (Cost Effective)
+  status: unverified
+  note: outputs not yet published
+- provider: Gemini 4 argon (low)
+  status: unverified
+  note: outputs not yet published
+- provider: Reducto
+  status: unverified
+  note: outputs not yet published
+- provider: Extend (Parse 2)
+  status: unverified
+  note: outputs not yet published
+- provider: Pulse (Ultra 2)
+  status: unverified
+  note: outputs not yet published
+- provider: Extend (Parse Light)
+  status: unverified
+  note: outputs not yet published
+- provider: Datalab (Accurate)
+  status: unverified
+  note: outputs not yet published
+- provider: Datalab (Balanced)
+  status: unverified
+  note: outputs not yet published
+- provider: Datalab (Fast)
+  status: unverified
+  note: outputs not yet published
+- provider: Infinity-Parser2 Pro
+  status: unverified
+  note: outputs not yet published
+- provider: GPT-5.6 terra (low)
+  status: unverified
+  note: outputs not yet published
+- provider: LightOnOCR-3 4B
+  status: unverified
+  note: outputs not yet published
+- provider: Databricks AI Parse
+  status: unverified
+  note: outputs not yet published
+- provider: Reducto (r-1)
+  status: unverified
+  note: outputs not yet published
+- provider: Gemini 3 Flash (minimal)
+  status: unverified
+  note: outputs not yet published
+- provider: Chandra 2
+  status: unverified
+  note: outputs not yet published
+- provider: LightOnOCR-3 0.8B
+  status: unverified
+  note: outputs not yet published
+- provider: Gemini 3.7 Flash (low)
+  status: unverified
+  note: outputs not yet published
+- provider: MinerU2.5-Pro
+  status: unverified
+  note: outputs not yet published
+- provider: Gemini 3.8 Flash (low)
+  status: unverified
+  note: outputs not yet published
+- provider: Gemini 3.5 Flash
+  status: unverified
+  note: outputs not yet published
+- provider: Gemini 3.6 Flash
+  status: unverified
+  note: outputs not yet published
+- provider: Muse Ember 1.0 (low)
+  status: unverified
+  note: outputs not yet published
+- provider: Infinity-Parser2 Flash
+  status: unverified
+  note: outputs not yet published
+- provider: GPT-6.1 terra (low)
+  status: unverified
+  note: outputs not yet published
+- provider: Claude Sonnet 5.5
+  status: unverified
+  note: outputs not yet published
+- provider: GPT-6 luna (low)
+  status: unverified
+  note: outputs not yet published
+- provider: Nemotron Parse 3.5
+  status: unverified
+  note: outputs not yet published
+- provider: Mistral OCR 4.1 (annotation)
+  status: unverified
+  note: outputs not yet published
+- provider: Reducto (r-1-mini)
+  status: unverified
+  note: outputs not yet published
+- provider: LandingAI
+  status: unverified
+  note: outputs not yet published
+- provider: PaddleOCR-VL 1.6
+  status: unverified
+  note: outputs not yet published
+- provider: Claude Haiku 5.5
+  status: unverified
+  note: outputs not yet published
+- provider: Extend (Parse)
+  status: unverified
+  note: outputs not yet published
+- provider: GPT-5.6 luna (low)
+  status: unverified
+  note: outputs not yet published
+- provider: Mistral OCR 4.1
+  status: unverified
+  note: outputs not yet published
+- provider: Reducto (non-agentic)
+  status: unverified
+  note: outputs not yet published
+- provider: Azure Document Intelligence (layout)
+  status: verified
+  pipeline: azure_di_layout
+  results_revision: 05c5a78fd49dbcdadc89dce36854322ea69e3a83
+- provider: Gemini 3.1 Flash-Lite
+  status: unverified
+  note: outputs not yet published
+- provider: Qwen3.8 27B
+  status: unverified
+  note: outputs not yet published
+- provider: Gemini 3.5 Flash-Lite
+  status: unverified
+  note: outputs not yet published

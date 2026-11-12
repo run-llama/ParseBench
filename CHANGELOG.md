@@ -6,6 +6,13 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- ParseBench 2 leaderboard accountability, as for ParseBench v1: `leaderboard/results-v2.yaml` ties every
+  `leaderboard-v2.csv` row to its published outputs in `llamaindex/ParseBench-2-results`, `leaderboard-v2.csv` gains a
+  `Verified` column (unverified rows are marked † in the README), and the leaderboard scripts take `--board v2`.
+  A verified row is re-scored over all 13 subsets with `evaluation run --next ... --next_only`. The verification and
+  daily re-score workflows cover both leaderboards. Azure Document Intelligence is the first verified row.
+
 ## [2.0.1] - 2026-11-12
 
 ### Added

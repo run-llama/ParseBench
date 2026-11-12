@@ -26,9 +26,9 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (  # noqa: E402
-    CSV_PATH,
-    DIMENSIONS,
-    MAP_PATH,
+    BOARDS,
+    V1,
+    Board,
     fmt_score,
     load_csv,
     load_map,
@@ -37,21 +37,22 @@ from common import (  # noqa: E402
     write_csv,
 )
 
-COLUMNS = ["Overall", *DIMENSIONS]
+COLUMNS = ["Overall", *V1.dimensions]  # v1; see columns()
 # A verified row may miss at most this share of any category's pages (missing pages score 0).
 MAX_MISSING_SHARE = 0.01
 POLICY = (
     "Pages the provider produced nothing usable for score 0. A dimension where the evaluator left pages out of its "
     "average (a harness error or missing layout data) is not re-scored and keeps its old value."
 )
-SHORT = {
-    "Overall": "Overall",
-    "Tables": "Tables",
-    "Charts": "Charts",
-    "Content_Faithfulness": "Content",
-    "Semantic_Formatting": "Formatting",
-    "Visual_Grounding": "Grounding",
-}
+SHORT = V1.short
+
+
+def columns(board: Board = V1) -> list[str]:
+    return ["Overall", *board.dimensions]
+
+
+def _board(args: argparse.Namespace) -> Board:
+    return BOARDS[getattr(args, "board", None) or "v1"]
 
 
 def _short(sha: str) -> str:
@@ -65,26 +66,28 @@ def _num(value: str) -> float | None:
         return None
 
 
-def new_values(result: dict[str, Any], old: dict[str, float | None]) -> dict[str, float | None]:
+def new_values(result: dict[str, Any], old: dict[str, float | None], board: Board = V1) -> dict[str, float | None]:
     """Values to publish: re-scored dimensions, old values where a dimension errored.
 
     Each dimension is rounded before averaging so Overall matches the published
-    columns; Overall is recomputed only when all five dimensions have a value.
+    columns; Overall is recomputed only when every dimension of the board has a value.
     """
     values: dict[str, float | None] = {}
-    for c in DIMENSIONS:
+    for c in board.dimensions:
         score = result["scores"].get(c)
         values[c] = round(score, 2) if score is not None else old[c]
-    dims = [values[c] for c in DIMENSIONS]
+    dims = [values[c] for c in board.dimensions]
     values["Overall"] = (
-        round(overall(dict(zip(DIMENSIONS, dims, strict=True))), 2)  # type: ignore[arg-type]
+        round(overall(dict(zip(board.dimensions, dims, strict=True)), board), 2)  # type: ignore[arg-type]
         if all(v is not None for v in dims)
         else old["Overall"]
     )
     return values
 
 
-def diff_rows(rows: list[dict[str, str]], rescore: dict[str, Any], pipeline_by_provider: dict[str, str]) -> list[dict]:
+def diff_rows(
+    rows: list[dict[str, str]], rescore: dict[str, Any], pipeline_by_provider: dict[str, str], board: Board = V1
+) -> list[dict]:
     """One record per re-scored row: old and new values, per-dimension errors and coverage."""
     out = []
     for r in rows:
@@ -95,9 +98,10 @@ def diff_rows(rows: list[dict[str, str]], rescore: dict[str, Any], pipeline_by_p
         if "error" in result:
             out.append({"provider": r["Provider"], "pipeline": pipeline, "error": result["error"]})
             continue
-        old = {c: _num(r.get(c, "")) for c in COLUMNS}
-        new = new_values(result, old)
-        delta = {c: (new[c] - old[c]) if old[c] is not None and new[c] is not None else None for c in COLUMNS}
+        cols = columns(board)
+        old = {c: _num(r.get(c, "")) for c in cols}
+        new = new_values(result, old, board)
+        delta = {c: (new[c] - old[c]) if old[c] is not None and new[c] is not None else None for c in cols}
         details = result.get("details", {})
         dim_errors = {c: d["error"] for c, d in details.items() if d.get("error")}
         coverage = {
@@ -142,7 +146,8 @@ def _cell(rec: dict, col: str, threshold: float) -> str:
     return f"{old:.2f} → {new:.2f} ({d:+.2f}){mark}{note}"
 
 
-def render_report(title: str, records: list[dict], threshold: float, intro: str) -> str:
+def render_report(title: str, records: list[dict], threshold: float, intro: str, board: Board = V1) -> str:
+    cols, short = columns(board), board.short
     scored = [r for r in records if "error" not in r]
     changed = [r for r in scored if max_abs_delta(r) >= 0.005 or r["dim_errors"]]
     errors = [r for r in records if "error" in r]
@@ -164,17 +169,17 @@ def render_report(title: str, records: list[dict], threshold: float, intro: str)
     lines.append("")
     if changed:
         changed.sort(key=lambda r: (max_abs_delta(r), len(r["dim_errors"])), reverse=True)
-        lines.append("| Provider | " + " | ".join(SHORT[c] for c in COLUMNS) + " |")
-        lines.append("|---|" + "---:|" * len(COLUMNS))
+        lines.append("| Provider | " + " | ".join(short[c] for c in cols) + " |")
+        lines.append("|---|" + "---:|" * len(cols))
         for r in changed:
-            lines.append(f"| {r['provider']} | " + " | ".join(_cell(r, c, threshold) for c in COLUMNS) + " |")
+            lines.append(f"| {r['provider']} | " + " | ".join(_cell(r, c, threshold) for c in cols) + " |")
         lines.append("")
     if with_dim_errors:
         lines.append("### Dimensions that could not be re-scored (old values kept)")
         lines.append("")
         for r in with_dim_errors:
             for col, err in r["dim_errors"].items():
-                lines.append(f"- **{r['provider']}** (`{r['pipeline']}`) {SHORT[col]}: {err[:300]}")
+                lines.append(f"- **{r['provider']}** (`{r['pipeline']}`) {short[col]}: {err[:300]}")
         lines.append("")
     if errors:
         lines.append("### Rows that could not be re-scored (values left unchanged)")
@@ -193,18 +198,25 @@ def _github_output(**values: int) -> None:
                 f.write(f"{k}={v}\n")
 
 
+def _check_board(rescore: dict[str, Any], board: Board) -> None:
+    if rescore.get("board", "v1") != board.name:
+        raise SystemExit(f"{rescore.get('board', 'v1')} re-score given for --board {board.name}")
+
+
 def cmd_apply(args: argparse.Namespace) -> int:
+    board = _board(args)
     rescore = json.loads(args.rescore.read_text())
+    _check_board(rescore, board)
     fieldnames, rows = load_csv(args.csv)
     rmap = load_map(args.map)
     pipeline_by_provider = {e.provider: e.pipeline for e in rmap.verified() if e.pipeline}
-    records = diff_rows(rows, rescore, pipeline_by_provider)
+    records = diff_rows(rows, rescore, pipeline_by_provider, board)
 
     by_provider = {r["provider"]: r for r in records if "error" not in r}
     for row in rows:
         rec = by_provider.get(row["Provider"])
         if rec:
-            for c in COLUMNS:
+            for c in columns(board):
                 if rec["new"][c] is not None:
                     row[c] = fmt_score(rec["new"][c])
     write_csv(fieldnames, rows, args.csv)
@@ -221,7 +233,8 @@ def cmd_apply(args: argparse.Namespace) -> int:
         f"`{_short(rescore['scored_with'])}` against `{rescore['data_repo']}@{rescore['data_revision'][:12]}`. "
         f"{POLICY}"
     )
-    report = render_report("Leaderboard re-score", records, args.threshold, intro)
+    title = "Leaderboard re-score" if board.name == "v1" else "ParseBench 2 leaderboard re-score"
+    report = render_report(title, records, args.threshold, intro, board)
     if args.report:
         args.report.write_text(report + "\n")
     print(report)
@@ -235,11 +248,13 @@ def cmd_apply(args: argparse.Namespace) -> int:
 
 
 def cmd_compare(args: argparse.Namespace) -> int:
+    board = _board(args)
     rescore = json.loads(args.rescore.read_text())
+    _check_board(rescore, board)
     _, rows = load_csv(args.csv)
     rmap = load_map(args.map)
     pipeline_by_provider = {e.provider: e.pipeline for e in rmap.verified() if e.pipeline}
-    records = diff_rows(rows, rescore, pipeline_by_provider)
+    records = diff_rows(rows, rescore, pipeline_by_provider, board)
 
     incomplete = [r for r in records if "error" not in r and _incomplete(r)]
     bad = [r for r in records if "error" in r or r["dim_errors"] or max_abs_delta(r) > args.tolerance or _incomplete(r)]
@@ -247,17 +262,20 @@ def cmd_compare(args: argparse.Namespace) -> int:
         f"Submitted values compared with a re-score of the published outputs using ParseBench "
         f"`{_short(rescore['scored_with'])}` (tolerance ±{args.tolerance:g} pt). {POLICY}"
     )
-    report = render_report("Leaderboard verification", records, args.tolerance, intro)
+    title = "Leaderboard verification" if board.name == "v1" else "ParseBench 2 leaderboard verification"
+    report = render_report(title, records, args.tolerance, intro, board)
     report += "\n" + (
         "**Result: pass** — every changed row matches its re-score."
         if not bad
         else f"**Result: fail** — {len(bad)} row(s) differ from the re-score or could not be re-scored. "
-        "Update leaderboard.csv to the re-scored values above or fix the published outputs."
+        f"Update {board.csv_path.name} to the re-scored values above or fix the published outputs."
     )
     if incomplete:
         report += "\n\n" + "\n".join(
             f"- **{r['provider']}** misses more than {MAX_MISSING_SHARE:.0%} of "
-            + ", ".join(f"{SHORT[c]} ({a}/{t})" for c, (a, t) in r["coverage"].items() if 1 - a / t > MAX_MISSING_SHARE)
+            + ", ".join(
+                f"{board.short[c]} ({a}/{t})" for c, (a, t) in r["coverage"].items() if 1 - a / t > MAX_MISSING_SHARE
+            )
             + ": publish every page, or keep the row unverified."
             for r in incomplete
         )
@@ -278,14 +296,18 @@ def main() -> int:
     for name in ("apply", "compare"):
         p = sub.add_parser(name)
         p.add_argument("rescore", type=Path)
-        p.add_argument("--csv", type=Path, default=CSV_PATH)
-        p.add_argument("--map", type=Path, default=MAP_PATH)
+        p.add_argument("--board", choices=sorted(BOARDS), default="v1")
+        p.add_argument("--csv", type=Path, default=None, help="default: the board's csv")
+        p.add_argument("--map", type=Path, default=None, help="default: the board's results map")
         p.add_argument("--report", type=Path, default=None)
         if name == "apply":
             p.add_argument("--threshold", type=float, default=2.0, help="flag changes at least this large (points)")
         else:
             p.add_argument("--tolerance", type=float, default=0.5, help="allowed |submitted - re-scored| (points)")
     args = parser.parse_args()
+    board = BOARDS[args.board]
+    args.csv = args.csv or board.csv_path
+    args.map = args.map or board.map_path
     return cmd_apply(args) if args.command == "apply" else cmd_compare(args)
 
 
