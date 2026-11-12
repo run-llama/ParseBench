@@ -13,6 +13,11 @@ All notable changes to `parse-bench` are recorded here. The format follows
   A verified row is re-scored over all 13 subsets with `evaluation run --next ... --next_only`. The verification and
   daily re-score workflows cover both leaderboards. Azure Document Intelligence is the first verified row.
 
+### Scoring
+- Layout adapters for the `mineru2605pro` and `mistral_ocr` providers. Their results fell back to the LlamaParse
+  adapter, which re-scaled MinerU2.5-Pro's normalized boxes to the page corner (ParseBench 2 visual grounding 75.81
+  instead of 82.23) and read Mistral OCR's blocks slightly differently (81.86 instead of 81.82).
+
 ## [2.0.1] - 2026-11-12
 
 ### Added

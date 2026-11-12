@@ -3387,6 +3387,17 @@ _NANO_LAYOUT_LABEL_TO_CANONICAL = {
 }
 
 
+@register_layout_adapter("mineru2605pro", priority=90)
+class MinerU2605ProLayoutAdapter(MinerU25LayoutAdapter):
+    """Extract LayoutOutput from MinerU2.5-Pro ``ParseOutput.layout_pages`` for cross-eval.
+
+    The ``mineru2605pro`` PARSE provider writes the same layout_pages as MinerU 2.5: item
+    boxes normalized to [0,1] on pages whose width and height are in pixels. Without this
+    key the matcher fallback picks ``LlamaParseLayoutAdapter``, which divides those boxes by
+    the pixel size again and reads every block at [0,0,0,0].
+    """
+
+
 @register_layout_adapter(
     "kdl_frontier_nano", "florin_parser_nano", "rakedoc_nano", "aeddix_alpine_ocr_kdl", priority=90
 )
@@ -4039,6 +4050,18 @@ class NutrientDwsLayoutAdapter(LayoutAdapter):
             predictions=predictions,
             markdown="\n\n".join(markdown_parts),
         )
+
+
+@register_layout_adapter("mistral_ocr", priority=90)
+class MistralOcrLayoutAdapter(NutrientDwsLayoutAdapter):
+    """Extract LayoutOutput from Mistral OCR ``ParseOutput.layout_pages`` for cross-eval.
+
+    The ``mistral_ocr`` PARSE provider maps each page's ``blocks`` into
+    ``layout_pages`` with normalized [0,1] xywh segments, canonical labels and the
+    block text, which is the shape the Nutrient conversion reads. The key must
+    stay registered: the matcher fallback resolves Mistral results to
+    ``LlamaParseLayoutAdapter``, which reads no attribution blocks from them.
+    """
 
 
 @register_layout_adapter("upstage", priority=90)
