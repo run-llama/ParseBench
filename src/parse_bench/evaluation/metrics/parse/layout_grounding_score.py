@@ -487,6 +487,9 @@ def _triage(
     for k in used:
         if iou_pp[j, k] >= DUPLICATE_IOU:
             return "extra", f"duplicate of #{k}"
+    # Skip boxes come first: a mark-scope checkbox inside a table cell is neutral, not a child of the table.
+    if shield[j].any():
+        return "neutral", "on ignore/optional element"
     held = np.flatnonzero(in_pred[:, j])
     for k, gi in used.items():
         if elems[gi].cls != "Table" or ioa_pp[j, k] < NESTED_IOA:
@@ -494,8 +497,6 @@ def _triage(
         if len(held) and _iou(p_boxes[j], _ubox(w_boxes[held])) >= TIGHT_IOU:
             return "neutral", f"tight child of table #{k}"
         return "extra", f"garbage child of table #{k}"
-    if shield[j].any():
-        return "neutral", "on ignore/optional element"
     for gi, mt in enumerate(matches):
         if j not in mt.m and len(mt.lock) and in_pred[mt.lock, j].any():
             return "extra", f"holds words locked to #{mt.m[0]} ({elems[gi].id})"

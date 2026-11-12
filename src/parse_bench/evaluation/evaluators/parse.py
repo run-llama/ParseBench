@@ -5,6 +5,7 @@ from concurrent.futures import ProcessPoolExecutor
 from typing import Any
 
 from parse_bench.evaluation.evaluators.base import BaseEvaluator
+from parse_bench.evaluation.markdown_attribution import compute_markdown_attribution_metrics
 from parse_bench.evaluation.metrics.field_grounding.parse_adapter import (
     compute_parse_field_grounding_metrics,
 )
@@ -59,6 +60,7 @@ from parse_bench.schemas.evaluation import EvaluationResult, MetricValue
 from parse_bench.schemas.parse_output import ParseOutput
 from parse_bench.schemas.pipeline_io import InferenceResult
 from parse_bench.schemas.product import ProductType
+from parse_bench.test_cases.markdown_attribution_schema import MarkdownAttributionRule
 from parse_bench.test_cases.schema import (
     ExtractFieldTestRule,
     ExtractTestCase,
@@ -71,7 +73,7 @@ from parse_bench.test_cases.schema import (
 # models coexist with parse rules on the same list and are invisible to the
 # parse rule factory; they'd otherwise count as spurious failures in
 # ``RuleBasedMetric``.
-_NON_PARSE_RULE_TYPES: tuple[type, ...] = (LayoutTestRule, ExtractFieldTestRule)
+_NON_PARSE_RULE_TYPES: tuple[type, ...] = (LayoutTestRule, ExtractFieldTestRule, MarkdownAttributionRule)
 _STYLING_F_BETA = 0.5
 
 
@@ -338,6 +340,13 @@ class ParseEvaluator(BaseEvaluator):
             raise ValueError("Test case must be ParseTestCase or ExtractTestCase for PARSE evaluation")
 
         metrics: list[MetricValue] = []
+
+        # Opt-in metric family for markdown_attribution rules (document-scoped, scored outside the binary rules).
+        md_attribution_rules = [
+            rule for rule in (test_case.test_rules or []) if isinstance(rule, MarkdownAttributionRule)
+        ]
+        if md_attribution_rules:
+            metrics.extend(compute_markdown_attribution_metrics(inference_result.output, md_attribution_rules))
 
         # Rule-based evaluation
         if self._enable_rule_based:

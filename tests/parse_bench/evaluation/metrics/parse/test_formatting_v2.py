@@ -540,6 +540,58 @@ def test_decoration_reference_needs_a_known_kind_and_markdown():
     assert decoration_reference(None) is None
 
 
+@pytest.mark.parametrize(
+    ("tag", "markers", "kind", "severity"), [("s", "~~", "strikethrough", "critical"), ("b", "**", "bold", "minor")]
+)
+def test_html_table_markdown_delimiters_do_not_satisfy_formatting(
+    tag: str, markers: str, kind: str, severity: str
+) -> None:
+    ref = f"<table><tr><td><{tag}>old value</{tag}></td></tr></table>"
+    literal = f"<table><tr><td>{markers}old value{markers}</td></tr></table>"
+    assert (f"{kind} lost", severity) in kinds(ref, literal)
+    assert score(ref, literal) < 1.0
+    assert score(ref, f"| {markers}old value{markers} |\n|---|") == pytest.approx(1.0)
+    assert score(ref, ref) == pytest.approx(1.0)
+
+
+def test_html_table_style_tags_keep_literal_markers_and_mixed_markdown() -> None:
+    ref = (
+        "Before ~~removed~~.\n\n<table><tr><td><del>~~old~~ value</del></td>"
+        "<td><strong>**new**</strong></td></tr></table>\n\nAfter **current**."
+    )
+    escaped = ref.replace("~~old~~", "&#126;&#126;old&#126;&#126;").replace("**new**", "&#42;&#42;new&#42;&#42;")
+    assert score(ref, escaped) == pytest.approx(1.0)
+    assert ("strikethrough lost", "critical") in kinds(ref, escaped.replace("<del>", "").replace("</del>", ""))
+    assert ("bold lost", "minor") in kinds(ref, escaped.replace("<strong>", "").replace("</strong>", ""))
+
+
+def test_link_counts_as_underline_only_where_the_reference_underlines():
+    ref = "Read the <u>ISSB standards</u> before filing."
+    assert score(ref, "Read the [ISSB standards](https://www.ifrs.org/issb) before filing.") == 1.0
+    assert score(ref, "Read the [<u>ISSB standards</u>](https://www.ifrs.org/issb) before filing.") == 1.0
+    assert ("underline lost", "minor") in kinds(ref, "Read the ISSB standards before filing.")
+    plain_ref = ref.replace("<u>ISSB standards</u>", "ISSB standards")
+    meta = _decoration_case("underline", plain_ref, ["ISSB standards"])
+    linked = "Read the [ISSB standards](https://www.ifrs.org/issb) before filing."
+    assert _fmt(meta, linked)["formatting_v2"].value == 1.0
+
+
+def test_link_markup_is_neutral_where_the_page_is_plain():
+    ref = "Alygizakis<sup>3,2</sup> and an <u>underlined</u> note; mail us at help@hca.wa.gov."
+    out = (
+        "Alygizakis<sup>[3,2](https://orcid.org/0000)</sup> and an <u>underlined</u> note; "
+        "mail us at [help@hca.wa.gov](mailto:help@hca.wa.gov)."
+    )
+    assert score(ref, out) == 1.0
+    toc_ref = "## Contents\n\n[Table of Contents](toc) and an <u>underlined</u> note."
+    assert score(toc_ref, "## Contents\n\nTable of Contents and an <u>underlined</u> note.") == 1.0
+
+
+def test_explicit_underline_on_plain_link_text_is_still_false():
+    ref = "Visit the company website and an <u>underlined</u> note."
+    assert score(ref, "Visit the [<u>company website</u>](https://x.com) and an <u>underlined</u> note.") < 1.0
+
+
 def test_strike_with_space_inside_its_delimiters_still_reads_as_struck() -> None:
     # "~~Risk ~~Factors" is not a GFM strike; it read as plain text and could pair with a later span's "~~"
     ref = "The ~~Customer Privacy &~~ Data and ~~Risk~~ Factors apply. Keep ~~this~~ and ~~that~~ here."

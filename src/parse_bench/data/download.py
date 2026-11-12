@@ -1,9 +1,11 @@
 """Download parse-bench datasets from HuggingFace.
 
 Datasets (``--dataset``):
-    parsebench  https://huggingface.co/datasets/llamaindex/ParseBench (default)
-    org/name    any other HuggingFace dataset repo in the same layout: ``<category>.jsonl`` rows and ``docs/``,
-                downloaded to ``./data/<name, lowercased>``
+    parsebench    https://huggingface.co/datasets/llamaindex/ParseBench (default)
+    parsebench-2  https://huggingface.co/datasets/llamaindex/ParseBench-2, one folder per subset with a
+                  ``<name>.test.json`` next to every page, downloaded to ``./data_parsebench-2``
+    org/name      any other HuggingFace dataset repo in the same layout: ``<category>.jsonl`` rows and ``docs/``,
+                  downloaded to ``./data/<name, lowercased>``
 
 Structure after download:
     <local_dir>/
@@ -30,6 +32,28 @@ TEST_DATA_REVISION = "test-data"
 # by an existing full download.
 DEFAULT_DATA_DIR = Path("./data")
 DEFAULT_TEST_DATA_DIR = Path("./data/test")
+# Outside ./data: its sidecar test.json files would make the loader read ./data as a sidecar dataset.
+PARSEBENCH2_DATA_DIR = Path("./data_parsebench-2")
+
+# ParseBench 2 subsets (the ``evaluation run --next`` names); each one's cases are in the folder of the same name.
+PARSEBENCH2_SUBSETS: dict[str, str] = {
+    name: name
+    for name in (
+        "text",
+        "headings",
+        "strikeout",
+        "underline",
+        "tables",
+        "complex_table_headers",
+        "financial_tables",
+        "insurance_filing_tables",
+        "dense_tables",
+        "charts",
+        "layout",
+        "forms",
+        "fillable_forms",
+    )
+}
 
 
 @dataclass(frozen=True)
@@ -42,6 +66,8 @@ class DatasetSpec:
     doc_dirs: tuple[str, ...]
     test_data_dir: Path | None = None
     test_revision: str | None = None
+    # Sidecar datasets: (subset, folder) pairs; a complete copy has a test.json in every folder.
+    subsets: tuple[tuple[str, str], ...] = ()
 
 
 DATASETS: dict[str, DatasetSpec] = {
@@ -58,6 +84,13 @@ DATASETS: dict[str, DatasetSpec] = {
         doc_dirs=("docs/chart", "docs/layout", "docs/table", "docs/text"),
         test_data_dir=DEFAULT_TEST_DATA_DIR,
         test_revision=TEST_DATA_REVISION,
+    ),
+    "parsebench-2": DatasetSpec(
+        repo="llamaindex/ParseBench-2",
+        data_dir=PARSEBENCH2_DATA_DIR,
+        required_files=(),
+        doc_dirs=(),
+        subsets=tuple(PARSEBENCH2_SUBSETS.items()),
     ),
 }
 
@@ -107,6 +140,9 @@ def is_dataset_ready(data_dir: Path, dataset: str = "parsebench") -> bool:
     spec = dataset_spec(dataset)
     if not data_dir.exists():
         return False
+
+    if spec.subsets:
+        return all(any((data_dir / folder).rglob("*.test.json")) for _, folder in spec.subsets)
 
     for f in spec.required_files:
         if not (data_dir / f).exists():

@@ -211,3 +211,22 @@ def test_sparse_table_leaves_bare_currency_cells_out() -> None:
     assert res.score >= 0.99
     dash = "| Item | 2024 |\n|---|---|\n| Revenue | $ - |\n| Net | 500 |"
     assert score_table_next(dash, dash.replace("| $ - |", "| |")).score < 0.9  # "$ -" is still a dash mark
+
+
+def test_numbered_prose_difference_does_not_claim_unit_loss() -> None:
+    ref = _html([["Item", "Details"], ["A", "1. Review stakeholder positions"]])
+    out = _html([["Item", "Details"], ["A", "1. Review stake-holder positions"]])
+    result = score_table_next(ref, out)
+    details = [event[0] for event in result.events.items if event[-1] == "detail"]
+    assert "unit lost" not in details
+    assert "value partly differs" in details
+    assert result.score < 1
+
+
+def test_actual_unit_loss_retains_partial_credit_and_major_penalty() -> None:
+    ref = _html([["Item", "Dose"], ["A", "12 mg"]])
+    out = _html([["Item", "Dose"], ["A", "12"]])
+    result = score_table_next(ref, out)
+    assert value_sim("12 mg", "12") == 0.5
+    assert result.score < 1
+    assert any(event[-1] == "major" for event in result.events.items)

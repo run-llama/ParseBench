@@ -149,3 +149,16 @@ def test_chart_text_inside_a_picture_is_not_graded() -> None:
     metric = _single_score(rules, [_block(rules[0].bbox, "", 0)])
     assert metric.metadata["element_results"][0]["A"] is None
     assert metric.value == pytest.approx(1.0)
+
+
+def test_prediction_on_mark_scope_checkbox_inside_a_table_is_not_an_extra() -> None:
+    """The table-child test ran before the skip-box test, so a checkbox box in a table cell was a garbage child."""
+    box = [0.1, 0.1, 0.4, 0.2]
+    rules = [
+        _rule("T", box, "Table", content={"type": "table", "html": "<table><tr><td>Yes</td><td>No</td></tr></table>"}),
+        _word("W1", "T", [0.15, 0.15, 0.05, 0.03], "Yes"),
+        _word("W2", "T", [0.35, 0.15, 0.05, 0.03], "No"),
+        _rule("C", [0.25, 0.15, 0.02, 0.02], "Checkbox-Selected", attributes={"scope": "mark"}),
+    ]
+    metric = _single_score(rules, [_block(box, "Yes No", 0), _block([0.25, 0.15, 0.02, 0.02], "", 1)])
+    assert metric.value == pytest.approx(1.0)

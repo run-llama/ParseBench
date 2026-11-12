@@ -10,7 +10,7 @@ import fire
 from parse_bench.analysis.aggregation_report import generate_aggregation_report
 from parse_bench.analysis.cli import AnalysisCLI
 from parse_bench.analysis.leaderboard_report import generate_leaderboard_report
-from parse_bench.data.download import default_data_dir, download_dataset, is_dataset_ready
+from parse_bench.data.download import dataset_spec, default_data_dir, download_dataset, is_dataset_ready
 from parse_bench.evaluation.cli import EvaluationCLI
 from parse_bench.inference.cli import InferenceCLI
 
@@ -75,18 +75,24 @@ class PipelineCLI:
             max_concurrent: Maximum concurrent inference requests (default: 20)
             force: Force regeneration even if results already exist (default: False)
             verbose: Enable verbose output (default: False)
-            group: Optional group name to filter test cases (e.g., 'chart')
+            group: Optional group name to filter test cases (e.g., 'chart'). With --dataset parsebench-2:
+                the subsets to run inference on, comma-separated (e.g., 'charts,tables'); every subset
+                with results is still scored
             tags: Tags for this run - comma-separated string or list
             open_report: Open the HTML report in browser when done (default: True)
             skip_inference: Skip inference step, only run evaluation and report (default: False)
             test: Download and run on the small test dataset (3 files per category)
-            dataset: Which dataset: 'parsebench' (default) or a HuggingFace repo id (org/name) in the same layout
+            dataset: Which dataset: 'parsebench' (default), 'parsebench-2' (ParseBench 2, scored with the
+                extended scorers into six dimensions and an overall score) or a HuggingFace repo id
+                (org/name) in the ParseBench layout
 
         Returns:
             Exit code (0 for success, non-zero for failure)
 
         Example:
             parse-bench run llamaparse_agentic --dataset acme/MyBench
+            parse-bench run llamaparse_agentic --dataset parsebench-2
+            parse-bench run llamaparse_agentic --dataset parsebench-2 --group charts
             parse-bench run llamaparse_agentic
             parse-bench run llamaparse_agentic_plus --max_concurrent 10
             parse-bench run llamaparse_agentic --skip_inference
@@ -101,6 +107,27 @@ class PipelineCLI:
                     output_dir=Path(output_dir) if output_dir else Path("./output"),
                     force=force,
                     verbose=verbose,
+                    tags=tags,
+                    open_report=open_report,
+                    skip_inference=skip_inference,
+                )
+
+            if dataset_spec(dataset).subsets:
+                if test:
+                    print(
+                        f"Error: the {dataset!r} dataset has no test subset; use --group to run one subset",
+                        file=sys.stderr,
+                    )
+                    return 1
+                return self._run_subsets(
+                    pipeline=pipeline,
+                    dataset=dataset,
+                    input_dir=Path(input_dir) if input_dir is not None else None,
+                    output_base=Path(output_dir) if output_dir else Path("./output"),
+                    max_concurrent=max_concurrent,
+                    force=force,
+                    verbose=verbose,
+                    group=group,
                     tags=tags,
                     open_report=open_report,
                     skip_inference=skip_inference,
@@ -197,6 +224,106 @@ class PipelineCLI:
 
             traceback.print_exc()
             return 1
+
+    def _run_subsets(
+        self,
+        pipeline: str,
+        dataset: str,
+        input_dir: Path | None,
+        output_base: Path,
+        max_concurrent: int,
+        force: bool,
+        verbose: bool,
+        group: str | tuple[str, ...] | list[str] | None,
+        tags: str | tuple[str, ...] | list[str] | None,
+        open_report: bool,
+        skip_inference: bool,
+    ) -> int:
+        """Run a dataset of subsets (ParseBench 2): inference per subset folder, then the combined ``--next`` score.
+
+        Results of subset S go to ``<output>/<dataset>/<S>/<pipeline>/`` and the combined score to
+        ``<output>/<dataset>/_score/<pipeline>/_next_score.json``. Every subset with results is scored, so
+        subsets run separately (``--group``) add up to the full score.
+        """
+        spec = dataset_spec(dataset)
+        subsets = dict(spec.subsets)
+        selected = list(subsets)
+        if group:
+            names = group.split(",") if isinstance(group, str) else [str(g) for g in group]
+            selected = [n.strip() for n in names if n.strip()]
+            unknown = [n for n in selected if n not in subsets]
+            if unknown:
+                print(
+                    f"Error: unknown {dataset} subset(s) {', '.join(unknown)}; expected one of: {', '.join(subsets)}",
+                    file=sys.stderr,
+                )
+                return 1
+
+        data_dir = input_dir or default_data_dir(dataset=dataset)
+        if input_dir is None and not is_dataset_ready(data_dir, dataset):
+            print(f"Dataset not found at {data_dir}, downloading from HuggingFace...")
+            try:
+                download_dataset(data_dir=data_dir, dataset=dataset)
+            except Exception as e:
+                print(f"Error downloading dataset: {e}", file=sys.stderr)
+                return 1
+
+        run_base = output_base / dataset
+        failed: list[str] = []
+        if not skip_inference:
+            for i, subset in enumerate(selected, 1):
+                print("\n" + "=" * 60)
+                print(f"Inference {i}/{len(selected)}: {subset} ({subsets[subset]})")
+                print("=" * 60 + "\n")
+                exit_code = InferenceCLI().run(
+                    pipeline=pipeline,
+                    input_dir=data_dir / subsets[subset],
+                    output_dir=run_base / subset,
+                    max_concurrent=max_concurrent,
+                    force=force,
+                    verbose=verbose,
+                    tags=tags,
+                    force_exit_on_completion=False,
+                )
+                if exit_code != 0:
+                    print(f"\nInference failed for subset '{subset}' with exit code {exit_code}", file=sys.stderr)
+                    failed.append(subset)
+            if len(failed) == len(selected):
+                return 1
+
+        sources = {
+            # Absolute: --next resolves relative directories against output_dir.
+            subset: {"output_dir": str(results.resolve()), "test_cases_dir": str((data_dir / folder).resolve())}
+            for subset, folder in subsets.items()
+            if (results := run_base / subset / pipeline).is_dir() and any(results.rglob("*.result.json"))
+        }
+        if not sources:
+            print(f"Error: no {pipeline} results under {run_base}", file=sys.stderr)
+            return 1
+
+        print("\n" + "=" * 60)
+        print(f"Scoring {len(sources)}/{len(subsets)} subsets")
+        print("=" * 60)
+        score_dir = run_base / "_score" / pipeline
+        exit_code = EvaluationCLI().run(
+            output_dir=run_base,
+            report_dir=str(score_dir),
+            verbose=verbose,
+            force=force,
+            next=sources,
+        )
+
+        if open_report:
+            first = next(iter(sources))
+            report_path = Path(sources[first]["output_dir"]) / "_evaluation_report_detailed.html"
+            if report_path.exists():
+                webbrowser.open(f"file://{report_path.absolute()}")
+
+        print(f"\nResults: {run_base}/<subset>/{pipeline}")
+        print(f"Score:   {score_dir / '_next_score.json'}")
+        if failed:
+            print(f"Inference failed for: {', '.join(failed)}", file=sys.stderr)
+        return exit_code or (1 if failed else 0)
 
     def _run_evaluation_and_report(
         self,

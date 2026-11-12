@@ -4,14 +4,14 @@ All notable changes to `parse-bench` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [1.0.4] - 2026-09-04
-
-### Added
-- `LayoutDetectionModel.FIRECRAWL_LAYOUT` (with a `LAYOUT_MODEL_INFO` entry) so
-  Firecrawl parse output can be cross-evaluated on the layout-attribution
-  datasets, matching the other layout-capable parse providers.
-
 ## [Unreleased]
+
+## [2.0.0] - 2026-11-11
+
+ParseBench 2: `--dataset parsebench-2` runs the 13 ParseBench 2 subsets and scores them into six dimensions and an
+overall score. The extended scorers are synced with the internal harness. Scores change for
+tables, formatting and layout (see Scoring); ParseBench 2 scores are not comparable with ParseBench v1
+scores.
 
 ### Scoring (changes evaluation numbers)
 - `table_next`: a blank cell drawn as a dash is no longer an error wherever it sits (row label, section row, corner
@@ -28,6 +28,12 @@ All notable changes to `parse-bench` are recorded here. The format follows
   plain text, and no longer pairs with a later span's `~~`. `a.`, `b)` and `i.` are list markers like `1.`, and a marker
   inside the item's opening style (`~~a. Violation~~`) reads the same as one outside it (`a. ~~Violation~~`). Scores on
   strikeout pages written this way rise (four audited LlamaParse pages go from 0.00–0.71 to 1.00).
+- `formatting_v2`: Markdown delimiters inside HTML table cells stay literal (`<td>**x**</td>` is not bold), and a link
+  label counts as underlined only where the reference underlines that text; elsewhere link markup is neutral.
+  `table_next`: a non-numeric cell that only partly matches is charged as "value partly differs", not "unit lost"
+  (same severity).
+- `layout_grounding_pass_rate`: a predicted box on an ignore/optional element inside a table (a checkbox mark) is
+  neutral instead of a garbage child of the table.
 - Visual Grounding attribution for PARSE results no longer depends on whether the raw provider response is
   present. Cross-evaluation evaluated a synthetic layout result and re-resolved its adapter from it, which only
   sees `raw_output`; LlamaParse-style adapters then lost the pages read from `ParseOutput.layout_pages` and fell
@@ -57,30 +63,33 @@ All notable changes to `parse-bench` are recorded here. The format follows
   re-scores rows from those outputs. Two workflows use it: *Leaderboard verification* checks
   leaderboard PRs against a re-score, and *Leaderboard re-score* re-scores every verified row daily when the harness
   changes and opens a PR. See `leaderboard/README.md`.
-- `repetition_overshoot`, a built-in rule that fails an output repeating anything (a leader, a unit, a token, a line,
-  a table row, a whole table) more than the page holds. `parse-bench repetition make <dir>` writes this test next to
-  each of your own PDFs, budgeted from its text layer. See `docs/repetition-overshoot.md`.
-- `--dataset` on `download`, `status` and `run` accepts any HuggingFace dataset repo id (`org/name`) in the ParseBench
-  layout, downloaded to `./data/<name>`.
+- `--dataset parsebench-2` on `download`, `status` and `run` for ParseBench 2 (`llamaindex/ParseBench-2`, 13 subsets,
+  downloaded to `./data_parsebench-2`). `parse-bench run <pipeline> --dataset parsebench-2` runs inference on each
+  subset folder and scores every subset with results with the extended scorers (`evaluation run --next`) into the six
+  dimensions and the overall score, written to `output/parsebench-2/_score/<pipeline>/_next_score.json`. `--group`
+  takes subset names (`charts,tables`) to run only those.
+- The `markdown_attribution` rule and its scorer (`md_attribution_v1_*` metrics, scorer version 2), ported from the
+  internal harness. ParseBench 2's `layout` subset carries one on each of its 86 `markdown_block_layout` pages,
+  which failed to load before. Its metrics are diagnostics: the Layout dimension stays `layout_grounding_pass_rate`.
+  Re-scoring the internal Azure Document Intelligence layout run with this code reproduces all of its layout and
+  attribution aggregates and every page's layout score.
 
 ### Fixed
 - `tables_values` rules no longer crash scoring when the table is matched but too few cells match exactly.
   That failure path returned a third tuple item, which the metric read as a score
   (`could not convert string to float`), so the page lost every rule result instead of failing this one rule.
   Such pages are now scored, with the rule reported as failed.
-- Layout attribution no longer crashes on layout rules without an `ro_index`.
-  `LayoutDetectionEvaluator` dumps rules with `ro_index=None`, which
-  `parse_gt_elements` kept, so the reading-order sort raised `TypeError` and
-  the page was dropped. A null `ro_index` now reads as `0`, as an absent key
-  already did.
-- `diagram_graph` rules no longer crash when their `reference_image` resolves.
-  The rule reached for `rules_image.thumbnail_data_uri`, a module that only
-  exists in the internal harness, so scoring a diagram with a reference render
-  raised `ModuleNotFoundError` instead of returning a score. The crash was
-  latent until 1.0.1 started forwarding the test case and source paths, which
-  is what lets the reference resolve in the first place.
+
+## [1.0.7] - 2026-11-01
+
+Released as 1.0.5 to 1.0.7 without per-version entries; this lists what shipped by 1.0.7.
 
 ### Added
+- `repetition_overshoot`, a built-in rule that fails an output repeating anything (a leader, a unit, a token, a line,
+  a table row, a whole table) more than the page holds. `parse-bench repetition make <dir>` writes this test next to
+  each of your own PDFs, budgeted from its text layer. See `docs/repetition-overshoot.md`.
+- `--dataset` on `download`, `status` and `run` accepts any HuggingFace dataset repo id (`org/name`) in the ParseBench
+  layout, downloaded to `./data/<name>`.
 - `ovisocr3_vllm` pipeline and `ovisocr3` provider for OvisOCR3
   (`OVISOCR3_SERVER_URL`). Sends the official structured-parsing prompt, re-reads
   each chart region with the official chart-parsing prompt, and scores layout
@@ -120,6 +129,26 @@ All notable changes to `parse-bench` are recorded here. The format follows
   instead of about 4.8 s in a full install. The provider subpackages expose
   `load_providers()` and the registry `load_builtin_providers()`; code that
   read `_PROVIDER_REGISTRY` directly should call the latter first.
+
+### Fixed
+- Layout attribution no longer crashes on layout rules without an `ro_index`.
+  `LayoutDetectionEvaluator` dumps rules with `ro_index=None`, which
+  `parse_gt_elements` kept, so the reading-order sort raised `TypeError` and
+  the page was dropped. A null `ro_index` now reads as `0`, as an absent key
+  already did.
+- `diagram_graph` rules no longer crash when their `reference_image` resolves.
+  The rule reached for `rules_image.thumbnail_data_uri`, a module that only
+  exists in the internal harness, so scoring a diagram with a reference render
+  raised `ModuleNotFoundError` instead of returning a score. The crash was
+  latent until 1.0.1 started forwarding the test case and source paths, which
+  is what lets the reference resolve in the first place.
+
+## [1.0.4] - 2026-09-04
+
+### Added
+- `LayoutDetectionModel.FIRECRAWL_LAYOUT` (with a `LAYOUT_MODEL_INFO` entry) so
+  Firecrawl parse output can be cross-evaluated on the layout-attribution
+  datasets, matching the other layout-capable parse providers.
 
 ## [1.0.2] - 2026-09-04
 
