@@ -34,6 +34,13 @@ All notable changes to `parse-bench` are recorded here. The format follows
   (same severity).
 - `layout_grounding_pass_rate`: a predicted box on an ignore/optional element inside a table (a checkbox mark) is
   neutral instead of a garbage child of the table.
+- `chart_next` follows the chart annotation guide: a reference 0, or a bar/stacked/area/combo segment no larger than
+  2% of the chart's largest value, is not required (left blank it gets full credit; a number written there is still
+  scored). When the reference is a model's reading of the axis (`chart_tables_source` review_accept, review_fixed or
+  auto_spot), the axis tolerance is 6% of the value range instead of 2%. When every required series is present, an
+  extra column that is a printed total, a share or an error-bar bound is not charged, and colour groups written as
+  one value column with a group column no longer cost a minor. Internal re-score of one Agentic run on
+  `charts_extended/v1.2`: 93.23 -> 95.64.
 - Visual Grounding attribution for PARSE results no longer depends on whether the raw provider response is
   present. Cross-evaluation evaluated a synthetic layout result and re-resolved its adapter from it, which only
   sees `raw_output`; LlamaParse-style adapters then lost the pages read from `ParseOutput.layout_pages` and fell
