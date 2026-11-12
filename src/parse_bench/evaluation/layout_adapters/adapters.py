@@ -1657,6 +1657,17 @@ class AnthropicLayoutAdapter(LayoutAdapter):
         )
 
 
+@register_layout_adapter("meta", priority=90)
+class MetaLayoutAdapter(OpenAILayoutAdapter):
+    """Extract LayoutOutput from the Meta Muse ``parse_with_layout*`` PARSE pipelines.
+
+    The ``meta`` provider parses through the OpenAI provider's Responses layout path, so
+    its ``layout_pages`` match OpenAI's. The key must stay registered: the matcher fallback
+    resolves these results to ``LlamaParseLayoutAdapter``, which reads the empty item ``md``
+    and scores every element's attribution as 0.
+    """
+
+
 @register_layout_adapter("reducto", priority=90)
 class ReductoLayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from Reducto ParseOutput.layout_pages.
@@ -3290,6 +3301,36 @@ class QwenLayoutAdapter(LayoutAdapter):
             image_height=max(output_height, 1),
             predictions=predictions,
             layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
+        )
+
+
+@register_layout_adapter("lightonocr3", priority=90)
+class LightOnOcr3LayoutAdapter(Gemma4LayoutAdapter):
+    """Extract LayoutOutput from the ``lightonocr3`` (shared label map) PARSE pipelines.
+
+    The provider fills ``layout_pages`` with Canonical17 labels and normalized boxes, so
+    this reuses the shared parse_with_layout conversion (Qwen3-VL class indices) under the
+    OpenAI-compatible VLM layout model, unlike ``lightonocr-3``, which keeps raw labels.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput) or not inference_result.output.layout_pages:
+            return False
+        raw_output = inference_result.raw_output
+        config = raw_output.get("_config", {}) if isinstance(raw_output, dict) else {}
+        return isinstance(config, dict) and str(config.get("model", "")).startswith("lightonocr-3")
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        return _parse_with_layout_to_layout_output(
+            inference_result,
+            model=LayoutDetectionModel.OPENAI_COMPATIBLE_VLM_LAYOUT,
+            page_filter=page_filter,
         )
 
 

@@ -63,6 +63,9 @@ uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 | `openai_gpt_6_1_sol_reasoning_low_parse_with_layout_file` | GPT-6.1 Sol, low reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
 | `openai_gpt_6_1_terra_reasoning_low_parse_with_layout_file` | GPT-6.1 Terra, low reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
 | `openai_gpt_6_1_terra_reasoning_med_parse_with_layout_file` | GPT-6.1 Terra, medium reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
+| `openai_gpt_5_6_terra_reasoning_low_parse_with_layout` | GPT-5.6 Terra, low reasoning + layout, image mode (ParseBench 2 leaderboard) | `OPENAI_API_KEY` |
+| `openai_gpt_5_6_luna_reasoning_low_parse_with_layout` | GPT-5.6 Luna, low reasoning + layout, image mode (ParseBench 2 leaderboard) | `OPENAI_API_KEY` |
+| `openai_gpt_6_luna_reasoning_low_parse_with_layout` | GPT-6 Luna, low reasoning + layout, image mode (ParseBench 2 leaderboard) | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_medium_parse` | GPT-5 Mini, medium reasoning, image mode | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_medium_parse_file` | GPT-5 Mini, medium reasoning, PDF file mode | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_minimal_parse` | GPT-5 Mini, minimal reasoning | `OPENAI_API_KEY` |
@@ -95,6 +98,8 @@ uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 | `anthropic_sonnet_5_parse_with_layout_file` | Claude Sonnet 5, adaptive thinking + layout, file mode | `ANTHROPIC_API_KEY` |
 | `anthropic_fable_5_parse_with_layout_file` | Claude Fable 5, parse + layout, file mode | `ANTHROPIC_API_KEY` |
 | `anthropic_fable_5_1_parse_with_layout_file` | Claude Fable 5.1, parse + layout, file mode | `ANTHROPIC_API_KEY` |
+| `anthropic_opus_5_5_parse_with_layout` | Claude Opus 5.5, parse + layout, image mode, pixel bboxes at high resolution (ParseBench 2 leaderboard) | `ANTHROPIC_API_KEY` |
+| `anthropic_haiku_5_5_parse_with_layout` | Claude Haiku 5.5, parse + layout, image mode, pixel bboxes at high resolution (ParseBench 2 leaderboard) | `ANTHROPIC_API_KEY` |
 
 ### Google Gemini
 
@@ -128,6 +133,13 @@ uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 | `google_gemini_3_6_flash_parse_with_layout` | Gemini 3.6 Flash, default thinking + layout, image mode | `GOOGLE_GEMINI_API_KEY` |
 | `google_gemini_3_6_flash_no_thinking_parse_with_layout` | Gemini 3.6 Flash, minimal thinking + layout, image mode | `GOOGLE_GEMINI_API_KEY` |
 | `google_gemini_3_7_flash_thinking_high_parse_with_layout_file` | Gemini 3.7 Flash, high thinking + layout, file mode | `GOOGLE_GEMINI_API_KEY` |
+| `gemini_4_argon_thinking_low_parse_with_layout_file` | Gemini 4 Argon, low thinking + layout, file mode (ParseBench 2 leaderboard) | `GOOGLE_GEMINI_API_KEY` |
+
+### Meta Muse
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `muse_ember_1_0_reasoning_low_parse_with_layout_file` | Muse Ember 1.0, low reasoning + layout, file mode via the Responses API (ParseBench 2 leaderboard) | `META_API_KEY` |
 
 ### GLM (z.ai)
 
@@ -304,6 +316,8 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 | Pipeline | Description | Env Var |
 |---|---|---|
 | `lightonocr_3_vllm_parse` | LightOnOCR-3 grounding prompt, parse + layout from one pass (400 DPI, 5M pixel cap) | `LIGHTONOCR_3_SERVER_URL` |
+| `lightonocr3_4b_vllm` | LightOnOCR-3 4B, same request, labels through the shared layout label map (ParseBench 2 leaderboard) | `LIGHTONOCR_3_4B_SERVER_URL` |
+| `lightonocr3_0_8b_vllm` | LightOnOCR-3 0.8B, same request, labels through the shared layout label map (ParseBench 2 leaderboard) | `LIGHTONOCR_3_0_8B_SERVER_URL` |
 
 ### Chandra OCR 2
 
@@ -444,6 +458,8 @@ These run entirely locally and do not require API keys.
 | `tesseract_high_quality` | Tesseract OCR (high quality) | `tesseract` installed |
 | `infinity_parser2_flash` | Infinity-Parser2-Flash (vLLM server, JSON layout) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
 | `infinity_parser2_pro` | Infinity-Parser2-Pro (vLLM server, JSON layout) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
+| `infinity_parser2_flash_deep` | Infinity-Parser2-Flash with figure deep parsing pinned on (ParseBench 2 leaderboard) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
+| `infinity_parser2_pro_deep` | Infinity-Parser2-Pro with figure deep parsing pinned on (ParseBench 2 leaderboard) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
 
 Create the isolated Python environment for `pymupdf4llm_markdown` with
 `uv sync --python 3.12 --extra pymupdf4llm`, then run it with

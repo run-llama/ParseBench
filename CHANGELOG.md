@@ -12,6 +12,20 @@ All notable changes to `parse-bench` are recorded here. The format follows
   `Verified` column (unverified rows are marked † in the README), and the leaderboard scripts take `--board v2`.
   A verified row is re-scored over all 13 subsets with `evaluation run --next ... --next_only`. The verification and
   daily re-score workflows cover both leaderboards. Azure Document Intelligence is the first verified row.
+- The remaining ParseBench 2 leaderboard pipelines, under their leaderboard names, so their published outputs replay
+  with the provider's layout adapter: `anthropic_{opus,haiku}_5_5_parse_with_layout`,
+  `openai_gpt_5_6_{terra,luna}_reasoning_low_parse_with_layout`, `openai_gpt_6_luna_reasoning_low_parse_with_layout`,
+  `gemini_4_argon_thinking_low_parse_with_layout_file`, `muse_ember_1_0_reasoning_low_parse_with_layout_file`,
+  `lightonocr3_{4b,0_8b}_vllm` and `infinity_parser2_{pro,flash}_deep`.
+- `meta` parse provider for Meta Muse models (OpenAI-compatible Responses API, `META_API_KEY`), with a `meta` layout
+  adapter.
+- `lightonocr3` parse provider: the `lightonocr-3` grounding request with labels mapped through the shared layout
+  label map, with a `lightonocr3` layout adapter. Each model size reads its own server URL variable
+  (`LIGHTONOCR_3_4B_SERVER_URL`, `LIGHTONOCR_3_0_8B_SERVER_URL`).
+- Anthropic provider: `image_resolution` (`"high"` pre-resizes pixel-frame pages to the 2576 px / 4784 token tier)
+  and `layout_bbox_space: "pixels"` (`parse_with_layout`: asks for bboxes in pixels of the uploaded image, stating its
+  exact size in the prompt).
+- Gemini 4 Argon pricing in the Google provider.
 
 ### Scoring
 - Layout adapters for the `mineru2605pro` and `mistral_ocr` providers. Their results fell back to the LlamaParse
