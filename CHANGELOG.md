@@ -9,7 +9,7 @@ All notable changes to `parse-bench` are recorded here. The format follows
 ## [2.0.0] - 2026-11-11
 
 ParseBench 2: `--dataset parsebench2` runs the 13 ParseBench 2 subsets and scores them into six dimensions and an
-overall score. The extended scorers are synced with the internal harness (through internal #5202). Scores change for
+overall score. The extended scorers are synced with the internal harness. Scores change for
 tables, formatting, charts and layout (see Scoring); ParseBench 2 scores are not comparable with ParseBench v1
 scores.
 
