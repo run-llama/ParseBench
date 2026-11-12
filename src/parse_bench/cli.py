@@ -2,6 +2,7 @@
 
 import sys
 from pathlib import Path
+from typing import Any
 
 import fire
 from dotenv import find_dotenv, load_dotenv
@@ -47,6 +48,7 @@ class BenchCLI:
         download     Download dataset from HuggingFace
         status       Check if dataset is ready
         pipelines    List available pipeline configurations
+        rescore      Apply an exported Metric Lab policy to saved evaluations
         compare      Compare two pipeline results
         serve        View reports in browser with PDF support
         version      Print the installed parse-bench version
@@ -129,6 +131,38 @@ class BenchCLI:
             test=test,
             dataset=dataset,
         )
+
+    def rescore(
+        self,
+        output_dir: str | Path,
+        policy: str | Path,
+        next: bool | str | list[str] | tuple[str, ...] | dict[str, Any] = True,
+        report_dir: str | Path | None = None,
+    ) -> int:
+        """Rescore saved evaluations using a Metric Lab JSON policy.
+
+        Args:
+            output_dir: Directory containing _evaluation_report.json.
+            policy: JSON file downloaded with Export policy JSON in Metric Lab.
+            next: Subset name or SUBSET=RESULTS_DIR mapping, as in evaluation run --next.
+            report_dir: Destination for _policy_score.json (default: output_dir).
+
+        Example:
+            parse-bench rescore ./output/parser --policy policy.json --next=text
+        """
+        from parse_bench.evaluation.rescore import POLICY_SCORE_FILE, rescore_reports
+
+        try:
+            result = rescore_reports(output_dir, policy, next, report_dir)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        print(f"Policy scores saved to {Path(report_dir or output_dir) / POLICY_SCORE_FILE}")
+        if result["policy_score"] is None:
+            print("Overall score unavailable; missing dimensions: " + ", ".join(result["missing_dimensions"]))
+        else:
+            print(f"Policy score: {result['policy_score']:.6f}")
+        return 0
 
     def download(
         self,

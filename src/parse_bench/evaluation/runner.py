@@ -1406,11 +1406,13 @@ class EvaluationRunner:
             aggregate_stats=aggregate_stats,
         )
 
-    def aggregate_metrics(self, evaluation_results: list[EvaluationResult]) -> dict[str, float]:
+    @staticmethod
+    def aggregate_metrics(evaluation_results: list[EvaluationResult]) -> dict[str, float]:
         """Aggregate metrics of a list of evaluation results, as the run summary does."""
-        return self._aggregate_metrics(evaluation_results)
+        return EvaluationRunner._aggregate_metrics(evaluation_results)
 
-    def _aggregate_metrics(self, evaluation_results: list[EvaluationResult]) -> dict[str, float]:
+    @staticmethod
+    def _aggregate_metrics(evaluation_results: list[EvaluationResult]) -> dict[str, float]:
         """
         Aggregate metrics across all evaluation results.
 
