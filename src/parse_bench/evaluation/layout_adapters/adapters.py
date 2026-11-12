@@ -1514,6 +1514,28 @@ class DeepSeekLayoutAdapter(LayoutAdapter):
         )
 
 
+@register_layout_adapter("tencent_hy", priority=90)
+class TencentHYLayoutAdapter(DeepSeekLayoutAdapter):
+    """Adapter for the Tencent Hy (TokenHub) ``parse_with_layout`` pipelines.
+
+    The provider reuses the DeepSeek parse path, so its output has the same
+    ``<div data-bbox data-label>`` layout but a ``hy*`` model id, which no
+    other adapter matches.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput):
+            return False
+        if not inference_result.output.layout_pages:
+            return False
+        raw_output = inference_result.raw_output
+        if not isinstance(raw_output, dict):
+            return False
+        model = raw_output.get("model", "")
+        return isinstance(model, str) and model.startswith("hy") and raw_output.get("mode") == "parse_with_layout"
+
+
 @register_layout_adapter("nemotron_parse_3_5", priority=90)
 class NemotronParse35LayoutAdapter(HunyuanOcrLayoutAdapter):
     """Project Nemotron 3.5 Parse ``layout_pages`` like HunyuanOCR: Canonical17 labels kept as strings.

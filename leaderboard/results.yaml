@@ -301,6 +301,9 @@ rows:
   pipeline: amazon_nova_2_lite_parse_with_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
   note: 'incomplete published outputs: charts 555/568, content 495/506, grounding 492/500'
+- provider: Tencent Hy4 (Thinking High)
+  status: unverified
+  note: no published outputs in the results repo
 - provider: AWS Textract
   status: verified
   pipeline: aws_textract

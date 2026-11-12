@@ -64,6 +64,7 @@ _PROVIDER_MODULES = [
     "reducto",
     "surya2",
     "teleocr",
+    "tencent_hy",
     "tesseract",
     "textract",
     "unlimitedocr",
