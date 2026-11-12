@@ -1,4 +1,4 @@
-"""Regenerate the Top-N leaderboard table in README.md from leaderboard.csv.
+"""Regenerate the Top-N leaderboard tables in README.md from leaderboard.csv and leaderboard-v2.csv.
 
 Run: uv run python scripts/update_readme.py
 """
@@ -10,11 +10,14 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CSV_PATH = REPO_ROOT / "leaderboard.csv"
+V2_CSV_PATH = REPO_ROOT / "leaderboard-v2.csv"
 README_PATH = REPO_ROOT / "README.md"
 TOP_N = 10
 
 START_MARKER = "<!-- LEADERBOARD:START -->"
 END_MARKER = "<!-- LEADERBOARD:END -->"
+V2_START_MARKER = "<!-- LEADERBOARD-V2:START -->"
+V2_END_MARKER = "<!-- LEADERBOARD-V2:END -->"
 
 
 def fmt_score(v: str) -> str:
@@ -58,6 +61,31 @@ def build_table(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def build_v2_table(rows: list[dict]) -> str:
+    rows_sorted = sorted(rows, key=lambda r: float(r["Overall"]), reverse=True)[:TOP_N]
+
+    header = (
+        "| Rank | Provider | Category | Overall | Text | Formatting | Tables | Charts | "
+        "Visual Ground. | Forms | ¢ / Page |\n"
+        "|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"
+    )
+    lines = [header]
+    for i, r in enumerate(rows_sorted, 1):
+        cells = [str(i), r["Provider"], r["Category"], r["Overall"]]
+        cells += [fmt_score(r[c]) for c in ("Text", "Formatting", "Tables", "Charts", "Visual_Grounding", "Forms")]
+        cells.append(fmt_cost(r["Cost_Per_Page"]))
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+def replace_block(readme: str, start_marker: str, end_marker: str, block: str) -> str:
+    start = readme.find(start_marker)
+    end = readme.find(end_marker)
+    if start == -1 or end == -1:
+        raise SystemExit(f"Markers not found in README.md. Add {start_marker} and {end_marker}.")
+    return readme[:start] + block + readme[end + len(end_marker) :]
+
+
 def main() -> None:
     with CSV_PATH.open() as f:
         rows = [r for r in csv.DictReader(f) if r.get("Provider")]
@@ -76,15 +104,22 @@ def main() -> None:
         f"{table}\n"
         f"{END_MARKER}"
     )
+    readme = replace_block(README_PATH.read_text(), START_MARKER, END_MARKER, block)
 
-    readme = README_PATH.read_text()
-    start = readme.find(START_MARKER)
-    end = readme.find(END_MARKER)
-    if start == -1 or end == -1:
-        raise SystemExit(f"Markers not found in README.md. Add {START_MARKER} and {END_MARKER}.")
-    new_readme = readme[:start] + block + readme[end + len(END_MARKER) :]
-    README_PATH.write_text(new_readme)
-    print(f"Updated README.md with top {TOP_N} from {CSV_PATH.name}")
+    with V2_CSV_PATH.open() as f:
+        v2_rows = [r for r in csv.DictReader(f) if r.get("Provider")]
+    v2_block = (
+        f"{V2_START_MARKER}\n"
+        f"_Top {TOP_N} by Overall score. For the full sortable, filterable leaderboard, "
+        f"see [parsebench.ai](https://parsebench.ai); for raw data, "
+        f"see [leaderboard-v2.csv](leaderboard-v2.csv)._\n\n"
+        f"{build_v2_table(v2_rows)}\n"
+        f"{V2_END_MARKER}"
+    )
+    readme = replace_block(readme, V2_START_MARKER, V2_END_MARKER, v2_block)
+
+    README_PATH.write_text(readme)
+    print(f"Updated README.md with top {TOP_N} from {CSV_PATH.name} and {V2_CSV_PATH.name}")
 
 
 if __name__ == "__main__":

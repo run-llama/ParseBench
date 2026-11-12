@@ -52,7 +52,28 @@ The overall score is the unweighted mean of the six dimensions. Within a dimensi
 | Layout | `layout` | 535 | `layout_grounding_pass_rate` |
 | Forms | `forms` (7/8), `fillable_forms` (1/8) | 600 | `forms_v2` |
 
-To score outputs from your own parser, write them in the ParseBench results layout and run `parse-bench evaluation run <dir> --next=SUBSET=RESULTS_DIR::TEST_CASES_DIR,...`. ParseBench 2 scores are not comparable with ParseBench v1 scores; the leaderboard below is ParseBench v1.
+To score outputs from your own parser, write them in the ParseBench results layout and run `parse-bench evaluation run <dir> --next=SUBSET=RESULTS_DIR::TEST_CASES_DIR,...`. ParseBench 2 scores are not comparable with ParseBench v1 scores.
+
+### Leaderboard
+
+<!-- LEADERBOARD-V2:START -->
+_Top 10 by Overall score. For the full sortable, filterable leaderboard, see [parsebench.ai](https://parsebench.ai); for raw data, see [leaderboard-v2.csv](leaderboard-v2.csv)._
+
+| Rank | Provider | Category | Overall | Text | Formatting | Tables | Charts | Visual Ground. | Forms | ¢ / Page |
+|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | LlamaParse (Agentic Plus) | Document Parsers | 90.06 | 90.27 | 93.60 | 94.61 | 92.58 | 87.54 | 81.77 | 2.81¢ |
+| 2 | LlamaParse (Agentic) | Document Parsers | 86.05 | 87.01 | 92.75 | 89.85 | 77.39 | 88.34 | 80.95 | 1.25¢ |
+| 3 | Claude Opus 5.5 | Vision Models | 85.74 | 92.69 | 89.45 | 94.11 | 74.12 | 86.24 | 77.84 | 6.49¢ |
+| 4 | LlamaParse (Cost Effective) | Document Parsers | 84.59 | 85.50 | 91.94 | 87.19 | 73.07 | 88.64 | 81.21 | 0.38¢ |
+| 5 | Gemini 4 argon (low) | Vision Models | 84.19 | 89.68 | 89.20 | 92.78 | 68.20 | 88.10 | 77.19 | 2.68¢ |
+| 6 | Reducto | Document Parsers | 83.94 | 81.86 | 82.80 | 84.94 | 89.07 | 84.10 | 80.89 | 3.00¢ |
+| 7 | Extend (Parse 2) | Document Parsers | 83.19 | 80.18 | 83.34 | 84.21 | 85.08 | 84.82 | 81.52 | 2.50¢ |
+| 8 | Pulse (Ultra 2) | Document Parsers | 82.73 | 86.09 | 88.75 | 84.73 | 86.80 | 73.54 | 76.45 | 1.50¢ |
+| 9 | Extend (Parse Light) | Document Parsers | 81.59 | 78.29 | 78.69 | 81.42 | 85.35 | 84.66 | 81.16 | 0.62¢ |
+| 10 | Datalab (Accurate) | Document Parsers | 81.29 | 91.14 | 92.54 | 90.29 | 67.83 | 70.14 | 75.80 | 1.00¢ |
+<!-- LEADERBOARD-V2:END -->
+
+Scores are from the systems evaluated in the ParseBench 2 paper; systems that do not score all six dimensions are not ranked. To add an open-weight model to the [Hugging Face leaderboard](https://huggingface.co/datasets/llamaindex/ParseBench-2), see [Submit Results to the Leaderboard](https://huggingface.co/datasets/llamaindex/ParseBench-2#submit-results-to-the-leaderboard).
 
 ## Leaderboard (ParseBench v1)
 
