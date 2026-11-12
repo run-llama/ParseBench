@@ -11,6 +11,12 @@ All notable changes to `parse-bench` are recorded here. The format follows
   scored), and its top 10 in the README. `scripts/update_readme.py` regenerates both README tables, between
   `LEADERBOARD:START`/`END` and `LEADERBOARD-V2:START`/`END`.
 
+### Changed
+- Faster scoring, with identical scores. `table_next` caches its label-similarity and digit-normalization helpers,
+  which large tables call millions of times (one dense-tables page goes from 67 s to 5 s). Documents with both layout
+  and parse rules (most ParseBench 2 layout pages) are scored in the worker pool instead of one at a time in the
+  main process, unless an extension registered its own `parse` or `layout_detection` evaluator.
+
 ## [2.0.0] - 2026-11-11
 
 ParseBench 2: `--dataset parsebench-2` runs the 13 ParseBench 2 subsets and scores them into six dimensions and an

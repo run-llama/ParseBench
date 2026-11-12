@@ -201,17 +201,16 @@ def _evaluate_single_worker(
 
         def dispatch() -> EvaluationResult:
             if eval_mode == "multi_task":
-                # Multi-task evaluation needs special handling
-                # For now, return error - multi_task is complex and rarely used
-                # The main parallel path is for normal evaluations
-                return EvaluationResult(
-                    test_id=test_case.test_id,
-                    example_id=inference_result.request.example_id,
-                    pipeline_name=inference_result.pipeline_name,
-                    product_type=inference_result.product_type.value,
-                    success=False,
-                    error="multi_task evaluation not supported in parallel mode",
+                # The same code path the main process runs: a runner with the default evaluators. The caller only
+                # sends multi_task documents here when its own evaluators are the defaults.
+                assert isinstance(test_case, (LayoutDetectionTestCase, ParseTestCase))
+                runner = EvaluationRunner(
+                    output_dir=Path("."),
+                    enable_teds=enable_teds,
+                    skip_rules=skip_rules,
+                    layout_ontology=default_layout_ontology,
                 )
+                return runner._evaluate_single_base(inference_result, test_case, None, "multi_task")
 
             elif eval_mode is True:  # is_cross_eval
                 # Cross-evaluation: extract layout from PARSE result
@@ -1105,11 +1104,21 @@ class EvaluationRunner:
             # Separate multi_task evaluations from parallelizable evaluations
             # Multi_task requires instance methods (_evaluate_multi_task, _evaluators)
             # that cannot be pickled and sent to worker processes
+            # Workers build their own default evaluators, so multi_task documents run in the pool only when this
+            # runner's evaluators are the defaults (an extension may have registered its own).
+            pool_multi_task = (
+                type(self._evaluators.get("parse")) is ParseEvaluator
+                and type(self._evaluators.get("layout_detection")) is LayoutDetectionEvaluator
+            )
             multi_task_evaluations = [
-                (inf, tc, ev, mode) for inf, tc, ev, mode in non_qa_evaluations if mode == "multi_task"
+                (inf, tc, ev, mode)
+                for inf, tc, ev, mode in non_qa_evaluations
+                if mode == "multi_task" and not pool_multi_task
             ]
             parallelizable_evaluations = [
-                (inf, tc, ev, mode) for inf, tc, ev, mode in non_qa_evaluations if mode != "multi_task"
+                (inf, tc, ev, mode)
+                for inf, tc, ev, mode in non_qa_evaluations
+                if mode != "multi_task" or pool_multi_task
             ]
 
             # Process multi_task evaluations in main process (cannot be parallelized)
