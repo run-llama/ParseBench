@@ -83,7 +83,7 @@ def test_run_scores_every_subset_with_results(tmp_path: Path) -> None:
 
 
 def test_layout_case_with_markdown_attribution_rule_loads() -> None:
-    """layout_extended/v0.7 markdown_block_layout pages carry their layout rules next to a markdown_attribution rule."""
+    """ParseBench 2 markdown_block_layout pages carry their layout rules next to a markdown_attribution rule."""
     region = {"page": 1, "bbox": [0.13, 0.2, 0.08, 0.011]}
     case = LayoutDetectionTestCase.model_validate(
         {

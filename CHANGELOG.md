@@ -76,7 +76,7 @@ scores.
   dimensions and the overall score, written to `output/parsebench-2/_score/<pipeline>/_next_score.json`. `--group`
   takes subset names (`charts,tables`) to run only those.
 - The `markdown_attribution` rule and its scorer (`md_attribution_v1_*` metrics, scorer version 2), ported from the
-  internal harness. ParseBench 2's `layout_extended/v0.7` carries one on each of its 86 `markdown_block_layout` pages,
+  internal harness. ParseBench 2's `layout` subset carries one on each of its 86 `markdown_block_layout` pages,
   which failed to load before. Its metrics are diagnostics: the Layout dimension stays `layout_grounding_pass_rate`.
   Re-scoring the internal Azure Document Intelligence layout run with this code reproduces all of its layout and
   attribution aggregates and every page's layout score.

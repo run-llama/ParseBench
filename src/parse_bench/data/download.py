@@ -2,7 +2,7 @@
 
 Datasets (``--dataset``):
     parsebench    https://huggingface.co/datasets/llamaindex/ParseBench (default)
-    parsebench-2  https://huggingface.co/datasets/llamaindex/ParseBench-2, one folder per dataset and version with a
+    parsebench-2  https://huggingface.co/datasets/llamaindex/ParseBench-2, one folder per subset with a
                   ``<name>.test.json`` next to every page, downloaded to ``./data_parsebench-2``
     org/name      any other HuggingFace dataset repo in the same layout: ``<category>.jsonl`` rows and ``docs/``,
                   downloaded to ``./data/<name, lowercased>``
@@ -35,21 +35,24 @@ DEFAULT_TEST_DATA_DIR = Path("./data/test")
 # Outside ./data: its sidecar test.json files would make the loader read ./data as a sidecar dataset.
 PARSEBENCH2_DATA_DIR = Path("./data_parsebench-2")
 
-# ParseBench 2 subsets (the ``evaluation run --next`` names) and the dataset folder each one scores.
+# ParseBench 2 subsets (the ``evaluation run --next`` names); each one's cases are in the folder of the same name.
 PARSEBENCH2_SUBSETS: dict[str, str] = {
-    "text": "text_extended/v1.4",
-    "headings": "parse_features/headings/v0.4",
-    "strikeout": "parse_features/strikeout_text/v0.7",
-    "underline": "parse_features/underlined_text/v0.8",
-    "tables": "tables_extended/v0.12",
-    "complex_table_headers": "parse_features/complex_table_headers/v0.9",
-    "financial_tables": "parse_features/financial_table/v0.7",
-    "insurance_filing_tables": "parse_features/serff_tables/v0.4",
-    "dense_tables": "parse_features/dense_tables/v0.5",
-    "charts": "charts_extended/v1.2",
-    "layout": "layout_extended/v0.7",
-    "forms": "form_bench/v0.6",
-    "fillable_forms": "parse_features/forms/v0.4",
+    name: name
+    for name in (
+        "text",
+        "headings",
+        "strikeout",
+        "underline",
+        "tables",
+        "complex_table_headers",
+        "financial_tables",
+        "insurance_filing_tables",
+        "dense_tables",
+        "charts",
+        "layout",
+        "forms",
+        "fillable_forms",
+    )
 }
 
 
