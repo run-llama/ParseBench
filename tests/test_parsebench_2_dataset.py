@@ -1,4 +1,4 @@
-"""``--dataset parsebench2``: the ParseBench 2 subsets, their readiness check and the per-subset run."""
+"""``--dataset parsebench-2``: the ParseBench 2 subsets, their readiness check and the per-subset run."""
 
 from __future__ import annotations
 
@@ -31,23 +31,23 @@ def test_subsets_are_the_next_subsets() -> None:
 
 def test_default_dir_is_outside_v1_data_dir() -> None:
     # Under ./data, its sidecar test.json files would make the v1 loader read ./data as a sidecar dataset.
-    assert default_data_dir(dataset="parsebench2") == PARSEBENCH2_DATA_DIR
+    assert default_data_dir(dataset="parsebench-2") == PARSEBENCH2_DATA_DIR
     assert Path("./data") not in PARSEBENCH2_DATA_DIR.parents
 
 
 def test_ready_needs_a_test_json_in_every_subset(tmp_path: Path) -> None:
-    assert not is_dataset_ready(tmp_path, "parsebench2")
+    assert not is_dataset_ready(tmp_path, "parsebench-2")
     _write_cases(tmp_path, dict(list(PARSEBENCH2_SUBSETS.items())[:-1]))
-    assert not is_dataset_ready(tmp_path, "parsebench2")
+    assert not is_dataset_ready(tmp_path, "parsebench-2")
     _write_cases(tmp_path, dict(list(PARSEBENCH2_SUBSETS.items())[-1:]))
-    assert is_dataset_ready(tmp_path, "parsebench2")
+    assert is_dataset_ready(tmp_path, "parsebench-2")
 
 
 def test_run_scores_every_subset_with_results(tmp_path: Path) -> None:
     """``--group`` limits inference; scoring covers each subset that has results, including earlier runs."""
     data_dir, output = tmp_path / "data", tmp_path / "output"
     _write_cases(data_dir, PARSEBENCH2_SUBSETS)
-    earlier = output / "parsebench2" / "tables" / "dummy"
+    earlier = output / "parsebench-2" / "tables" / "dummy"
     earlier.mkdir(parents=True)
     (earlier / "a.result.json").write_text("{}")
 
@@ -66,7 +66,7 @@ def test_run_scores_every_subset_with_results(tmp_path: Path) -> None:
         mock_eval_cls.return_value.run.return_value = 0
         rc = cli.run(
             pipeline="dummy",
-            dataset="parsebench2",
+            dataset="parsebench-2",
             input_dir=data_dir,
             output_dir=output,
             group="charts",
@@ -76,7 +76,7 @@ def test_run_scores_every_subset_with_results(tmp_path: Path) -> None:
     assert rc == 0
     inf_kwargs = mock_inf_cls.return_value.run.call_args.kwargs
     assert inf_kwargs["input_dir"] == data_dir / PARSEBENCH2_SUBSETS["charts"]
-    assert inf_kwargs["output_dir"] == output / "parsebench2" / "charts"
+    assert inf_kwargs["output_dir"] == output / "parsebench-2" / "charts"
     next_arg = mock_eval_cls.return_value.run.call_args.kwargs["next"]
     assert set(next_arg) == {"charts", "tables"}
     assert next_arg["tables"]["test_cases_dir"] == str((data_dir / PARSEBENCH2_SUBSETS["tables"]).resolve())
@@ -107,6 +107,6 @@ def test_layout_case_with_markdown_attribution_rule_loads() -> None:
 
 def test_unknown_subset_and_test_flag_are_rejected() -> None:
     cli = PipelineCLI()
-    assert cli.run(pipeline="dummy", dataset="parsebench2", group="nope") == 1
-    assert cli.run(pipeline="dummy", dataset="parsebench2", test=True) == 1
-    assert dataset_spec("parsebench2").subsets
+    assert cli.run(pipeline="dummy", dataset="parsebench-2", group="nope") == 1
+    assert cli.run(pipeline="dummy", dataset="parsebench-2", test=True) == 1
+    assert dataset_spec("parsebench-2").subsets

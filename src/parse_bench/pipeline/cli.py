@@ -75,14 +75,14 @@ class PipelineCLI:
             max_concurrent: Maximum concurrent inference requests (default: 20)
             force: Force regeneration even if results already exist (default: False)
             verbose: Enable verbose output (default: False)
-            group: Optional group name to filter test cases (e.g., 'chart'). With --dataset parsebench2:
+            group: Optional group name to filter test cases (e.g., 'chart'). With --dataset parsebench-2:
                 the subsets to run inference on, comma-separated (e.g., 'charts,tables'); every subset
                 with results is still scored
             tags: Tags for this run - comma-separated string or list
             open_report: Open the HTML report in browser when done (default: True)
             skip_inference: Skip inference step, only run evaluation and report (default: False)
             test: Download and run on the small test dataset (3 files per category)
-            dataset: Which dataset: 'parsebench' (default), 'parsebench2' (ParseBench 2, scored with the
+            dataset: Which dataset: 'parsebench' (default), 'parsebench-2' (ParseBench 2, scored with the
                 extended scorers into six dimensions and an overall score) or a HuggingFace repo id
                 (org/name) in the ParseBench layout
 
@@ -91,8 +91,8 @@ class PipelineCLI:
 
         Example:
             parse-bench run llamaparse_agentic --dataset acme/MyBench
-            parse-bench run llamaparse_agentic --dataset parsebench2
-            parse-bench run llamaparse_agentic --dataset parsebench2 --group charts
+            parse-bench run llamaparse_agentic --dataset parsebench-2
+            parse-bench run llamaparse_agentic --dataset parsebench-2 --group charts
             parse-bench run llamaparse_agentic
             parse-bench run llamaparse_agentic_plus --max_concurrent 10
             parse-bench run llamaparse_agentic --skip_inference

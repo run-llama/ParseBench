@@ -8,7 +8,7 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [2.0.0] - 2026-11-11
 
-ParseBench 2: `--dataset parsebench2` runs the 13 ParseBench 2 subsets and scores them into six dimensions and an
+ParseBench 2: `--dataset parsebench-2` runs the 13 ParseBench 2 subsets and scores them into six dimensions and an
 overall score. The extended scorers are synced with the internal harness. Scores change for
 tables, formatting, charts and layout (see Scoring); ParseBench 2 scores are not comparable with ParseBench v1
 scores.
@@ -70,10 +70,10 @@ scores.
   re-scores rows from those outputs. Two workflows use it: *Leaderboard verification* checks
   leaderboard PRs against a re-score, and *Leaderboard re-score* re-scores every verified row daily when the harness
   changes and opens a PR. See `leaderboard/README.md`.
-- `--dataset parsebench2` on `download`, `status` and `run` for ParseBench 2 (`llamaindex/ParseBench2`, 13 subsets,
-  downloaded to `./data_parsebench2`). `parse-bench run <pipeline> --dataset parsebench2` runs inference on each
+- `--dataset parsebench-2` on `download`, `status` and `run` for ParseBench 2 (`llamaindex/ParseBench-2`, 13 subsets,
+  downloaded to `./data_parsebench-2`). `parse-bench run <pipeline> --dataset parsebench-2` runs inference on each
   subset folder and scores every subset with results with the extended scorers (`evaluation run --next`) into the six
-  dimensions and the overall score, written to `output/parsebench2/_score/<pipeline>/_next_score.json`. `--group`
+  dimensions and the overall score, written to `output/parsebench-2/_score/<pipeline>/_next_score.json`. `--group`
   takes subset names (`charts,tables`) to run only those.
 - The `markdown_attribution` rule and its scorer (`md_attribution_v1_*` metrics, scorer version 2), ported from the
   internal harness. ParseBench 2's `layout_extended/v0.7` carries one on each of its 86 `markdown_block_layout` pages,
