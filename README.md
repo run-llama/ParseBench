@@ -52,7 +52,7 @@ The overall score is the unweighted mean of the six dimensions. Within a dimensi
 | Layout | `layout` | 535 | `layout_grounding_pass_rate` |
 | Forms | `forms` (7/8), `fillable_forms` (1/8) | 600 | `forms_v2` |
 
-To score outputs from your own parser, write them in the ParseBench results layout and run `parse-bench evaluation run <dir> --next=SUBSET=RESULTS_DIR::TEST_CASES_DIR,...`. ParseBench 2 scores are not comparable with ParseBench v1 scores.
+To score outputs from your own parser, write them in the ParseBench results layout and run `parse-bench evaluation run <dir> --next=SUBSET=RESULTS_DIR::TEST_CASES_DIR,... --next_only` (`--next_only` skips the ParseBench v1 metrics, which the ParseBench 2 score does not use). ParseBench 2 scores are not comparable with ParseBench v1 scores.
 
 ### Leaderboard
 

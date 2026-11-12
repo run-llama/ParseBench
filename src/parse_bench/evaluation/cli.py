@@ -65,6 +65,7 @@ class EvaluationCLI:
         ontology: str = "basic",
         verified_only: bool = False,
         next: bool | str | list[str] | tuple[str, ...] | dict[str, Any] = False,
+        next_only: bool = False,
     ) -> int:
         """
         Run evaluation on inference results.
@@ -100,6 +101,9 @@ class EvaluationCLI:
                 directory not given is read from the results' _metadata.json. Subsets: text, headings,
                 strikeout, underline, tables, complex_table_headers, financial_tables,
                 insurance_filing_tables, dense_tables, charts, layout, forms, fillable_forms.
+            next_only: With --next, compute only the extended scorers and skip the v1 metrics (GriTS,
+                rule pass rates, v1 visual grounding, ...), which the combined score does not use.
+                Much faster on large tables and layout pages (default: False)
 
         Returns:
             Exit code (0 for success, non-zero for failure)
@@ -123,6 +127,7 @@ class EvaluationCLI:
             ontology=ontology,
             verified_only=verified_only,
             next=next,
+            next_only=next_only,
         )
         return code
 
@@ -146,6 +151,7 @@ class EvaluationCLI:
         ontology: str,
         verified_only: bool,
         next: bool | str | list[str] | tuple[str, ...] | dict[str, Any],
+        next_only: bool = False,
     ) -> tuple[int, EvaluationSummary | None]:
         """Body of ``run``: returns the exit code and, on success, the evaluation summary."""
         try:
@@ -174,6 +180,7 @@ class EvaluationCLI:
                         "skip_rules": skip_rules,
                         "ontology": ontology,
                         "verified_only": verified_only,
+                        "next_only": next_only,
                     }
                     report_base = Path(report_dir) if report_dir else output_dir_path
                     return self._evaluate_next_subsets(next_sources, report_base, passthrough), None
@@ -248,6 +255,7 @@ class EvaluationCLI:
                 layout_ontology=ontology,
                 verified_only=verified_only,
                 next_metrics=next_enabled,
+                next_only=next_enabled and next_only,
             )
 
             print(f"Running evaluation on: {output_dir_path}")

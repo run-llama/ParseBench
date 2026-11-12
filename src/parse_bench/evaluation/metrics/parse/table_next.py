@@ -53,6 +53,7 @@ import unicodedata
 from collections.abc import Callable, Iterable, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -533,6 +534,8 @@ def _commas_dropped(ref: str) -> str | None:
     return out if out != ref else None
 
 
+# A pure function of the cell (nx_norm reads no reading flag); table pairs ask for the same labels millions of times.
+@lru_cache(maxsize=1 << 18)
 def nx_digits(s: str) -> str:
     return "|".join(_num_key(float(x)) for x in _RE_NUMS.findall(_ungroup(nx_norm(s))))
 
@@ -654,9 +657,15 @@ def key_sim(a: str, b: str) -> float:
     ("total(net)" for "total (net)") is a word-boundary slip."""
     if a == b:
         return 1.0
+    return _key_sim(a, b, _SPACELESS_KEYS.get())
+
+
+# Cached on the reading flag too: the same label pairs recur across readings and table pairings.
+@lru_cache(maxsize=1 << 20)
+def _key_sim(a: str, b: str, spaceless: bool) -> float:
     if nx_digits(a) != nx_digits(b):
         return 0.0
-    if _SPACELESS_KEYS.get() and a.replace(" ", "") == b.replace(" ", ""):
+    if spaceless and a.replace(" ", "") == b.replace(" ", ""):
         return 0.9
     wa, wb = a.split(" "), b.split(" ")
     if len(wa) != len(wb):

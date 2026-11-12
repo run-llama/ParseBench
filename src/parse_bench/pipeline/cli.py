@@ -311,6 +311,7 @@ class PipelineCLI:
             verbose=verbose,
             force=force,
             next=sources,
+            next_only=True,
         )
 
         if open_report:

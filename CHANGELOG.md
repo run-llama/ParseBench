@@ -6,10 +6,24 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-11-12
+
 ### Added
 - `leaderboard-v2.csv`, the ParseBench 2 leaderboard (the systems ranked in the ParseBench 2 paper, all six dimensions
   scored), and its top 10 in the README. `scripts/update_readme.py` regenerates both README tables, between
   `LEADERBOARD:START`/`END` and `LEADERBOARD-V2:START`/`END`.
+
+### Changed
+- Faster scoring, with identical scores. `table_next` caches its label-similarity and digit-normalization helpers,
+  which large tables call millions of times (one dense-tables page goes from 67 s to 5 s). Documents with both layout
+  and parse rules (most ParseBench 2 layout pages) are scored in the worker pool instead of one at a time in the
+  main process, unless an extension registered its own `parse` or `layout_detection` evaluator.
+- `evaluation run --next_only` computes only the extended scorers and skips the ParseBench v1 metrics (GriTS, rule
+  pass rates, v1 visual grounding and the rest), which the ParseBench 2 score does not use. `run --dataset
+  parsebench-2` turns it on. The per-page reports then hold only the extended metrics. A page whose v1 evaluator
+  crashed used to count 0 in the ParseBench 2 aggregates even when its extended metrics were computed; with
+  `--next_only` it keeps them. On one parser's outputs, scoring all 13 subsets drops from about 15.5 to 6 minutes,
+  with identical extended metrics on every page.
 
 ## [2.0.0] - 2026-11-11
 
