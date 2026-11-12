@@ -17,7 +17,7 @@
 The original benchmark (ParseBench v1) covers ~2,000 human-verified pages from real enterprise documents (insurance, finance, government), organized around five capability dimensions, each targeting a failure mode that breaks production agent workflows. [ParseBench 2](#parsebench-2) extends it with more pages, a forms dimension and metrics that score each error using human-aligned severity classes.
 
 <p align="center">
-  <img src="docs/parsebench_teaser.png" alt="ParseBench overview: five capability dimensions" width="100%">
+  <img src="docs/severity_scoring.png" alt="ParseBench overview: five capability dimensions" width="100%">
 </p>
 
 ## ParseBench 2
