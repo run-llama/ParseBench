@@ -124,12 +124,10 @@ rows:
   status: unverified
   pipeline: anthropic_opus_4_7_parse_with_layout_file
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: grounding 458/500'
 - provider: Anthropic Opus 4.8
   status: unverified
   pipeline: anthropic_opus_4_8_parse_with_layout_file
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: grounding 458/500'
 - provider: Anthropic Opus 5.5 (Effort High)
   status: verified
   pipeline: anthropic_opus_5_5_effort_high_parse_with_layout_file
@@ -146,7 +144,6 @@ rows:
   status: unverified
   pipeline: anthropic_fable_5_parse_with_layout_file
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: tables 0/503'
 - provider: Anthropic Fable 5.1
   status: verified
   pipeline: anthropic_fable_5_1_parse_with_layout_file
@@ -155,7 +152,6 @@ rows:
   status: unverified
   pipeline: anthropic_sonnet_5_parse_with_layout_file
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: charts 110/568, content 85/506, formatting 85/476, grounding 118/500'
 - provider: Anthropic Sonnet 5.5
   status: verified
   pipeline: anthropic_sonnet_5_5_parse_with_layout_file
@@ -300,7 +296,6 @@ rows:
   status: unverified
   pipeline: amazon_nova_2_lite_parse_with_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: charts 555/568, content 495/506, grounding 492/500'
 - provider: Tencent Hy4 (Thinking High)
   status: unverified
   pipeline: hy4_parse_with_layout
@@ -329,7 +324,6 @@ rows:
   status: unverified
   pipeline: pulse_ultra_2
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: grounding 495/500'
 - provider: Datalab Accurate
   status: verified
   pipeline: datalab_accurate
@@ -357,7 +351,6 @@ rows:
   status: unverified
   pipeline: extend_parse
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: content 60/506, formatting 60/476'
 - provider: Extend (2.0)
   status: verified
   pipeline: extend_parse_2
@@ -370,7 +363,6 @@ rows:
   status: unverified
   pipeline: landingai_parse
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: charts 177/568'
 - provider: Firecrawl
   status: unverified
   note: no published outputs in the results repo
@@ -378,17 +370,14 @@ rows:
   status: unverified
   pipeline: oi_parser
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: tables 492/503'
 - provider: DocAI
   status: unverified
   pipeline: docai_default
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: content 0/506, formatting 0/476, grounding 0/500'
 - provider: Mistral OCR 4 (Annotation)
   status: unverified
   pipeline: mistral_ocr_4_annotation
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: tables 0/503, content 0/506, formatting 0/476'
 - provider: Mistral OCR 4
   status: verified
   pipeline: mistral_ocr_4
@@ -401,7 +390,6 @@ rows:
   status: unverified
   pipeline: nutrient_dws_agentic
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: charts 0/568, content 0/506, formatting 0/476'
 - provider: Infinity-Parser2-Pro
   status: verified
   pipeline: infinity_parser2_pro
@@ -417,7 +405,6 @@ rows:
   status: unverified
   pipeline: qwen3vl_parse
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: grounding 0/500'
 - provider: MiniCPM-OCR 1.0
   status: unverified
   note: no published outputs in the results repo
@@ -444,12 +431,10 @@ rows:
   status: unverified
   pipeline: falconocr_pipeline
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: tables 480/503, charts 559/568, content 487/506, grounding 490/500'
 - provider: Docling-models
   status: unverified
   pipeline: docling_parse
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: tables 484/503, charts 119/568, content 477/506, grounding 487/500'
 - provider: Chandra-ocr-2
   status: verified
   pipeline: chandra2_vllm
@@ -474,7 +459,6 @@ rows:
   status: unverified
   pipeline: gemma4_31b_vllm_with_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: tables 428/503, charts 539/568, content 457/506, formatting 457/476, grounding 441/500'
 - provider: TeleOCR
   status: verified
   pipeline: teleocr_vllm
@@ -483,17 +467,14 @@ rows:
   status: unverified
   pipeline: gemma4_26b_vllm_with_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: content 466/506, formatting 466/476, grounding 387/500'
 - provider: Nemotron-3-Nano-Omni-30B-A3B (Thinking)
   status: unverified
   pipeline: nemotron_omni_30b_vllm_thinking
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: tables 492/503, charts 560/568, content 492/506, grounding 491/500'
 - provider: LightOnOCR-2-1B
   status: unverified
   pipeline: lightonocr_vllm
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: grounding 0/500'
 - provider: Nemotron-3.5-Parse
   status: verified
   pipeline: nemotron_parse_3_5_sdk
@@ -542,17 +523,14 @@ rows:
   status: unverified
   pipeline: deepseekocr2_vllm
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: grounding 494/500'
 - provider: PaddleOCR-VL
   status: unverified
   pipeline: paddleocr_vl_pipeline
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: grounding 0/500'
 - provider: OvisOCR2
   status: unverified
   pipeline: ovisocr2_vllm
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: grounding 0/500'
 - provider: Gemma-4-E4B-it
   status: verified
   pipeline: gemma4_e4b_vllm_with_layout
@@ -561,7 +539,6 @@ rows:
   status: unverified
   pipeline: granite_vision_4_1_4b
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: grounding 0/500'
 - provider: WeVisDoc-2B
   status: verified
   pipeline: wevisdoc_2b_vllm
@@ -578,22 +555,18 @@ rows:
   status: unverified
   pipeline: qwen3_5_9b_vllm_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: charts 561/568, grounding 0/500'
 - provider: Qwen3.5-0.8B
   status: unverified
   pipeline: qwen3_5_0_8b_vllm_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: tables 487/503, content 499/506, grounding 0/500'
 - provider: Qwen3.5-2B
   status: unverified
   pipeline: qwen3_5_2b_vllm_layout
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: grounding 0/500'
 - provider: GLM-OCR
   status: unverified
   pipeline: glmocr_pipeline
   results_revision: deb3660f6a8d203bc032e620065bd92c5ec85d59
-  note: 'incomplete published outputs: charts 555/568, content 466/506, formatting 466/476, grounding 0/500'
 - provider: KDL-Frontier-Parser-nano
   status: verified
   pipeline: kdl_frontier_nano
