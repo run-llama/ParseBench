@@ -131,6 +131,10 @@ def atom_inputs(events: list[Any], metric: str) -> list[dict[str, Any]]:
     counts: Counter[tuple[str, str, bool]] = Counter()
     for e in events:
         severity = e.cls if e.cls in LEVELS else SeverityValues.IGNORE
+        # Coverage diagnostics are independently reclassifiable in Metric Lab.
+        # Other uncharged events can be redundant flips within one choice group.
+        if metric == "forms" and e.kind.startswith("form fields missing"):
+            severity = SeverityValues.IGNORE
         grouped = not e.charged and e.group in systematic
         if not e.charged and not grouped and severity != SeverityValues.IGNORE:
             continue  # e.g. a second flip in the same exclusive-choice group

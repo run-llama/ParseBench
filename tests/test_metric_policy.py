@@ -144,3 +144,24 @@ def test_old_truncated_metadata_fails_instead_of_guessing_severity(tmp_path: Pat
     policy = MetricPolicy.load(policy_file(tmp_path, PAPER))
     with pytest.raises(ValueError, match="rerun evaluation"):
         score_metric("table_next", {"proportional": 1, "events": {"major": 12}}, policy)
+
+
+def test_reclassified_form_coverage_event_is_retained(tmp_path: Path) -> None:
+    """Coverage diagnostics are ignored by default but can be charged by an exported policy."""
+    reference = reference_from_tree(
+        [
+            {
+                "page_number": 1,
+                "items": [
+                    {"type": "field", "field": "text", "label": f"Field {i}", "isEmpty": True} for i in range(20)
+                ],
+            }
+        ]
+    )
+    result = score_forms(reference, "\n".join(f"Field {i}: ______" for i in range(9)))
+    data = copy.deepcopy(PAPER)
+    data["error_classes"]["forms"] = dict.fromkeys(data["error_classes"]["forms"], "ignore")
+    data["error_classes"]["forms"]["form fields missing (under half found; coverage cap applies)"] = "critical"
+    data["weights"]["critical"] = 0.3
+    policy = MetricPolicy.load(policy_file(tmp_path, data))
+    assert score_metric("forms_v2", result.metadata(), policy) == pytest.approx(0.7)
