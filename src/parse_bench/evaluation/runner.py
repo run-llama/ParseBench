@@ -115,6 +115,31 @@ _NON_SCORE_METRICS = frozenset(
 )
 
 
+def _next_only_result(
+    inference_result: InferenceResult, test_case: TestCase, eval_mode: str | bool
+) -> EvaluationResult:
+    """The extended metrics of one document, without running the v1 evaluators (``evaluation run --next_only``).
+
+    The product type is the one the v1 path records (cross-evaluated layout documents score as layout_detection),
+    since failures are zero-padded per product type. A document no extended metric applies to (an output that is
+    not a ParseOutput) fails, so it counts as 0 like any other document the run could not score.
+    """
+    from parse_bench.evaluation.metrics.parse.next_metrics import attach_next_metrics
+
+    base = EvaluationResult(
+        test_id=test_case.test_id,
+        example_id=inference_result.request.example_id,
+        pipeline_name=inference_result.pipeline_name,
+        product_type="layout_detection" if eval_mode is True else inference_result.product_type.value,
+        success=True,
+        metrics=[],
+    )
+    result = attach_next_metrics(base, inference_result, test_case)
+    if result.success and not result.metrics:
+        result = result.model_copy(update={"success": False, "error": "No extended metric applies to this output"})
+    return result
+
+
 # Module-level worker function for ProcessPoolExecutor (must be picklable)
 def _evaluate_single_worker(
     inference_result_dict: dict[str, Any],
@@ -128,6 +153,7 @@ def _evaluate_single_worker(
     verified_only: bool = False,
     grits_pair_workers: int = 1,
     next_metrics: bool = False,
+    next_only: bool = False,
 ) -> dict[str, Any]:
     """
     Worker function for parallel evaluation using ProcessPoolExecutor.
@@ -149,6 +175,7 @@ def _evaluate_single_worker(
     :param grits_pair_workers: Per-document GriTS page-parallelism width (CPU budget
         split with the document pool, see ``EvaluationRunner.run``)
     :param next_metrics: Also append the extended scorers' metrics (``evaluation run --next``)
+    :param next_only: Compute only the extended scorers' metrics, skipping the v1 evaluators
     :return: Serialized EvaluationResult dict
     """
     # Import here to avoid circular imports and ensure fresh state in worker
@@ -184,6 +211,9 @@ def _evaluate_single_worker(
 
         if verified_only:
             test_case = filter_verified_test_rules(test_case)
+
+        if next_only:
+            return _next_only_result(inference_result, test_case, eval_mode).model_dump()
 
         # Create evaluator based on type
         evaluators: dict[
@@ -464,6 +494,7 @@ class EvaluationRunner:
         layout_ontology: str = "basic",
         verified_only: bool = False,
         next_metrics: bool = False,
+        next_only: bool = False,
     ):
         """
         Initialize the evaluation runner.
@@ -477,6 +508,8 @@ class EvaluationRunner:
         :param verified_only: Discard test rules explicitly marked verified=false
         :param next_metrics: Also compute the extended scorers' metrics for every document
             (``evaluation run --next``)
+        :param next_only: Compute only the extended scorers' metrics, skipping the v1 evaluators
+            (``evaluation run --next_only``); implies ``next_metrics``
         """
         self.output_dir = Path(output_dir)
         self.test_cases_dir = Path(test_cases_dir) if test_cases_dir else None
@@ -485,7 +518,8 @@ class EvaluationRunner:
         self.skip_rules = skip_rules
         self.layout_ontology = layout_ontology
         self.verified_only = verified_only
-        self.next_metrics = next_metrics
+        self.next_only = next_only
+        self.next_metrics = next_metrics or next_only
 
         # Register default evaluators
         self._evaluators: dict[str, Any] = {}
@@ -564,6 +598,8 @@ class EvaluationRunner:
         :param eval_mode: "multi_task", True (cross_eval), or False (normal)
         :return: EvaluationResult
         """
+        if self.next_only:
+            return _next_only_result(inference_result, test_case, eval_mode)
         result = self._evaluate_single_base(inference_result, test_case, evaluator, eval_mode)
         if self.next_metrics:
             from parse_bench.evaluation.metrics.parse.next_metrics import attach_next_metrics
@@ -1163,6 +1199,7 @@ class EvaluationRunner:
                         bool,
                         int,
                         bool,
+                        bool,
                     ]
                 ] = []
                 for inf_result, tc, _eval_obj, mode in parallelizable_evaluations:
@@ -1199,6 +1236,7 @@ class EvaluationRunner:
                             self.verified_only,
                             grits_pair_workers,
                             self.next_metrics,
+                            self.next_only,
                         )
                     )
 
