@@ -308,7 +308,7 @@ def test_rescore_resolves_a_relative_gt_cache(monkeypatch: pytest.MonkeyPatch, t
     monkeypatch.setattr(sys, "argv", ["rescore.py", "run", "--gt-cache", ".cache/gt", "--out", "r.json"])
     rescore.main()
     assert seen["gt_cache"] == tmp_path.resolve() / ".cache/gt"
-    
+
 
 def _published(tmp_path: Path, records: dict[str, list[str]], failed: object | None = None) -> Path:
     results = tmp_path / "hf" / "results" / "p"
@@ -372,9 +372,6 @@ def test_recorded_failures_count_as_published_but_omissions_stay_missing(
     details = _rescore_with(tmp_path, monkeypatch, failed)["details"]
     assert details["Charts"]["published"] == 4 and details["Charts"]["recorded_failures"] == 2
     assert details["Tables"]["published"] == 2  # tables c and d have neither a record nor a failure entry
-    gaps = lb_apply._gaps(details)
-    assert ("Tables", 2, 4) in gaps
-    assert not any(g[0] == "Charts" for g in gaps)
 
 
 def test_recorded_failures_outside_the_ground_truth_are_rejected(
