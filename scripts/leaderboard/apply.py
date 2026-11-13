@@ -109,6 +109,7 @@ def diff_rows(
             for c, d in details.items()
             if isinstance(d.get("published"), int) and isinstance(d.get("total"), int) and d["published"] < d["total"]
         }
+        gaps = _gaps(details)
         out.append(
             {
                 "provider": r["Provider"],
@@ -118,6 +119,7 @@ def diff_rows(
                 "delta": delta,
                 "dim_errors": dim_errors,
                 "coverage": coverage,
+                "gaps": gaps,
             }
         )
     return out
@@ -127,8 +129,28 @@ def max_abs_delta(rec: dict) -> float:
     return max((abs(d) for d in rec["delta"].values() if d is not None), default=0.0)
 
 
+def _gaps(details: dict[str, Any]) -> list[tuple[str, int, int]]:
+    """(column or column/subset, published, total) for each category missing more than MAX_MISSING_SHARE.
+
+    A dimension backed by several subsets is checked per subset, since pooling lets a complete large subset hide a
+    small one that misses more than the limit.
+    """
+    out = []
+    for c, d in details.items():
+        parts = d.get("by_subset") or {None: (d.get("published"), d.get("total"))}
+        for subset, (a, t) in parts.items():
+            if isinstance(a, int) and isinstance(t, int) and t and 1 - a / t > MAX_MISSING_SHARE:
+                out.append((f"{c}/{subset}" if subset else c, a, t))
+    return out
+
+
+def _gap_label(gap: str, board: Board) -> str:
+    column, _, subset = gap.partition("/")
+    return f"{board.short[column]} ({subset})" if subset else board.short[column]
+
+
 def _incomplete(rec: dict) -> bool:
-    return any(1 - a / t > MAX_MISSING_SHARE for a, t in rec.get("coverage", {}).values() if t)
+    return bool(rec.get("gaps"))
 
 
 def _cell(rec: dict, col: str, threshold: float) -> str:
@@ -273,9 +295,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
     if incomplete:
         report += "\n\n" + "\n".join(
             f"- **{r['provider']}** misses more than {MAX_MISSING_SHARE:.0%} of "
-            + ", ".join(
-                f"{board.short[c]} ({a}/{t})" for c, (a, t) in r["coverage"].items() if 1 - a / t > MAX_MISSING_SHARE
-            )
+            + ", ".join(f"{_gap_label(g, board)} ({a}/{t})" for g, a, t in r["gaps"])
             + ": publish every page, or keep the row unverified."
             for r in incomplete
         )

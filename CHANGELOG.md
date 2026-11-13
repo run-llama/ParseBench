@@ -12,6 +12,8 @@ All notable changes to `parse-bench` are recorded here. The format follows
   `Verified` column (unverified rows are marked † in the README), and the leaderboard scripts take `--board v2`.
   A verified row is re-scored over all 13 subsets with `evaluation run --next ... --next_only`. The verification and
   daily re-score workflows cover both leaderboards. All 44 rows are verified.
+- Optional `run_dates` on results-map rows: when the published outputs were produced, from the records'
+  `started_at`/`completed_at`. Filled for every ParseBench 2 row.
 - The remaining ParseBench 2 leaderboard pipelines, under their leaderboard names, so their published outputs replay
   with the provider's layout adapter: `anthropic_{opus,haiku}_5_5_parse_with_layout`,
   `openai_gpt_5_6_{terra,luna}_reasoning_low_parse_with_layout`, `openai_gpt_6_luna_reasoning_low_parse_with_layout`,
@@ -35,6 +37,10 @@ All notable changes to `parse-bench` are recorded here. The format follows
 - The ParseBench leaderboard's LightOnOCR-3 rows (`lightonocr3_{4b,1b,0_8b}_vllm`) are scored with the new
   `lightonocr3` layout adapter instead of the LlamaParse fallback. The adapter collapses labels outside the 11 core
   classes (`Code`, `Document Index`, `Key-Value Region`) to their core class instead of failing the page.
+
+### Fixed
+- ParseBench 2 leaderboard verification checks the 1% missing-pages limit per subset. A dimension pools several
+  subsets, so a complete large subset could hide a small one missing more than 1% of its pages.
 
 ## [2.0.1] - 2026-11-12
 

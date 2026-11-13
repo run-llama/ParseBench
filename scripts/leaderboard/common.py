@@ -103,6 +103,7 @@ class MapEntry:
     status: str
     pipeline: str | None = None
     results_revision: str | None = None
+    run_dates: str | None = None
     note: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -111,6 +112,8 @@ class MapEntry:
             d["pipeline"] = self.pipeline
         if self.results_revision:
             d["results_revision"] = self.results_revision
+        if self.run_dates:
+            d["run_dates"] = self.run_dates
         if self.note:
             d["note"] = self.note
         return d
@@ -139,6 +142,7 @@ _MAP_HEADER = """\
 #                     unverified -> no published outputs; scores are kept as submitted
 #   pipeline          folder under results/ in `results_repo` (verified rows only)
 #   results_revision  `results_repo` commit (or refs/pr/N for a pending submission)
+#   run_dates         when the published outputs were produced (first to last record `started_at`/`completed_at`)
 #
 # `scored_with` is the ParseBench commit the verified rows were last re-scored at.
 # Maintained by scripts/leaderboard/; see leaderboard/README.md.

@@ -139,9 +139,24 @@ def test_apply_writes_scores_and_records_harness(tmp_path: Path) -> None:
 
 
 def test_rows_missing_more_than_one_percent_are_incomplete() -> None:
-    assert lb_apply._incomplete({"coverage": {"Tables": (501, 503)}}) is False  # 2 pages: scored 0, still verified
-    assert lb_apply._incomplete({"coverage": {"Content_Faithfulness": (85, 506)}}) is True
-    assert lb_apply._incomplete({"coverage": {}}) is False
+    def gaps(**counts: tuple[int, int]) -> list:
+        return lb_apply._gaps({c: {"published": a, "total": t} for c, (a, t) in counts.items()})
+
+    assert gaps(Tables=(501, 503)) == []  # 2 pages: scored 0, still verified
+    assert gaps(Content_Faithfulness=(85, 506)) == [("Content_Faithfulness", 85, 506)]
+    assert lb_apply._incomplete({"gaps": []}) is False
+    assert lb_apply._incomplete({"gaps": gaps(Content_Faithfulness=(85, 506))}) is True
+
+
+def test_v2_dimension_checks_each_subset_against_the_limit() -> None:
+    """Pooled, 6 of 100 strikeout pages missing is 6 of ~800 formatting pages and would pass."""
+    by_subset = {"strikeout": [94, 100], "underline": [125, 125], "headings": [100, 100], "text": [508, 508]}
+    details = {
+        "Formatting": {"published": 827, "total": 833, "by_subset": by_subset, "error": None},
+        "Tables": {"published": 1752, "total": 1753, "by_subset": {"tables": [499, 500]}, "error": None},
+    }
+    assert lb_apply._gaps(details) == [("Formatting/strikeout", 94, 100)]
+    assert lb_apply._gap_label("Formatting/strikeout", V2) == f"{V2.short['Formatting']} (strikeout)"
 
 
 def test_merge_combines_shards_from_one_run(tmp_path: Path) -> None:
@@ -230,6 +245,15 @@ def test_v2_map_header_names_the_v2_csv(tmp_path: Path) -> None:
     path = tmp_path / V2.map_path.name
     save_map(_map(MapEntry("A", "unverified")), path)
     assert "every leaderboard-v2.csv row" in path.read_text()
+
+
+def test_map_keeps_run_dates(tmp_path: Path) -> None:
+    path = tmp_path / "results.yaml"
+    entry = MapEntry("A", "verified", "pa", SHA, run_dates="2026-11-02 to 2026-11-04")
+    save_map(_map(entry, MapEntry("U", "unverified")), path)
+    rows = load_map(path).rows
+    assert rows[0].run_dates == "2026-11-02 to 2026-11-04"
+    assert rows[1].run_dates is None
 
 
 def _v2_row(provider: str) -> dict[str, str]:

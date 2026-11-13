@@ -266,10 +266,15 @@ def rescore_pipeline_v2(
         value = (combined.get("dimensions", {}).get(dimension) or {}).get("score")
         error = "; ".join(problems) if problems else (None if value is not None else "dimension missing from the score")
         scores[column] = None if error else 100.0 * float(value)
+        # Per-subset counts too: pooled, a complete large subset hides a small one that misses more than the limit.
+        by_subset = {
+            s: [published.get(s, 0), (subset_reports.get(s) or {}).get("total_examples") or 0] for s in subsets
+        }
         details[column] = {
             "subsets": subsets,
-            "published": sum(published.get(s, 0) for s in subsets),
-            "total": sum((subset_reports.get(s) or {}).get("total_examples") or 0 for s in subsets),
+            "published": sum(a for a, _ in by_subset.values()),
+            "total": sum(t for _, t in by_subset.values()),
+            "by_subset": by_subset,
             "error": error,
         }
     complete = all(v is not None for v in scores.values())
