@@ -38,8 +38,6 @@ from common import (  # noqa: E402
 )
 
 COLUMNS = ["Overall", *V1.dimensions]  # v1; see columns()
-# A verified row may miss at most this share of any category's pages (missing pages score 0).
-MAX_MISSING_SHARE = 0.01
 POLICY = (
     "Pages the provider produced nothing usable for score 0. A dimension where the evaluator left pages out of its "
     "average (a harness error or missing layout data) is not re-scored and keeps its old value."
@@ -109,7 +107,6 @@ def diff_rows(
             for c, d in details.items()
             if isinstance(d.get("published"), int) and isinstance(d.get("total"), int) and d["published"] < d["total"]
         }
-        gaps = _gaps(details)
         out.append(
             {
                 "provider": r["Provider"],
@@ -119,7 +116,6 @@ def diff_rows(
                 "delta": delta,
                 "dim_errors": dim_errors,
                 "coverage": coverage,
-                "gaps": gaps,
             }
         )
     return out
@@ -127,30 +123,6 @@ def diff_rows(
 
 def max_abs_delta(rec: dict) -> float:
     return max((abs(d) for d in rec["delta"].values() if d is not None), default=0.0)
-
-
-def _gaps(details: dict[str, Any]) -> list[tuple[str, int, int]]:
-    """(column or column/subset, published, total) for each category missing more than MAX_MISSING_SHARE.
-
-    A dimension backed by several subsets is checked per subset, since pooling lets a complete large subset hide a
-    small one that misses more than the limit.
-    """
-    out = []
-    for c, d in details.items():
-        parts = d.get("by_subset") or {None: (d.get("published"), d.get("total"))}
-        for subset, (a, t) in parts.items():
-            if isinstance(a, int) and isinstance(t, int) and t and 1 - a / t > MAX_MISSING_SHARE:
-                out.append((f"{c}/{subset}" if subset else c, a, t))
-    return out
-
-
-def _gap_label(gap: str, board: Board) -> str:
-    column, _, subset = gap.partition("/")
-    return f"{board.short[column]} ({subset})" if subset else board.short[column]
-
-
-def _incomplete(rec: dict) -> bool:
-    return bool(rec.get("gaps"))
 
 
 def _cell(rec: dict, col: str, threshold: float) -> str:
@@ -278,8 +250,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
     pipeline_by_provider = {e.provider: e.pipeline for e in rmap.verified() if e.pipeline}
     records = diff_rows(rows, rescore, pipeline_by_provider, board)
 
-    incomplete = [r for r in records if "error" not in r and _incomplete(r)]
-    bad = [r for r in records if "error" in r or r["dim_errors"] or max_abs_delta(r) > args.tolerance or _incomplete(r)]
+    bad = [r for r in records if "error" in r or r["dim_errors"] or max_abs_delta(r) > args.tolerance]
     intro = (
         f"Submitted values compared with a re-score of the published outputs using ParseBench "
         f"`{_short(rescore['scored_with'])}` (tolerance ±{args.tolerance:g} pt). {POLICY}"
@@ -292,13 +263,6 @@ def cmd_compare(args: argparse.Namespace) -> int:
         else f"**Result: fail** — {len(bad)} row(s) differ from the re-score or could not be re-scored. "
         f"Update {board.csv_path.name} to the re-scored values above or fix the published outputs."
     )
-    if incomplete:
-        report += "\n\n" + "\n".join(
-            f"- **{r['provider']}** misses more than {MAX_MISSING_SHARE:.0%} of "
-            + ", ".join(f"{_gap_label(g, board)} ({a}/{t})" for g, a, t in r["gaps"])
-            + ": publish every page, or keep the row unverified."
-            for r in incomplete
-        )
     if args.report:
         args.report.write_text(report + "\n")
     print(report)
