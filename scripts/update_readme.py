@@ -71,7 +71,7 @@ def build_v2_table(rows: list[dict]) -> str:
     )
     lines = [header]
     for i, r in enumerate(rows_sorted, 1):
-        cells = [str(i), r["Provider"], r["Category"], r["Overall"]]
+        cells = [str(i), r["Provider"] + (" †" if r.get("Verified") == "no" else ""), r["Category"], r["Overall"]]
         cells += [fmt_score(r[c]) for c in ("Text", "Formatting", "Tables", "Charts", "Visual_Grounding", "Forms")]
         cells.append(fmt_cost(r["Cost_Per_Page"]))
         lines.append("| " + " | ".join(cells) + " |")
@@ -108,12 +108,20 @@ def main() -> None:
 
     with V2_CSV_PATH.open() as f:
         v2_rows = [r for r in csv.DictReader(f) if r.get("Provider")]
+    v2_table = build_v2_table(v2_rows)
+    v2_top = sorted(v2_rows, key=lambda r: float(r["Overall"]), reverse=True)[:TOP_N]
+    if any(r.get("Verified") == "no" for r in v2_top):
+        v2_table += (
+            "\n\n† Unverified: no published outputs in "
+            "[ParseBench-2-results](https://huggingface.co/datasets/llamaindex/ParseBench-2-results) yet; "
+            "scores as reported in the ParseBench 2 paper."
+        )
     v2_block = (
         f"{V2_START_MARKER}\n"
         f"_Top {TOP_N} by Overall score. For the full sortable, filterable leaderboard, "
         f"see [parsebench.ai](https://parsebench.ai); for raw data, "
         f"see [leaderboard-v2.csv](leaderboard-v2.csv)._\n\n"
-        f"{build_v2_table(v2_rows)}\n"
+        f"{v2_table}\n"
         f"{V2_END_MARKER}"
     )
     readme = replace_block(readme, V2_START_MARKER, V2_END_MARKER, v2_block)
