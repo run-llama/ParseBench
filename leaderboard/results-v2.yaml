@@ -98,7 +98,7 @@ rows:
 - provider: Reducto (r-1)
   status: verified
   pipeline: reducto_r1
-  results_revision: refs/pr/1
+  results_revision: 80df59e43b88c4474a1c9b90d0315edc70b2b1f8
   run_dates: '2026-11-12'
 - provider: Gemini 3 Flash (minimal)
   status: verified
