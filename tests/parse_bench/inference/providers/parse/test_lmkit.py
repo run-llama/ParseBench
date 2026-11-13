@@ -288,6 +288,39 @@ def test_flat_grounding_keeps_the_element_regions_alone():
     )
 
 
+def test_flat_grounding_boxes_a_region_by_its_elements_own_bounds():
+    items = project_page(_row_page(), "md", ["Net sales:", "EUR 4.3 billion", "A paragraph."], "flat").items
+
+    joined, paragraph = items
+    assert (joined.bbox.y, joined.bbox.h) == (pytest.approx(100 / 800), pytest.approx(10 / 800)), (
+        "the region's box adds the leading around the line; the flat box is the elements' own"
+    )
+    assert (joined.bbox.x, joined.bbox.w) == (pytest.approx(60 / 600), pytest.approx(340 / 600))
+    assert (paragraph.bbox.y, paragraph.bbox.h) == (pytest.approx(140 / 800), pytest.approx(30 / 800))
+    hierarchical = project_page(_row_page(), "md", ["Net sales:", "EUR 4.3 billion", "A paragraph."]).items
+    assert hierarchical[0].bbox.y == pytest.approx(98 / 800), "the hierarchical grounding keeps the region's box"
+
+
+def test_flat_grounding_leaves_a_nested_box_to_the_box_holding_it():
+    page = _row_page()
+    page["elements"].append(
+        {
+            "category": "text",
+            "reading_index": 3,
+            "confidence": 1,
+            "bbox": [100, 145, 200, 155],
+            "content": {"type": "text", "format": "markdown", "text": "paragraph"},
+        }
+    )
+    renderings = ["Net sales:", "EUR 4.3 billion", "A paragraph.", "paragraph"]
+
+    flat = project_page(page, "md", renderings, "flat").items
+    hierarchical = project_page(page, "md", renderings).items
+
+    assert [item.value for item in flat] == ["Net sales:\nEUR 4.3 billion", "A paragraph."]
+    assert len(hierarchical) == 3, "the hierarchical grounding keeps every element"
+
+
 def test_an_unknown_grounding_is_refused():
     with pytest.raises(ValueError):
         project_page(_PAGE, "md", _ELEMENT_MARKDOWN, "nested")

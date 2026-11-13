@@ -166,6 +166,33 @@ def _units(page: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+# Share of a box's area inside a larger box above which the flat grounding counts it as nested.
+_NESTED_SHARE = 0.9
+
+
+def _outermost(items: list[LayoutItemIR]) -> list[LayoutItemIR]:
+    """The items whose box no larger item's box holds: a partition of the page keeps the outer box
+    and leaves the words of a nested one to it."""
+
+    def area(b: LayoutSegmentIR) -> float:
+        return b.w * b.h
+
+    def overlap(a: LayoutSegmentIR, b: LayoutSegmentIR) -> float:
+        w = min(a.x + a.w, b.x + b.w) - max(a.x, b.x)
+        h = min(a.y + a.h, b.y + b.h) - max(a.y, b.y)
+        return max(0.0, w) * max(0.0, h)
+
+    return [
+        item
+        for item in items
+        if not any(
+            area(other.bbox) > area(item.bbox) and overlap(item.bbox, other.bbox) >= _NESTED_SHARE * area(item.bbox)
+            for other in items
+            if other is not item
+        )
+    ]
+
+
 def _is_unit_element(element: dict[str, Any]) -> bool:
     """A grounding unit sent the older way, as a layout-only element (servers up to 2026.10.5)."""
     return (element.get("content") or {}).get("type") == "repeated_text"
@@ -178,7 +205,9 @@ def project_page(
     joined into one region, or, in the ``hierarchical`` grounding, a grounding unit with its own
     text), in reading order with running heads first and running feet last, its box (the region's
     own when the parser gives one, else its elements' bounds) normalized by the page frame. The
-    ``flat`` grounding keeps the element regions alone, so no two boxes hold the same words."""
+    ``flat`` grounding is a partition of the page: the element regions alone, each boxed by its
+    elements' own bounds (the region's box adds the leading around its lines), and a box lying
+    inside a larger one left to it, so no two boxes hold the same words."""
     if grounding not in _GROUNDINGS:
         raise ValueError(f"grounding must be one of {', '.join(_GROUNDINGS)}, got {grounding!r}")
     flat = grounding == "flat"
@@ -214,7 +243,8 @@ def project_page(
 
     items: list[LayoutItemIR] = []
     for _, members, bbox, unit in entries:
-        boxes = [bbox] if bbox else [[float(v) for v in elements[m]["bbox"]] for m in members]
+        own = [[float(v) for v in elements[m]["bbox"]] for m in members]
+        boxes = own if (flat and members) or not bbox else [bbox]
         left, top = min(b[0] for b in boxes), min(b[1] for b in boxes)
         right, bottom = max(b[2] for b in boxes), max(b[3] for b in boxes)
         if unit is not None:
@@ -245,6 +275,9 @@ def project_page(
         if segment.w <= 0 or segment.h <= 0:
             continue
         items.append(LayoutItemIR(type=item_type, value=value, bbox=segment, layout_segments=[segment]))
+
+    if flat:
+        items = _outermost(items)
 
     return ParseLayoutPageIR(
         page_number=int(page.get("page_number") or int(page.get("page_index", 0)) + 1),
