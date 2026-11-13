@@ -18,6 +18,8 @@ from parse_bench.inference.providers.base import (
     ProviderTransientError,
 )
 from parse_bench.inference.providers.parse._layout_utils import (
+    SYSTEM_PROMPT_LAYOUT,
+    USER_PROMPT_LAYOUT,
     build_layout_pages,
     items_to_markdown,
     parse_layout_blocks,
@@ -66,6 +68,30 @@ USER_PROMPT = (
     "headers. Output ONLY the parsed content, "
     "no explanations."
 )
+
+# `layout_bbox_space: "pixels"` asks for pixel bboxes of the uploaded image with
+# this bullet in place of the 0-1000 one, and states the image size after it.
+_NORMALIZED_BBOX_BULLET = (
+    '- data-bbox="[x1, y1, x2, y2]" — bounding box in normalized 0-1000 '
+    "coordinates where x is horizontal (left edge = 0, right edge = 1000) "
+    "and y is vertical (top = 0, bottom = 1000). "
+    "x1,y1 is the top-left corner and x2,y2 is the bottom-right corner.\n"
+)
+_PIXEL_BBOX_BULLET = (
+    '- data-bbox="[x1, y1, x2, y2]" — bounding box in absolute pixel '
+    "coordinates of the uploaded image where x is horizontal and y is vertical. "
+    "The origin (0, 0) is the top-left corner; x increases rightward and y "
+    "increases downward. x1,y1 is the top-left corner and x2,y2 is the "
+    "bottom-right corner.\n"
+)
+_SYSTEM_PROMPT_LAYOUT_PIXELS = SYSTEM_PROMPT_LAYOUT.replace(_NORMALIZED_BBOX_BULLET, _PIXEL_BBOX_BULLET)
+assert _SYSTEM_PROMPT_LAYOUT_PIXELS != SYSTEM_PROMPT_LAYOUT, "pixel bbox bullet did not match SYSTEM_PROMPT_LAYOUT"
+
+# Claude's (max edge, max visual tokens) per `image_resolution` tier.
+_IMAGE_RESOLUTION_LIMITS: dict[str, tuple[int, int]] = {
+    "standard": (1568, 1568),
+    "high": (2576, 4784),
+}
 
 
 # Anthropic pricing, USD per 1M tokens: (input, output, cache read, 5m cache write).
@@ -157,6 +183,10 @@ class AnthropicProvider(Provider):
     capabilities to parse document content to markdown.
     """
 
+    # Class-level defaults for tests and subclasses that skip __init__.
+    _image_resolution = "standard"
+    _layout_bbox_space: str | None = None
+
     def __init__(self, provider_name: str, base_config: dict[str, Any] | None = None):
         """
         Initialize the provider.
@@ -168,6 +198,11 @@ class AnthropicProvider(Provider):
             - `max_tokens`: Max tokens per response (default: 8192)
             - `timeout`: Request timeout in seconds (default: 120)
             - `mode`: "image" (default) to send page screenshots, or "file" to send raw PDF
+            - `image_resolution`: "standard" (default) or "high"; the image limits pages are
+              pre-resized to in pixel-coordinate layout modes (``vision_max_edge`` /
+              ``vision_max_tokens`` override them)
+            - `layout_bbox_space`: "pixels" (``parse_with_layout`` only) asks for bboxes in
+              pixels of the uploaded image, stating its exact size in the system prompt
         """
         super().__init__(provider_name, base_config)
 
@@ -205,13 +240,29 @@ class AnthropicProvider(Provider):
         self._layout_system_prompt, self._layout_user_prompt = resolve_layout_prompts(
             self._bbox_scale, self._mode, pixel_frame_supported=True
         )
+        # A second pixel frame: the shared layout prompt with a pixel bbox bullet
+        # plus the uploaded image's exact size, built per page. Pages are
+        # pre-resized like bbox_scale=None and normalized by the sent size.
+        self._layout_bbox_space = self.base_config.get("layout_bbox_space")
+        if self._layout_bbox_space is not None:
+            if self._layout_bbox_space != "pixels" or self._mode != "parse_with_layout":
+                raise ProviderConfigError("layout_bbox_space must be 'pixels' and needs mode 'parse_with_layout'.")
+            if self._bbox_scale != 1000:
+                raise ProviderConfigError("layout_bbox_space and bbox_scale cannot be combined.")
         # Image limits used to pre-resize pages in pixel-coordinate mode.
         # Defaults are the standard resolution tier, which is safe for every
         # model (an image within standard limits is never downscaled
         # server-side on any tier); high-resolution-tier models can pass
-        # vision_max_edge=2576, vision_max_tokens=4784 to keep fidelity.
-        self._vision_max_edge = int(self.base_config.get("vision_max_edge", 1568))
-        self._vision_max_tokens = int(self.base_config.get("vision_max_tokens", 1568))
+        # image_resolution="high" (or vision_max_edge=2576, vision_max_tokens=4784)
+        # to keep fidelity.
+        self._image_resolution = self.base_config.get("image_resolution", "standard")
+        if self._image_resolution not in _IMAGE_RESOLUTION_LIMITS:
+            raise ProviderConfigError(
+                f"Invalid image_resolution '{self._image_resolution}'. Must be 'standard' or 'high'."
+            )
+        default_max_edge, default_max_tokens = _IMAGE_RESOLUTION_LIMITS[self._image_resolution]
+        self._vision_max_edge = int(self.base_config.get("vision_max_edge", default_max_edge))
+        self._vision_max_tokens = int(self.base_config.get("vision_max_tokens", default_max_tokens))
 
         # Initialize Anthropic client
         try:
@@ -464,6 +515,24 @@ class AnthropicProvider(Provider):
         :return: Tuple of (parsed layout items, raw content, usage dict)
         """
         img_base64 = self._image_to_base64(image)
+        system_prompt, user_prompt = self._layout_system_prompt, self._layout_user_prompt
+        # Any: the SDK's ImageBlockParam has no `transformations` field yet.
+        image_part: Any = {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/jpeg",
+                "data": img_base64,
+            },
+        }
+        if self._layout_bbox_space == "pixels":
+            system_prompt = (
+                f"{_SYSTEM_PROMPT_LAYOUT_PIXELS}\n\n"
+                f"The uploaded image is exactly {image.width} pixels wide by {image.height} pixels high."
+            )
+            user_prompt = USER_PROMPT_LAYOUT
+            # A 400 instead of a server-side resize that would move the pixel frame.
+            image_part["transformations"] = {"oversized_image": "error"}
 
         try:
             extra_kwargs: dict[str, Any] = {}
@@ -477,23 +546,16 @@ class AnthropicProvider(Provider):
             response = self._client.messages.create(
                 model=self._model,
                 max_tokens=self._max_tokens,
-                system=self._layout_system_prompt,
+                system=system_prompt,
                 timeout=httpx.Timeout(3600.0, connect=5.0),
                 messages=[
                     {
                         "role": "user",
                         "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/jpeg",
-                                    "data": img_base64,
-                                },
-                            },
+                            image_part,
                             {
                                 "type": "text",
-                                "text": self._layout_user_prompt,
+                                "text": user_prompt,
                             },
                         ],
                     }
@@ -744,18 +806,20 @@ class AnthropicProvider(Provider):
                     if self._mode == "parse_with_layout":
                         # In pixel mode, send the pre-resized image so the recorded
                         # dims are exactly what the model perceives.
-                        page = self._resize_to_perceived_size(image) if self._bbox_scale is None else image
+                        pixel_frame = self._bbox_scale is None or self._layout_bbox_space == "pixels"
+                        page = self._resize_to_perceived_size(image) if pixel_frame else image
                         items, raw_content, usage = self._parse_image_with_layout(page)
                         page_usages.append(usage)
-                        pages.append(
-                            {
-                                "page_index": page_index,
-                                "items": items,
-                                "raw_content": raw_content,
-                                "width": page.width,
-                                "height": page.height,
-                            }
-                        )
+                        page_record: dict[str, Any] = {
+                            "page_index": page_index,
+                            "items": items,
+                            "raw_content": raw_content,
+                            "width": page.width,
+                            "height": page.height,
+                        }
+                        if self._layout_bbox_space:
+                            page_record["bbox_coordinate_space"] = self._layout_bbox_space
+                        pages.append(page_record)
                     else:
                         markdown, usage = self._parse_image(image)
                         page_usages.append(usage)
@@ -782,17 +846,23 @@ class AnthropicProvider(Provider):
 
             cost = sum(self._usage_cost_usd(usage) for usage in page_usages)
 
+            config_info: dict[str, Any] = {
+                "dpi": self._dpi,
+                "max_tokens": self._max_tokens,
+                "mode": self._mode,
+            }
+            if self._mode == "parse_with_layout":
+                config_info["image_resolution"] = self._image_resolution
+            if self._layout_bbox_space:
+                config_info["layout_bbox_space"] = self._layout_bbox_space
+
             raw_output = {
                 "pages": pages,
                 "num_pages": num_pages,
                 "model": self._model,
                 "mode": self._mode,
                 "bbox_scale": self._bbox_scale,
-                "config": {
-                    "dpi": self._dpi,
-                    "max_tokens": self._max_tokens,
-                    "mode": self._mode,
-                },
+                "config": config_info,
                 "input_tokens": total_input,
                 "output_tokens": total_output,
                 "cache_read_tokens": total_cache_read,
@@ -848,6 +918,12 @@ class AnthropicProvider(Provider):
                 image_width = page_data.get("width", 0)
                 image_height = page_data.get("height", 0)
                 markdown = items_to_markdown(items)
+                # Pages asked for pixel bboxes record that per page.
+                bbox_scale = (
+                    None
+                    if page_data.get("bbox_coordinate_space") == "pixels"
+                    else raw_result.raw_output.get("bbox_scale", 1000)
+                )
                 layout_pages.extend(
                     build_layout_pages(
                         items,
@@ -855,7 +931,7 @@ class AnthropicProvider(Provider):
                         image_height,
                         markdown,
                         page_number=page_index + 1,
-                        bbox_scale=raw_result.raw_output.get("bbox_scale", 1000),
+                        bbox_scale=bbox_scale,
                     )
                 )
             else:

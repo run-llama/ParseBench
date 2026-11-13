@@ -12,8 +12,11 @@ from typing import Any
 
 import pytest
 
+from parse_bench.evaluation.layout_adapters import create_layout_adapter_for_result
 from parse_bench.evaluation.layout_adapters.adapters import (
     LlamaParseLayoutAdapter,
+    MinerU2605ProLayoutAdapter,
+    MistralOcrLayoutAdapter,
     NutrientDwsLayoutAdapter,
     _looks_like_llamaparse_pages,
     layout_pages_in_page_units,
@@ -115,6 +118,19 @@ def test_nutrient_adapter_reads_fractional_boxes() -> None:
     layout = NutrientDwsLayoutAdapter().to_layout_output(_result([page], "nutrient_dws_agentic"))
     x1, y1, x2, y2 = layout.predictions[0].bbox
     assert (x1, y1) == pytest.approx((0.0136 * 1700, 0.0318 * 2200))
+
+
+@pytest.mark.parametrize(
+    ("pipeline_name", "adapter"),
+    [("mineru2605pro_vllm", MinerU2605ProLayoutAdapter), ("mistral_ocr_4_1", MistralOcrLayoutAdapter)],
+)
+def test_registered_pipeline_resolves_to_its_provider_adapter(pipeline_name: str, adapter: type) -> None:
+    """Without a key for the provider, the matcher fallback picks LlamaParseLayoutAdapter."""
+    page = _page([_seg(0.1, 0.2, 0.3, 0.1)], width=1700, height=2200)
+    result = _result([page], pipeline_name)
+    assert type(create_layout_adapter_for_result(result)) is adapter
+    x1, y1, _, _ = adapter().to_layout_output(result).predictions[0].bbox
+    assert (x1, y1) == pytest.approx((0.1 * 1700, 0.2 * 2200))
 
 
 def _context(model: LayoutDetectionModel) -> MappingContext:

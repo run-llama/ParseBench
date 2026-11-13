@@ -23,6 +23,10 @@ A ``+`` label suffix (``text+``) marks a block continued from the previous page 
 
 One inference gives both the markdown and the layout, so the ``lightonocr_3_vllm_parse`` pipeline scores all
 five ParseBench dimensions.
+
+The ``lightonocr3`` provider sends the same request but maps labels through the shared
+``_layout_utils.LABEL_MAP`` (so ``list``, ``caption``, ``code`` and ``section`` keep their own class). The
+ParseBench 2 ``lightonocr3_*_vllm`` pipelines use it.
 """
 
 import base64
@@ -34,7 +38,8 @@ from typing import Any
 
 import aiohttp
 
-from parse_bench.inference.providers.base import ProviderPermanentError
+from parse_bench.inference.providers.base import ProviderPermanentError, ProviderTransientError
+from parse_bench.inference.providers.parse._layout_utils import LABEL_MAP as SHARED_LABEL_MAP
 from parse_bench.inference.providers.parse.qwen import QwenProvider, _build_layout_page
 from parse_bench.inference.providers.registry import register_provider
 from parse_bench.schemas.parse_output import PageIR, ParseLayoutPageIR, ParseOutput
@@ -341,6 +346,8 @@ class LightOnOcr3Provider(QwenProvider):
         self._prompt = self.base_config.get("prompt", DEFAULT_PROMPT)
         self._max_pixels: int | None = self.base_config.get("max_pixels")
 
+    _render_block = staticmethod(_render_block)
+
     @staticmethod
     def parse_blocks(content: str) -> list[dict[str, Any]]:
         """The raw response as ordered ``{label, bbox, text}`` blocks."""
@@ -451,7 +458,7 @@ class LightOnOcr3Provider(QwenProvider):
             {**item, "text": _repair_dollar_delimiters(str(item.get("text", "")))}
             for item in page.get("layout_items", [])
         ]
-        blocks = [_render_block(str(item.get("raw_label", "")), item["text"]) for item in items]
+        blocks = [self._render_block(str(item.get("raw_label", "")), item["text"]) for item in items]
         markdown = "\n\n".join(block for block in blocks if block)
         if markdown:
             markdown = self._sanitize_html_attributes(self._convert_md_tables_to_html(markdown))
@@ -470,3 +477,60 @@ class LightOnOcr3Provider(QwenProvider):
             texts = (item["text"].strip() for item in items if _base_label(str(item.get("raw_label", ""))) in labels)
             setattr(layout_page, field, "\n\n".join(text for text in texts if text))
         return markdown, layout_page
+
+
+# Raw block label -> key of the shared ``_layout_utils.LABEL_MAP``. Labels already in it (text, title, caption,
+# footnote, formula, code, table, figure) need no alias; unknown labels map to Text.
+_SHARED_LABEL_ALIASES: dict[str, str] = {
+    "section": "section_header",
+    "list": "list_item",
+    "header": "page_header",
+    "footer": "page_footer",
+    "page_number": "page_footer",
+    "figure_title": "caption",
+    "image": "picture",
+    "chart": "picture",
+    # ParseBench's layout ground truth labels an image in the header/footer band as Picture.
+    "header_image": "picture",
+    "footer_image": "picture",
+}
+
+
+def _shared_canonical_label(raw_label: str, bbox: list[int]) -> str:
+    """Canonical17 category of a block under the shared label map."""
+    label = _base_label(raw_label)
+    # The model has one page_number label wherever the number is printed; one whose center is in the top
+    # half of the page sits in the header band.
+    if label == "page_number" and len(bbox) == 4 and (bbox[1] + bbox[3]) / 2 < 500:
+        return SHARED_LABEL_MAP["page_header"]
+    return SHARED_LABEL_MAP.get(_SHARED_LABEL_ALIASES.get(label, label), "Text")
+
+
+@register_provider("lightonocr3")
+class LightOnOcr3SharedLabelsProvider(LightOnOcr3Provider):
+    """LightOnOCR-3 grounding with labels mapped through the shared layout label map.
+
+    Same request as ``lightonocr-3``. The Canonical17 category is derived in ``normalize`` (so a mapping change
+    only needs a renormalize), ``section`` blocks render as H2, and a timeout or dropped connection is retried.
+    """
+
+    @staticmethod
+    def _render_block(raw_label: str, text: str) -> str:
+        if _base_label(raw_label) == "section" and text.strip() and not _LEADING_HEADING_RE.match(text):
+            return f"## {text.strip()}"
+        return _render_block(raw_label, text)
+
+    async def _run_inference_async(self, image_bytes: bytes, img_width: int, img_height: int) -> dict[str, Any]:
+        # QwenProvider.run_inference turns any other exception into a "successful" result with an empty page,
+        # which scores 0 and is never retried.
+        try:
+            return await super()._run_inference_async(image_bytes, img_width, img_height)
+        except (TimeoutError, aiohttp.ClientError) as e:
+            raise ProviderTransientError(f"{type(e).__name__} after {self._timeout}s: {e}") from e
+
+    def _normalize_page(self, page: dict[str, Any]) -> tuple[str, ParseLayoutPageIR | None]:
+        items = [
+            {**item, "category": _shared_canonical_label(str(item.get("raw_label", "")), item.get("bbox", []))}
+            for item in page.get("layout_items", [])
+        ]
+        return super()._normalize_page({**page, "layout_items": items})

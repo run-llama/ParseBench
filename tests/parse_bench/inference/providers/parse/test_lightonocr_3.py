@@ -115,3 +115,56 @@ def test_layout_adapter_is_registered_for_provider_key() -> None:
 
     assert registration is not None
     assert registration.adapter_cls is QwenLayoutAdapter
+
+
+LightOnOcr3SharedLabelsProvider = _module.LightOnOcr3SharedLabelsProvider
+
+SHARED_RAW = (
+    "![page_number](480,20,520,40) 7\n\n"
+    "![section](10,70,990,120) Results\n\n"
+    "![list](10,130,990,180) - first point\n\n"
+    "![caption](10,190,990,220) Figure 1. Revenue\n\n"
+    "![paragraph](10,230,990,280) Body text."
+)
+
+
+def test_shared_labels_provider_maps_through_shared_label_map() -> None:
+    blocks = LightOnOcr3Provider.parse_blocks(SHARED_RAW)
+    # The stored category is ignored: normalize re-derives it from the raw label.
+    layout_items = [{"bbox": b["bbox"], "category": "Text", "text": b["text"], "raw_label": b["label"]} for b in blocks]
+    raw_output = {
+        "pages": [
+            {"page_index": 0, "width": 1000, "height": 1400, "raw_response": SHARED_RAW, "layout_items": layout_items}
+        ]
+    }
+    provider = LightOnOcr3SharedLabelsProvider("lightonocr3", {"server_url": "http://localhost:8000"})
+
+    result = provider.normalize(_raw_result(raw_output))
+
+    page = result.output.layout_pages[0]
+    labels = [item.layout_segments[0].label for item in page.items]
+    # A page number in the top half is a page header; list/caption/section keep their own classes.
+    assert labels == ["Page-header", "Section-header", "List-item", "Caption", "Text"]
+    assert page.printed_page_number == "7"
+    assert "## Results" in result.output.markdown
+
+
+def test_shared_labels_pipelines_are_registered() -> None:
+    from parse_bench.evaluation.layout_adapters.adapters import LightOnOcr3LayoutAdapter
+    from parse_bench.evaluation.layout_adapters.registry import _lookup_registration_by_key
+
+    for name, model, env in (
+        ("lightonocr3_4b_vllm", "lightonocr-3-4b", "LIGHTONOCR_3_4B_SERVER_URL"),
+        ("lightonocr3_1b_vllm", "lightonocr-3-1b", "LIGHTONOCR_3_1B_SERVER_URL"),
+        ("lightonocr3_0_8b_vllm", "lightonocr-3-0.8b", "LIGHTONOCR_3_0_8B_SERVER_URL"),
+    ):
+        pipeline = get_pipeline(name)
+        assert pipeline.provider_name == "lightonocr3"
+        assert pipeline.config["model"] == model
+        assert pipeline.config["server_url_env"] == env
+        assert pipeline.config["dpi"] == 400
+        assert pipeline.config["max_tokens"] == 12288
+
+    registration = _lookup_registration_by_key("lightonocr3")
+    assert registration is not None
+    assert registration.adapter_cls is LightOnOcr3LayoutAdapter

@@ -1,6 +1,8 @@
 """Shared helpers for the leaderboard accountability tooling.
 
-Every row of ``leaderboard.csv`` is tied to an entry in ``leaderboard/results.yaml``.
+There are two leaderboards (*boards*): ParseBench v1 (``leaderboard.csv``, ``leaderboard/results.yaml``) and
+ParseBench 2 (``leaderboard-v2.csv``, ``leaderboard/results-v2.yaml``). Every row of a board's csv is tied to an
+entry in its results map.
 A *verified* entry names the pipeline folder in the HF results repo
 (``results/<pipeline>/<category>.jsonl``) and the repo revision it was published
 at, so the row can be re-scored from those outputs with the current harness.
@@ -20,6 +22,8 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CSV_PATH = REPO_ROOT / "leaderboard.csv"
 MAP_PATH = REPO_ROOT / "leaderboard" / "results.yaml"
+V2_CSV_PATH = REPO_ROOT / "leaderboard-v2.csv"
+V2_MAP_PATH = REPO_ROOT / "leaderboard" / "results-v2.yaml"
 
 # leaderboard.csv column -> (evaluation group, headline metric). The metric is
 # read as ``avg_<metric>`` from the group's evaluation report; the evaluator
@@ -32,6 +36,62 @@ DIMENSIONS: dict[str, tuple[str, str]] = {
     "Visual_Grounding": ("layout", "layout_element_rule_pass_rate"),
 }
 
+# leaderboard-v2.csv column -> ParseBench 2 dimension in ``_next_score.json`` (parse_bench.evaluation.next_score).
+V2_DIMENSIONS: dict[str, str] = {
+    "Text": "text",
+    "Formatting": "formatting",
+    "Tables": "tables",
+    "Charts": "charts",
+    "Visual_Grounding": "layout",
+    "Forms": "forms",
+}
+
+
+@dataclass(frozen=True)
+class Board:
+    """One leaderboard: its csv, its results map, its score columns and how rescore.py scores it."""
+
+    name: str
+    csv_path: Path
+    map_path: Path
+    dimensions: tuple[str, ...]
+    short: dict[str, str]
+    benchmark: str  # the results repo's tools/explode.py --benchmark
+
+
+V1 = Board(
+    name="v1",
+    csv_path=CSV_PATH,
+    map_path=MAP_PATH,
+    dimensions=tuple(DIMENSIONS),
+    short={
+        "Overall": "Overall",
+        "Tables": "Tables",
+        "Charts": "Charts",
+        "Content_Faithfulness": "Content",
+        "Semantic_Formatting": "Formatting",
+        "Visual_Grounding": "Grounding",
+    },
+    benchmark="parsebench",
+)
+V2 = Board(
+    name="v2",
+    csv_path=V2_CSV_PATH,
+    map_path=V2_MAP_PATH,
+    dimensions=tuple(V2_DIMENSIONS),
+    short={
+        "Overall": "Overall",
+        "Text": "Text",
+        "Formatting": "Formatting",
+        "Tables": "Tables",
+        "Charts": "Charts",
+        "Visual_Grounding": "Grounding",
+        "Forms": "Forms",
+    },
+    benchmark="parsebench-2",
+)
+BOARDS: dict[str, Board] = {"v1": V1, "v2": V2}
+
 VERIFIED = "verified"
 UNVERIFIED = "unverified"
 STATUSES = (VERIFIED, UNVERIFIED)
@@ -43,6 +103,7 @@ class MapEntry:
     status: str
     pipeline: str | None = None
     results_revision: str | None = None
+    run_dates: str | None = None
     note: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -51,6 +112,8 @@ class MapEntry:
             d["pipeline"] = self.pipeline
         if self.results_revision:
             d["results_revision"] = self.results_revision
+        if self.run_dates:
+            d["run_dates"] = self.run_dates
         if self.note:
             d["note"] = self.note
         return d
@@ -79,6 +142,7 @@ _MAP_HEADER = """\
 #                     unverified -> no published outputs; scores are kept as submitted
 #   pipeline          folder under results/ in `results_repo` (verified rows only)
 #   results_revision  `results_repo` commit (or refs/pr/N for a pending submission)
+#   run_dates         when the published outputs were produced (first to last record `started_at`/`completed_at`)
 #
 # `scored_with` is the ParseBench commit the verified rows were last re-scored at.
 # Maintained by scripts/leaderboard/; see leaderboard/README.md.
@@ -104,8 +168,11 @@ def save_map(rmap: ResultsMap, path: Path = MAP_PATH) -> None:
         "scored_with": rmap.scored_with,
         "rows": [e.to_dict() for e in rmap.rows],
     }
+    header = _MAP_HEADER
+    if path.name == V2_MAP_PATH.name:
+        header = header.replace("leaderboard.csv", V2_CSV_PATH.name)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_MAP_HEADER + "\n" + yaml.safe_dump(body, sort_keys=False, allow_unicode=True, width=120))
+    path.write_text(header + "\n" + yaml.safe_dump(body, sort_keys=False, allow_unicode=True, width=120))
 
 
 def load_csv(path: Path = CSV_PATH) -> tuple[list[str], list[dict[str, str]]]:
@@ -126,9 +193,9 @@ def fmt_score(value: float) -> str:
     return f"{value:.2f}"
 
 
-def overall(scores: dict[str, float]) -> float:
-    """Overall is the unweighted mean of the five dimensions."""
-    return sum(scores[c] for c in DIMENSIONS) / len(DIMENSIONS)
+def overall(scores: dict[str, float], board: Board = V1) -> float:
+    """Overall is the unweighted mean of the board's dimensions (five for v1, six for v2)."""
+    return sum(scores[c] for c in board.dimensions) / len(board.dimensions)
 
 
 HARNESS_PATHS = ("src/parse_bench", "scripts/leaderboard", "pyproject.toml", "uv.lock")

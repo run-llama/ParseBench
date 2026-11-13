@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "leader
 
 import apply as lb_apply  # noqa: E402
 import check as lb_check  # noqa: E402
-from common import DIMENSIONS, MapEntry, ResultsMap, load_csv, load_map, overall, save_map  # noqa: E402
+from common import DIMENSIONS, V2, MapEntry, ResultsMap, load_csv, load_map, overall, save_map  # noqa: E402
 
 SHA = "a" * 40
 
@@ -214,3 +214,56 @@ def test_ground_truth_download_retries_dropped_connections(tmp_path: Path, monke
     assert len(calls) == 2 and calls[0]["max_workers"] == rescore.GT_DOWNLOAD_WORKERS
     assert (path / ".complete").read_text() == SHA
     assert rescore.ground_truth("org/data", SHA, tmp_path, None) == path and len(calls) == 2  # cached
+
+
+def test_repo_v2_leaderboard_is_consistent_with_its_results_map() -> None:
+    _, rows = load_csv(V2.csv_path)
+    rmap = load_map(V2.map_path)
+    assert lb_check.static_errors(rows, rmap, V2) == []
+    assert lb_check.verified_column_errors(rows, rmap) == []
+    assert rmap.results_repo == "llamaindex/ParseBench-2-results" and rmap.data_repo == "llamaindex/ParseBench-2"
+
+
+def test_v2_board_uses_the_six_parsebench_2_dimensions() -> None:
+    assert V2.dimensions == ("Text", "Formatting", "Tables", "Charts", "Visual_Grounding", "Forms")
+    assert overall(dict(zip(V2.dimensions, [10.0, 20.0, 30.0, 40.0, 50.0, 60.0], strict=True)), V2) == 35.0
+
+
+def test_v2_new_values_average_six_dimensions() -> None:
+    result = {"scores": dict.fromkeys(V2.dimensions, 60.004)}
+    old = dict.fromkeys(["Overall", *V2.dimensions], 50.0)
+    new = lb_apply.new_values(result, old, V2)
+    assert all(new[c] == 60.0 for c in V2.dimensions) and new["Overall"] == 60.0
+
+
+def test_v2_static_errors_name_the_v2_files() -> None:
+    errors = "\n".join(lb_check.static_errors([_v2_row("A"), _v2_row("A")], _map(), V2))
+    assert "leaderboard-v2.csv has duplicate Provider 'A'" in errors
+    assert "has no entry in results-v2.yaml" in errors
+
+
+def test_apply_refuses_a_rescore_of_the_other_board(tmp_path: Path) -> None:
+    rescore = tmp_path / "rescore.json"
+    rescore.write_text(json.dumps({"board": "v1", "results": {}}))
+    args = lb_apply.argparse.Namespace(rescore=rescore, csv=V2.csv_path, map=V2.map_path, report=None, board="v2")
+    with pytest.raises(SystemExit, match="v1 re-score given for --board v2"):
+        lb_apply.cmd_compare(args)
+
+
+def test_v2_map_header_names_the_v2_csv(tmp_path: Path) -> None:
+    path = tmp_path / V2.map_path.name
+    save_map(_map(MapEntry("A", "unverified")), path)
+    assert "every leaderboard-v2.csv row" in path.read_text()
+
+
+def test_map_keeps_run_dates(tmp_path: Path) -> None:
+    path = tmp_path / "results.yaml"
+    entry = MapEntry("A", "verified", "pa", SHA, run_dates="2026-11-02 to 2026-11-04")
+    save_map(_map(entry, MapEntry("U", "unverified")), path)
+    rows = load_map(path).rows
+    assert rows[0].run_dates == "2026-11-02 to 2026-11-04"
+    assert rows[1].run_dates is None
+
+
+def _v2_row(provider: str) -> dict[str, str]:
+    return {"Provider": provider, "Category": "X", "Overall": "50.00", **dict.fromkeys(V2.dimensions, "50.00")}

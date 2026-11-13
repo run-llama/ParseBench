@@ -117,9 +117,9 @@ Gemma-4-26B-A4B-it,VLM - Open Weight,58.5,70,14.2,83.8,65.1,59.2,,,,,,google/gem
 Nemotron-3-Nano-Omni-30B-A3B (Thinking),VLM - Open Weight,48.51,70.44,31.47,80.97,59.69,0,,,,,,nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16,yes
 LightOnOCR-2-1B,VLM - Open Weight,48,75.5,13.5,87.8,63.2,0,,,,,,lightonai/LightOnOCR-2-1B,yes
 Nemotron-3.5-Parse,VLM - Open Weight,75.07,84.62,63.85,88.04,69.06,69.78,,,,,,nvidia/Nemotron-3.5-Parse,yes
-LightOnOCR-3-4B,VLM - Open Weight,75.60,83.63,66.35,90.07,68.08,69.85,,,,,,lightonai/LightOnOCR-3-4B,yes
-LightOnOCR-3-0.8B,VLM - Open Weight,74.74,84.42,64.55,88.82,66.44,69.47,,,,,,lightonai/LightOnOCR-3-0.8B,yes
-LightOnOCR-3-1B,VLM - Open Weight,71.16,84.82,56.38,88.61,64.47,61.54,,,,,,lightonai/LightOnOCR-3-1B,yes
+LightOnOCR-3-4B,VLM - Open Weight,75.34,83.63,66.35,90.07,68.08,68.59,,,,,,lightonai/LightOnOCR-3-4B,yes
+LightOnOCR-3-0.8B,VLM - Open Weight,74.56,84.42,64.55,88.82,66.44,68.59,,,,,,lightonai/LightOnOCR-3-0.8B,yes
+LightOnOCR-3-1B,VLM - Open Weight,70.93,84.82,56.38,88.61,64.47,60.38,,,,,,lightonai/LightOnOCR-3-1B,yes
 Qianfan-OCR,VLM - Open Weight,42.25,72.30,0.90,76.74,40.53,20.76,,,,,,baidu/Qianfan-OCR,yes
 MinerU2.5-Pro-2605-1.2B,VLM - Open Weight,69.27,77.61,59.12,88.23,47.15,74.24,,,,,,opendatalab/MinerU2.5-Pro-2605-1.2B,yes
 Unlimited-OCR,VLM - Open Weight,33.12,70.25,1.01,87.18,0.23,6.91,,,,,,baidu/Unlimited-OCR,yes

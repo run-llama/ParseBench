@@ -6,6 +6,42 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- ParseBench 2 leaderboard accountability, as for ParseBench v1: `leaderboard/results-v2.yaml` ties every
+  `leaderboard-v2.csv` row to its published outputs in `llamaindex/ParseBench-2-results`, `leaderboard-v2.csv` gains a
+  `Verified` column (unverified rows are marked † in the README), and the leaderboard scripts take `--board v2`.
+  A verified row is re-scored over all 13 subsets with `evaluation run --next ... --next_only`. The verification and
+  daily re-score workflows cover both leaderboards. All 44 rows are verified.
+- Optional `run_dates` on results-map rows: when the published outputs were produced, from the records'
+  `started_at`/`completed_at`. Filled for every ParseBench 2 row.
+- The remaining ParseBench 2 leaderboard pipelines, under their leaderboard names, so their published outputs replay
+  with the provider's layout adapter: `anthropic_{opus,haiku}_5_5_parse_with_layout`,
+  `openai_gpt_5_6_{terra,luna}_reasoning_low_parse_with_layout`, `openai_gpt_6_luna_reasoning_low_parse_with_layout`,
+  `gemini_4_argon_thinking_low_parse_with_layout_file`, `muse_ember_1_0_reasoning_low_parse_with_layout_file`,
+  `lightonocr3_{4b,0_8b}_vllm` and `infinity_parser2_{pro,flash}_deep`; also `lightonocr3_1b_vllm` (ParseBench
+  leaderboard).
+- `meta` parse provider for Meta Muse models (OpenAI-compatible Responses API, `META_API_KEY`), with a `meta` layout
+  adapter.
+- `lightonocr3` parse provider: the `lightonocr-3` grounding request with labels mapped through the shared layout
+  label map, with a `lightonocr3` layout adapter. Each model size reads its own server URL variable
+  (`LIGHTONOCR_3_4B_SERVER_URL`, `LIGHTONOCR_3_1B_SERVER_URL`, `LIGHTONOCR_3_0_8B_SERVER_URL`).
+- Anthropic provider: `image_resolution` (`"high"` pre-resizes pixel-frame pages to the 2576 px / 4784 token tier)
+  and `layout_bbox_space: "pixels"` (`parse_with_layout`: asks for bboxes in pixels of the uploaded image, stating its
+  exact size in the prompt).
+- Gemini 4 Argon pricing in the Google provider.
+
+### Scoring
+- Layout adapters for the `mineru2605pro` and `mistral_ocr` providers. Their results fell back to the LlamaParse
+  adapter, which re-scaled MinerU2.5-Pro's normalized boxes to the page corner (ParseBench 2 visual grounding 75.81
+  instead of 82.23) and read Mistral OCR's blocks slightly differently (81.86 instead of 81.82).
+- The ParseBench leaderboard's LightOnOCR-3 rows (`lightonocr3_{4b,1b,0_8b}_vllm`) are scored with the new
+  `lightonocr3` layout adapter instead of the LlamaParse fallback. The adapter collapses labels outside the 11 core
+  classes (`Code`, `Document Index`, `Key-Value Region`) to their core class instead of failing the page.
+
+### Fixed
+- ParseBench 2 leaderboard verification checks the 1% missing-pages limit per subset. A dimension pools several
+  subsets, so a complete large subset could hide a small one missing more than 1% of its pages.
+
 ## [2.0.1] - 2026-11-12
 
 ### Added
