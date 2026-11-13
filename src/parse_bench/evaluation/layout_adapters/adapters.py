@@ -1419,6 +1419,27 @@ class Gemma4LayoutAdapter(LayoutAdapter):
         )
 
 
+@register_layout_adapter("loamist_parse", priority=90)
+class LoamistParseLayoutAdapter(LayoutAdapter):
+    """Adapter that extracts LayoutOutput from Loamist Parse ParseOutput.layout_pages.
+
+    Loamist Parse returns div-wrapped layout blocks (``data-bbox`` / ``data-label``) with the
+    shared label set, so the shared parse_with_layout conversion and label mapping apply.
+    """
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        return _parse_with_layout_to_layout_output(
+            inference_result,
+            model=LayoutDetectionModel.LOAMIST_PARSE_LAYOUT,
+            page_filter=page_filter,
+        )
+
+
 @register_layout_adapter("hunyuanocr", priority=90)
 class HunyuanOcrLayoutAdapter(LayoutAdapter):
     """Project normalized segments into each page's physical coordinate frame."""
