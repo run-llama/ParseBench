@@ -1434,26 +1434,6 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     )
 
     # =========================================================================
-    # Tencent Hy4 (TokenHub)
-    # =========================================================================
-
-    # Hy4 has two reasoning levels, "high" (the API default) and "no_think";
-    # this pins "high". Image pipeline on the DeepSeek-compatible parse path.
-    register_fn(
-        PipelineSpec(
-            pipeline_name="hy4_parse_with_layout",
-            provider_name="tencent_hy",
-            product_type=ProductType.PARSE,
-            config={
-                "model": "hy4",
-                "mode": "parse_with_layout",
-                "max_tokens": 32768,
-                "reasoning_effort": "high",
-            },
-        )
-    )
-
-    # =========================================================================
     # Qwen3.5-4B vLLM
     # =========================================================================
 

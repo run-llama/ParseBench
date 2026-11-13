@@ -60,12 +60,6 @@ class DeepSeekParseProvider(OpenAIProvider):
     """DeepSeek-V4.1-Flash document parsing through the DeepSeek API."""
 
     DEFAULT_MODEL = "deepseek-flash"
-    # Vendor constants; OpenAI-compatible vendors with the same thinking API
-    # (e.g. tencent_hy) subclass and override these.
-    VENDOR = "DeepSeek"
-    API_KEY_ENV = "DEEPSEEK_API_KEY"
-    DEFAULT_BASE_URL = _DEEPSEEK_BASE_URL
-    PRICING_PER_M: dict[str, tuple[float, float, float]] = _DEEPSEEK_PARSE_PRICING_PER_M
 
     # Max image dimension the API accepts per side, and the per-image size cap
     # for inline base64 (base64 adds ~33% overhead, so cap the raw bytes).
@@ -77,11 +71,10 @@ class DeepSeekParseProvider(OpenAIProvider):
         # client); wire the DeepSeek client and the fields run_inference/normalize use.
         Provider.__init__(self, provider_name, base_config)
 
-        api_key_env = self.base_config.get("api_key_env", self.API_KEY_ENV)
-        self._api_key = self.base_config.get("api_key") or os.environ.get(api_key_env)
+        self._api_key = self.base_config.get("api_key") or os.environ.get("DEEPSEEK_API_KEY")
         if not self._api_key:
             raise ProviderConfigError(
-                f"{self.VENDOR} API key is required. Set {api_key_env} or pass api_key in base_config."
+                "DeepSeek API key is required. Set DEEPSEEK_API_KEY or pass api_key in base_config."
             )
 
         self._model = self.base_config.get("model", self.DEFAULT_MODEL)
@@ -92,7 +85,7 @@ class DeepSeekParseProvider(OpenAIProvider):
         self._timeout = self.base_config.get("timeout", 600)
         self._reasoning_effort = self.base_config.get("reasoning_effort", None)
         self._thinking = self.base_config.get("thinking", None)
-        self._base_url = self.base_config.get("base_url", self.DEFAULT_BASE_URL)
+        self._base_url = self.base_config.get("base_url", _DEEPSEEK_BASE_URL)
         self._mode = self.base_config.get("mode", "parse_with_layout")
         # The shared layout prompt requests normalized 0-1000 coordinates, and
         # inherited run/normalize code records and consumes this scale.
@@ -107,8 +100,7 @@ class DeepSeekParseProvider(OpenAIProvider):
 
         if self._mode != "parse_with_layout":
             raise ProviderConfigError(
-                f"Invalid mode '{self._mode}'. {self.VENDOR} accepts images only, "
-                "so 'parse_with_layout' is the only mode."
+                f"Invalid mode '{self._mode}'. DeepSeek accepts images only, so 'parse_with_layout' is the only mode."
             )
 
         if self._thinking is not None and self._thinking not in ("enabled", "disabled"):
@@ -123,7 +115,7 @@ class DeepSeekParseProvider(OpenAIProvider):
 
     def _pricing3(self) -> tuple[float, float, float]:
         """Longest-prefix (input, cached_input, output) rate per 1M tokens."""
-        matches = [(p, r) for p, r in self.PRICING_PER_M.items() if self._model.startswith(p)]
+        matches = [(p, r) for p, r in _DEEPSEEK_PARSE_PRICING_PER_M.items() if self._model.startswith(p)]
         return max(matches, key=lambda x: len(x[0]))[1] if matches else (0.0, 0.0, 0.0)
 
     def _get_pricing(self) -> tuple[float, float]:
@@ -167,8 +159,8 @@ class DeepSeekParseProvider(OpenAIProvider):
                 raw["cost_per_page_usd"] = raw["cost_usd"] / num_pages
         return result
 
-    def _raise_vendor_error(self, e: Exception) -> NoReturn:
-        """Classify an SDK exception as transient (retried) or permanent.
+    def _raise_deepseek_error(self, e: Exception) -> NoReturn:
+        """Classify a DeepSeek SDK exception as transient (retried) or permanent.
 
         DeepSeek returns 429 when the account's concurrency limit is exceeded
         rather than for a per-minute quota, so it clears as soon as in-flight
@@ -185,8 +177,8 @@ class DeepSeekParseProvider(OpenAIProvider):
             "RateLimitError",
         }
         if is_retryable_status or is_retryable_type:
-            raise ProviderTransientError(f"Transient error calling {self.VENDOR} API: {e}") from e
-        raise ProviderPermanentError(f"Error calling {self.VENDOR} API: {e}") from e
+            raise ProviderTransientError(f"Transient error calling DeepSeek API: {e}") from e
+        raise ProviderPermanentError(f"Error calling DeepSeek API: {e}") from e
 
     # DeepSeek returns the chain of thought in ``message.reasoning_content`` and
     # counts it in ``completion_tokens``, with the count broken out under
@@ -237,7 +229,7 @@ class DeepSeekParseProvider(OpenAIProvider):
         return kwargs
 
     def _parse_image_with_layout(self, image: Image.Image) -> tuple[list[dict[str, Any]], str, dict[str, int]]:
-        """Send a page image with the layout prompt via an image_url block."""
+        """Send a page image to DeepSeek with the layout prompt via an image_url block."""
         try:
             response = self._client.chat.completions.create(**self._layout_request_kwargs(image))
             self._cache_tls.value = getattr(self._cache_tls, "value", 0) + self._read_cached_tokens(response)
@@ -246,4 +238,4 @@ class DeepSeekParseProvider(OpenAIProvider):
             text = content or ""
             return parse_layout_blocks(text), text, usage
         except Exception as e:
-            self._raise_vendor_error(e)
+            self._raise_deepseek_error(e)

@@ -43,7 +43,6 @@ from parse_bench.schemas.pipeline_io import InferenceRequest, InferenceResult
         "Qwen3VLLayoutAdapter",
         "QwenLayoutAdapter",
         "ReductoLayoutAdapter",
-        "TencentHYLayoutAdapter",
         "TextractLayoutAdapter",
         "UnstructuredLayoutAdapter",
     ],
