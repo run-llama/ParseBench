@@ -121,10 +121,8 @@ rows:
   results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
   run_dates: 2026-10-29 to 2026-11-10
 - provider: MinerU2.5-Pro
-  status: verified
-  pipeline: mineru2605pro_vllm
-  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
-  run_dates: 2026-10-31 to 2026-11-06
+  status: unverified
+  note: outputs miss 24 of 149 complex_table_headers pages (empty provider response); scores as submitted until re-run
 - provider: Gemini 3.8 Flash (low)
   status: verified
   pipeline: google_gemini_3_8_flash_thinking_low_parse_with_layout_file
