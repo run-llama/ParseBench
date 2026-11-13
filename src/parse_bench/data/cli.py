@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-from parse_bench.data.download import default_data_dir, download_dataset, is_dataset_ready
+from parse_bench.data.download import dataset_spec, default_data_dir, download_dataset, is_dataset_ready
 
 
 class DataCLI:
@@ -73,6 +73,20 @@ class DataCLI:
 
         print(f"Dataset: {data_path}")
         print()
+
+        subsets = dataset_spec(dataset).subsets
+        if subsets:
+            hdr = f"{'Subset':<26} {'Folder':<44} {'Test Cases':>10}"
+            print(hdr)
+            print("-" * len(hdr))
+            total = 0
+            for subset, folder in subsets:
+                n_cases = sum(1 for _ in (data_path / folder).rglob("*.test.json"))
+                total += n_cases
+                print(f"{subset:<26} {folder:<44} {n_cases:>10,}")
+            print("-" * len(hdr))
+            print(f"{'Total':<26} {'':<44} {total:>10,}")
+            return 0
 
         # Gather per-category stats from JSONL files
         jsonl_files = sorted(data_path.glob("*.jsonl"))

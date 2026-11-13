@@ -1,4 +1,7 @@
-"""Validate leaderboard.csv against leaderboard/results.yaml.
+"""Validate a leaderboard csv against its results map.
+
+``--board v1`` (default): leaderboard.csv and leaderboard/results.yaml. ``--board v2``: leaderboard-v2.csv and
+leaderboard/results-v2.yaml.
 
 Static checks (no network):
   - every leaderboard row has exactly one results-map entry and vice versa
@@ -18,6 +21,7 @@ written to ``$GITHUB_OUTPUT`` as ``pipelines`` for re-scoring.
 
     python scripts/leaderboard/check.py
     python scripts/leaderboard/check.py --hf --base-csv /tmp/base_leaderboard.csv
+    python scripts/leaderboard/check.py --board v2 --fix
 """
 
 from __future__ import annotations
@@ -30,11 +34,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import (  # noqa: E402
-    CSV_PATH,
-    DIMENSIONS,
-    MAP_PATH,
+    BOARDS,
     STATUSES,
+    V1,
     VERIFIED,
+    Board,
     ResultsMap,
     load_csv,
     load_map,
@@ -44,19 +48,22 @@ from common import (  # noqa: E402
 VERIFIED_COLUMN = "Verified"
 SAFE_NAME = re.compile(r"[A-Za-z0-9_.-]+")
 SAFE_REVISION = re.compile(r"[0-9a-f]{40}|refs/pr/[0-9]+")
-SCORE_COLUMNS = ["Overall", *DIMENSIONS]
 
 
-def static_errors(rows: list[dict[str, str]], rmap: ResultsMap) -> list[str]:
+def score_columns(board: Board = V1) -> list[str]:
+    return ["Overall", *board.dimensions]
+
+
+def static_errors(rows: list[dict[str, str]], rmap: ResultsMap, board: Board = V1) -> list[str]:
     errors: list[str] = []
     providers = [r["Provider"] for r in rows]
     for dup in sorted({p for p in providers if providers.count(p) > 1}):
-        errors.append(f"leaderboard.csv has duplicate Provider {dup!r}")
+        errors.append(f"{board.csv_path.name} has duplicate Provider {dup!r}")
     mapped = [e.provider for e in rmap.rows]
     for dup in sorted({p for p in mapped if mapped.count(p) > 1}):
         errors.append(f"results map has duplicate provider {dup!r}")
     for p in sorted(set(providers) - set(mapped)):
-        errors.append(f"leaderboard row {p!r} has no entry in {MAP_PATH.name}")
+        errors.append(f"leaderboard row {p!r} has no entry in {board.map_path.name}")
     for p in sorted(set(mapped) - set(providers)):
         errors.append(f"results map entry {p!r} matches no leaderboard row")
     pipelines = [e.pipeline for e in rmap.verified()]
@@ -125,25 +132,31 @@ def hf_errors(rmap: ResultsMap) -> list[str]:
     return errors
 
 
-def changed_rows(rows: list[dict[str, str]], base_rows: list[dict[str, str]]) -> list[str]:
+def changed_rows(rows: list[dict[str, str]], base_rows: list[dict[str, str]], board: Board = V1) -> list[str]:
     base = {r["Provider"]: r for r in base_rows}
     changed = []
     for r in rows:
         old = base.get(r["Provider"])
-        if old is None or any(r.get(c, "") != old.get(c, "") for c in SCORE_COLUMNS):
+        if old is None or any(r.get(c, "") != old.get(c, "") for c in score_columns(board)):
             changed.append(r["Provider"])
     return changed
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--csv", type=Path, default=CSV_PATH)
-    parser.add_argument("--map", type=Path, default=MAP_PATH)
+    parser.add_argument(
+        "--board", choices=sorted(BOARDS), default="v1", help="v1: leaderboard.csv, v2: leaderboard-v2.csv"
+    )
+    parser.add_argument("--csv", type=Path, default=None, help="default: the board's csv")
+    parser.add_argument("--map", type=Path, default=None, help="default: the board's results map")
     parser.add_argument("--hf", action="store_true", help="check verified folders exist in the results repo")
-    parser.add_argument("--base-csv", type=Path, default=None, help="leaderboard.csv of the PR base")
-    parser.add_argument("--base-map", type=Path, default=None, help="results.yaml of the PR base")
+    parser.add_argument("--base-csv", type=Path, default=None, help="the board's csv on the PR base")
+    parser.add_argument("--base-map", type=Path, default=None, help="the board's results map on the PR base")
     parser.add_argument("--fix", action="store_true", help="rewrite the Verified column from the map")
     args = parser.parse_args()
+    board = BOARDS[args.board]
+    args.csv = args.csv or board.csv_path
+    args.map = args.map or board.map_path
 
     fieldnames, rows = load_csv(args.csv)
     rmap = load_map(args.map)
@@ -153,7 +166,7 @@ def main() -> int:
         print(f"rewrote {VERIFIED_COLUMN} column in {args.csv}")
         fieldnames, rows = load_csv(args.csv)
 
-    errors = static_errors(rows, rmap) + verified_column_errors(rows, rmap)
+    errors = static_errors(rows, rmap, board) + verified_column_errors(rows, rmap)
     if args.base_map:
         base_map = load_map(args.base_map)
         for field in ("results_repo", "data_repo", "data_revision"):
@@ -166,7 +179,7 @@ def main() -> int:
     if args.base_csv:
         _, base_rows = load_csv(args.base_csv)
         by = rmap.by_provider()
-        for provider in changed_rows(rows, base_rows):
+        for provider in changed_rows(rows, base_rows, board):
             entry = by.get(provider)
             if entry is None:
                 continue  # already reported above

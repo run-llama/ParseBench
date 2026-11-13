@@ -34,6 +34,7 @@ from parse_bench.schemas.layout_detection_output import (
     LayoutTableContent,
     LayoutTextContent,
 )
+from parse_bench.schemas.layout_ontology import CANONICAL_TO_CORE, CanonicalLabel
 from parse_bench.schemas.parse_output import ParseLayoutPageIR, ParseOutput
 from parse_bench.schemas.pipeline_io import InferenceResult
 from parse_bench.test_cases.schema import TestCase
@@ -1255,13 +1256,25 @@ class Qwen3VLLayoutAdapter(LayoutAdapter):
         )
 
 
+def _canonical_to_core(label: str) -> CanonicalLabel | None:
+    try:
+        return CANONICAL_TO_CORE.get(CanonicalLabel(label))
+    except ValueError:
+        return None
+
+
 def _parse_with_layout_to_layout_output(
     inference_result: InferenceResult,
     *,
     model: LayoutDetectionModel,
     page_filter: int | None = None,
+    collapse_to_core: bool = False,
 ) -> LayoutOutput:
-    """Shared conversion for LLM parse_with_layout adapters (Google/OpenAI/Anthropic)."""
+    """Shared conversion for LLM parse_with_layout adapters (Google/OpenAI/Anthropic).
+
+    ``collapse_to_core`` maps Canonical17 labels outside Core11 (``Code``, ``Document Index``, ...)
+    to their Core11 class; otherwise they pass through and the label mapper rejects the page.
+    """
     # Handle LayoutOutput (e.g. from multi-task re-evaluation)
     if isinstance(inference_result.output, LayoutOutput):
         return filter_layout_output(inference_result.output, page_filter)
@@ -1294,6 +1307,10 @@ def _parse_with_layout_to_layout_output(
 
                 lookup_key = str_label.lower().replace("-", "_")
                 qwen_enum = QWEN3VL_STR_TO_LABEL.get(lookup_key)
+                if qwen_enum is None and collapse_to_core:
+                    core = _canonical_to_core(str_label)
+                    if core is not None:
+                        qwen_enum = QWEN3VL_STR_TO_LABEL.get(core.value.lower().replace("-", "_"))
                 int_label = str(int(qwen_enum)) if qwen_enum is not None else str_label
 
                 # Convert normalized [0,1] xywh -> pixel xyxy
@@ -1655,6 +1672,17 @@ class AnthropicLayoutAdapter(LayoutAdapter):
             model=LayoutDetectionModel.ANTHROPIC_LAYOUT,
             page_filter=page_filter,
         )
+
+
+@register_layout_adapter("meta", priority=90)
+class MetaLayoutAdapter(OpenAILayoutAdapter):
+    """Extract LayoutOutput from the Meta Muse ``parse_with_layout*`` PARSE pipelines.
+
+    The ``meta`` provider parses through the OpenAI provider's Responses layout path, so
+    its ``layout_pages`` match OpenAI's. The key must stay registered: the matcher fallback
+    resolves these results to ``LlamaParseLayoutAdapter``, which reads the empty item ``md``
+    and scores every element's attribution as 0.
+    """
 
 
 @register_layout_adapter("reducto", priority=90)
@@ -3326,6 +3354,37 @@ class QwenLayoutAdapter(LayoutAdapter):
         )
 
 
+@register_layout_adapter("lightonocr3", priority=90)
+class LightOnOcr3LayoutAdapter(Gemma4LayoutAdapter):
+    """Extract LayoutOutput from the ``lightonocr3`` (shared label map) PARSE pipelines.
+
+    The provider fills ``layout_pages`` with Canonical17 labels and normalized boxes, so
+    this reuses the shared parse_with_layout conversion (Qwen3-VL class indices) under the
+    OpenAI-compatible VLM layout model, unlike ``lightonocr-3``, which keeps raw labels.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput) or not inference_result.output.layout_pages:
+            return False
+        raw_output = inference_result.raw_output
+        config = raw_output.get("_config", {}) if isinstance(raw_output, dict) else {}
+        return isinstance(config, dict) and str(config.get("model", "")).startswith("lightonocr-3")
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        return _parse_with_layout_to_layout_output(
+            inference_result,
+            model=LayoutDetectionModel.OPENAI_COMPATIBLE_VLM_LAYOUT,
+            page_filter=page_filter,
+            collapse_to_core=True,
+        )
+
+
 @register_layout_adapter("mineru25", priority=90)
 class MinerU25LayoutAdapter(LayoutAdapter):
     """Adapter that extracts LayoutOutput from MinerU 2.5 ParseOutput.layout_pages.
@@ -3418,6 +3477,17 @@ _NANO_LAYOUT_LABEL_TO_CANONICAL = {
     "Chart": "Picture",
     "Flowchart": "Picture",
 }
+
+
+@register_layout_adapter("mineru2605pro", priority=90)
+class MinerU2605ProLayoutAdapter(MinerU25LayoutAdapter):
+    """Extract LayoutOutput from MinerU2.5-Pro ``ParseOutput.layout_pages`` for cross-eval.
+
+    The ``mineru2605pro`` PARSE provider writes the same layout_pages as MinerU 2.5: item
+    boxes normalized to [0,1] on pages whose width and height are in pixels. Without this
+    key the matcher fallback picks ``LlamaParseLayoutAdapter``, which divides those boxes by
+    the pixel size again and reads every block at [0,0,0,0].
+    """
 
 
 @register_layout_adapter(
@@ -4072,6 +4142,18 @@ class NutrientDwsLayoutAdapter(LayoutAdapter):
             predictions=predictions,
             markdown="\n\n".join(markdown_parts),
         )
+
+
+@register_layout_adapter("mistral_ocr", priority=90)
+class MistralOcrLayoutAdapter(NutrientDwsLayoutAdapter):
+    """Extract LayoutOutput from Mistral OCR ``ParseOutput.layout_pages`` for cross-eval.
+
+    The ``mistral_ocr`` PARSE provider maps each page's ``blocks`` into
+    ``layout_pages`` with normalized [0,1] xywh segments, canonical labels and the
+    block text, which is the shape the Nutrient conversion reads. The key must
+    stay registered: the matcher fallback resolves Mistral results to
+    ``LlamaParseLayoutAdapter``, which reads no attribution blocks from them.
+    """
 
 
 @register_layout_adapter("upstage", priority=90)

@@ -54,6 +54,24 @@ REDUCTO_LABEL_MAP: dict[str, str] = {
 # during evaluation (pixel_coord / page_dim == original_normalized_value).
 _VIRTUAL_PAGE_DIM = 1000.0
 
+# Reducto lists r-1-mini at 0.1 cent per page but does not return its cost in
+# the response, so mini pages are priced from ``usage.usage_breakdown``.
+R1_MINI_PAGE_USD = 0.001
+R1_MINI_PARSE_MODEL = "R-1 Mini"
+
+
+def _r1_mini_cost_usd(usage: dict[str, Any]) -> float | None:
+    """Price an r-1-mini response from its parse and native page counts."""
+    breakdown = usage.get("usage_breakdown")
+    if not isinstance(breakdown, dict) or breakdown.get("parse_model") != R1_MINI_PARSE_MODEL:
+        return None
+    pages = sum(
+        value
+        for value in (breakdown.get("parse_pages"), breakdown.get("parse_native_pages"))
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+    )
+    return pages * R1_MINI_PAGE_USD if pages > 0 else None
+
 
 @register_provider("reducto")
 class ReductoProvider(Provider):
@@ -85,7 +103,7 @@ class ReductoProvider(Provider):
             - `advanced_chart_agent`: Enable advanced chart agent for figure agentic scope
               to convert charts/graphs to tabular format (default: False)
             - `model`: Reducto parse model to select via ``settings.model`` (e.g.
-              ``"r-1"``). Omitted by default, which runs legacy Parse. See
+              ``"r-1"`` or ``"r-1-mini"``). Omitted by default, which runs legacy Parse. See
               https://docs.reducto.ai/parse/r-1
         """
         super().__init__(provider_name, base_config)
@@ -253,6 +271,11 @@ class ReductoProvider(Provider):
                 raw_response["num_pages"] = usage_pages
                 if usage_pages > 0:
                     raw_response["cost_per_page_usd"] = cost_usd / usage_pages
+            elif (mini_cost_usd := _r1_mini_cost_usd(usage)) is not None:
+                raw_response["cost_usd"] = mini_cost_usd
+                raw_response["num_pages"] = usage_pages
+                if usage_pages > 0:
+                    raw_response["cost_per_page_usd"] = mini_cost_usd / usage_pages
 
             return raw_response
 

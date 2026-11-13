@@ -39,6 +39,7 @@ _PROVIDER_MODULES = [
     "lightonocr-3",
     "liteparse",
     "markitdown",
+    "meta",
     "opendataloader",
     "pdf_inspector",
     "pymupdf4llm",

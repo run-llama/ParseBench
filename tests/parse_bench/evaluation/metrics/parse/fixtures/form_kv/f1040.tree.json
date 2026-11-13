@@ -1,0 +1,1298 @@
+{
+ "doc_id": "f1040-2025--f004--native-helv",
+ "pages": [
+  {
+   "page_number": 1,
+   "items": [
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Other",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Combat zone",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "value": "2025"
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Deceased",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Deceased date",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "First name and middle initial",
+     "value": "Jennifer H."
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Last name",
+     "value": "Hale"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Your social security number",
+     "value": "919-29-3710"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Home address",
+     "value": "4346 Krista Village Apt. 462"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "City, town, or post office",
+     "value": "North Tonyaborough"
+    },
+    {
+     "type": "field",
+     "field": "single_select",
+     "label": "Filing Status",
+     "valueItems": [
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Single",
+       "value": false
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Married filing jointly",
+       "value": false
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Married filing separately",
+       "value": false
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Head of household (HOH)",
+       "value": true
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Qualifying surviving spouse (QSS)",
+       "value": false
+      }
+     ]
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "MFS spouse name",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "HOH/QSS qualifying person name",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Treating nonresident alien as US resident",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Nonresident alien spouse name",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "single_select",
+     "label": "Digital Assets",
+     "valueItems": [
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Yes",
+       "value": false
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "No",
+       "value": true
+      }
+     ]
+    },
+    {
+     "type": "section",
+     "label": "Dependents",
+     "items": [
+      {
+       "type": "section",
+       "label": "Dependent 1",
+       "items": [
+        {
+         "type": "field",
+         "field": "text",
+         "value": "Vanessa"
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "value": "Shepherd"
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "value": "985-25-2775"
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "value": "Parent"
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": true
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        }
+       ]
+      },
+      {
+       "type": "section",
+       "label": "Dependent 2",
+       "items": [
+        {
+         "type": "field",
+         "field": "text",
+         "value": "Tanya"
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "value": "Greer"
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "value": "925-40-2714"
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "value": "Granddaughter"
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": true
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        }
+       ]
+      },
+      {
+       "type": "section",
+       "label": "Dependent 3",
+       "items": [
+        {
+         "type": "field",
+         "field": "text",
+         "value": "Brian"
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "value": "Ramirez"
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "value": "990-25-1599"
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "value": "Stepdaughter"
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": true
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        },
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": false
+        }
+       ]
+      },
+      {
+       "type": "section",
+       "label": "Dependent 4",
+       "items": [
+        {
+         "type": "field",
+         "field": "text",
+         "isEmpty": true
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "isEmpty": true
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "isEmpty": true
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "isEmpty": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "1a",
+     "label": "Total amount from Form(s) W-2",
+     "value": "163,641.64"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "1b",
+     "label": "Household employee wages",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "1c",
+     "label": "Tip income",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "1d",
+     "label": "Medicaid waiver payments",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "1e",
+     "label": "Taxable dependent care benefits",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "1f",
+     "label": "Employer-provided adoption benefits",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "1g",
+     "label": "Wages from Form 8919",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "1h",
+     "label": "Other earned income",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "1i",
+     "label": "Nontaxable combat pay election",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "1z",
+     "label": "Add lines 1a through 1h",
+     "value": "163,641.64"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "2a",
+     "label": "Tax-exempt interest",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "2b",
+     "label": "Taxable interest",
+     "value": "7,712.01"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "3a",
+     "label": "Qualified dividends",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "3b",
+     "label": "Ordinary dividends",
+     "value": "10,616.36"
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "3c",
+     "label": "Check if your child's dividends are included",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "4a",
+     "label": "IRA distributions",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "4b",
+     "label": "Taxable amount",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "4c",
+     "label": "Check if IRA rollover",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "4c",
+     "label": "Check if IRA QCD",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "4c",
+     "label": "IRA QCD amount",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "5a",
+     "label": "Pensions and annuities",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "5b",
+     "label": "Taxable amount",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "5c",
+     "label": "Check if pension rollover",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "5c",
+     "label": "Check if pension PSO",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "5c",
+     "label": "Pension PSO amount",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "6a",
+     "label": "Social security benefits",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "6b",
+     "label": "Taxable amount",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "6c",
+     "label": "Lump-sum election",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "6d",
+     "label": "Married filing separately and lived apart",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "7a",
+     "label": "Capital gain or (loss)",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "7b",
+     "label": "Schedule D not required",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "7b",
+     "label": "Includes child's capital gain",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "8",
+     "label": "Additional income from Schedule 1",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "9",
+     "label": "Total income",
+     "value": "181,970.01"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "10",
+     "label": "Adjustments to income",
+     "value": "4,439.04"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "11a",
+     "label": "Adjusted gross income",
+     "value": "177,530.97"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Spouse first name",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Spouse last name",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Spouse SSN",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Spouse deceased",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "State",
+     "value": "GA"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "ZIP code",
+     "value": "30994"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Foreign country",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Foreign province",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Foreign postal code",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Apt no",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Presidential Election Campaign You",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Presidential Election Campaign Spouse",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Dependent 1 SSN",
+     "value": "852-52-775"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Dependent 2 SSN",
+     "value": "925-40-2714"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Dependent 3 SSN",
+     "value": "990-25-1599"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Dependent 4 SSN",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Dependent 4 lived with you",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Other earned income type",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Check if main home in US",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Check if spouse main home in US",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Check if spouse main home in US",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Capital gain/loss schedule",
+     "isEmpty": true
+    }
+   ]
+  },
+  {
+   "page_number": 2,
+   "items": [
+    {
+     "type": "field",
+     "field": "text",
+     "id": "11b",
+     "label": "Amount from line 11a (adjusted gross income)",
+     "value": "177,530.97"
+    },
+    {
+     "type": "field",
+     "field": "multi_select",
+     "id": "12a",
+     "label": "Someone can claim",
+     "valueItems": [
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "You as a dependent",
+       "value": false
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Your spouse as a dependent",
+       "value": false
+      }
+     ]
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "12b",
+     "label": "Spouse itemizes on a separate return",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "12c",
+     "label": "You were a dual-status alien",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "12d",
+     "label": "You: Were born before January 2, 1961",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "12d",
+     "label": "You: Are blind",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "12d",
+     "label": "Spouse: Was born before January 2, 1961",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "12d",
+     "label": "Spouse: Is blind",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "12e",
+     "label": "Standard deduction or itemized deductions (from Schedule A)",
+     "value": "15,750.00"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "13a",
+     "label": "Qualified business income deduction from Form 8995 or Form 8995-A",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "13b",
+     "label": "Additional deductions from Schedule 1-A, line 38",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "14",
+     "label": "Add lines 12e, 13a, and 13b",
+     "value": "15,750.00"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "15",
+     "label": "Subtract line 14 from line 11b. If zero or less, enter -0-. This is your taxable income",
+     "value": "161,780.97"
+    },
+    {
+     "type": "field",
+     "field": "multi_select",
+     "id": "16",
+     "label": "Tax (see instructions). Check if any from Form(s):",
+     "valueItems": [
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "1 8814",
+       "value": false
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "2 4972",
+       "value": false
+      },
+      {
+       "type": "section",
+       "id": "3",
+       "items": [
+        {
+         "type": "field",
+         "field": "checkbox",
+         "value": true
+        },
+        {
+         "type": "field",
+         "field": "text",
+         "value": "Stop mode"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "16",
+     "value": "18,301.68"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "17",
+     "label": "Amount from Schedule 2, line 3",
+     "value": "7,772.18"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "18",
+     "label": "Add lines 16 and 17",
+     "value": "26,073.86"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "19",
+     "label": "Child tax credit or credit for other dependents from Schedule 8812",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "20",
+     "label": "Amount from Schedule 3, line 8",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "21",
+     "label": "Add lines 19 and 20",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "22",
+     "label": "Subtract line 21 from line 18. If zero or less, enter -0-",
+     "value": "26,073.86"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "23",
+     "label": "Other taxes, including self-employment tax, from Schedule 2, line 21",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "24",
+     "label": "Add lines 22 and 23. This is your total tax",
+     "value": "26,073.86"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "25a",
+     "label": "Federal income tax withheld from: Form(s) W-2",
+     "value": "42,383.91"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "25b",
+     "label": "Form(s) 1099",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "25c",
+     "label": "Other forms (see instructions)",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "25d",
+     "label": "Add lines 25a through 25c",
+     "value": "42,383.91"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "26",
+     "label": "2025 estimated tax payments and amount applied from 2024 return",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "If you made estimated tax payments with your former spouse in 2025, enter their SSN (see instructions):",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "27a",
+     "label": "Earned income credit (EIC)",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "27b",
+     "label": "Clergy filing Schedule SE (see instructions)",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "27c",
+     "label": "If you do not want to claim the EIC, check here",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "28",
+     "label": "Additional child tax credit (ACTC) from Schedule 8812. If you do not want to claim the ACTC, check here",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "28",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "29",
+     "label": "American opportunity credit from Form 8863, line 8",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "30",
+     "label": "Refundable adoption credit from Form 8839, line 13",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "31",
+     "label": "Amount from Schedule 3, line 15",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "32",
+     "label": "Add lines 27a, 28, 29, 30, and 31. These are your total other payments and refundable credits",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "33",
+     "label": "Add lines 25d, 26, and 32. These are your total payments",
+     "value": "42,383.91"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "34",
+     "label": "If line 33 is more than line 24, subtract line 24 from line 33. This is the amount you overpaid",
+     "value": "16,310.05"
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "35a",
+     "label": "Amount of line 34 you want refunded to you. If Form 8888 is attached, check here",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "35a",
+     "value": "16,310.05"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "35b",
+     "label": "Routing number",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "single_select",
+     "id": "35c",
+     "label": "Type:",
+     "valueItems": [
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Checking",
+       "value": false
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Savings",
+       "value": false
+      }
+     ]
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "35d",
+     "label": "Account number",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "36",
+     "label": "Amount of line 34 you want applied to your 2026 estimated tax",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "37",
+     "label": "Subtract line 33 from line 24. This is the amount you owe",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "id": "38",
+     "label": "Estimated tax penalty (see instructions)",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "id": "38",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "single_select",
+     "label": "Do you want to allow another person to discuss this return with the IRS? See instructions.",
+     "valueItems": [
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "Yes. Complete below.",
+       "value": false
+      },
+      {
+       "type": "field",
+       "field": "checkbox",
+       "label": "No",
+       "value": true
+      }
+     ]
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Designee's name",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Phone no.",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Personal identification number (PIN)",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Your occupation",
+     "value": "Sales Manager"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Spouse's occupation",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "If the IRS sent you an Identity Protection PIN, enter it here",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "If the IRS sent your spouse an Identity Protection PIN, enter it here",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Phone no.",
+     "value": "(261) 530-2925"
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Email address",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Preparer's name",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Preparer's signature",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Date",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "PTIN",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "checkbox",
+     "label": "Self-employed",
+     "value": false
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Firm's name",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Firm's address",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Phone no.",
+     "isEmpty": true
+    },
+    {
+     "type": "field",
+     "field": "text",
+     "label": "Firm's EIN",
+     "isEmpty": true
+    }
+   ]
+  }
+ ]
+}

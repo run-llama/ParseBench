@@ -1214,6 +1214,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # r-1-mini: Reducto's lower-cost r-1 variant. Same config as reducto_r1.
+    register_fn(
+        PipelineSpec(
+            pipeline_name="reducto_r1_mini",
+            provider_name="reducto",
+            product_type=ProductType.PARSE,
+            config={
+                "ocr_system": "standard",
+                "agentic": False,
+                "table_output_format": "html",
+                "model": "r-1-mini",
+            },
+        )
+    )
+
     # =========================================================================
     # DeepSeek-OCR-2
     # =========================================================================
@@ -1329,6 +1344,29 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             },
         )
     )
+
+    # LightOnOCR-3 4B / 1B / 0.8B with labels through the shared layout label map (ParseBench
+    # leaderboards). Same request settings as lightonocr_3_vllm_parse; each size is its own server.
+    for _loocr_name, _loocr_model, _loocr_env in (
+        ("4b", "lightonocr-3-4b", "LIGHTONOCR_3_4B_SERVER_URL"),
+        ("1b", "lightonocr-3-1b", "LIGHTONOCR_3_1B_SERVER_URL"),
+        ("0_8b", "lightonocr-3-0.8b", "LIGHTONOCR_3_0_8B_SERVER_URL"),
+    ):
+        register_fn(
+            PipelineSpec(
+                pipeline_name=f"lightonocr3_{_loocr_name}_vllm",
+                provider_name="lightonocr3",
+                product_type=ProductType.PARSE,
+                config={
+                    "model": _loocr_model,
+                    "server_url_env": _loocr_env,
+                    "dpi": 400,
+                    "max_pixels": 5_000_000,
+                    "temperature": 0.1,
+                    "max_tokens": 12288,
+                },
+            )
+        )
 
     # =========================================================================
     # Unlimited-OCR (baidu/Unlimited-OCR, DeepSeek-OCR successor with grounding)
@@ -2108,6 +2146,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Gemini 4 Argon - Parse with Layout File - Thinking Low (ParseBench 2 leaderboard)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="gemini_4_argon_thinking_low_parse_with_layout_file",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-4-argon",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+                "thinking_level": "low",
+            },
+        )
+    )
+
     # Gemini - Parse with Layout File - thinking-level sweep. Adds levels for models
     # whose other layout-file pipelines are registered above; each config matches that
     # model's sibling except for thinking_level.
@@ -2435,6 +2488,28 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             )
         )
 
+    # OpenAI GPT-5.6 Terra / Luna and GPT-6 Luna - Parse with Layout (image mode) - Low
+    # Reasoning (ParseBench 2 leaderboard)
+    for _gpt_layout_name, _gpt_layout_model in (
+        ("gpt_5_6_terra", "gpt-5.6-terra"),
+        ("gpt_5_6_luna", "gpt-5.6-luna"),
+        ("gpt_6_luna", "gpt-6-luna"),
+    ):
+        register_fn(
+            PipelineSpec(
+                pipeline_name=f"openai_{_gpt_layout_name}_reasoning_low_parse_with_layout",
+                provider_name="openai",
+                product_type=ProductType.PARSE,
+                config={
+                    "model": _gpt_layout_model,
+                    "max_tokens": 32768,
+                    "mode": "parse_with_layout",
+                    "dpi": 150,
+                    "reasoning_effort": "low",
+                },
+            )
+        )
+
     # OpenAI GPT-5.4 Nano - Parse with Layout
     register_fn(
         PipelineSpec(
@@ -2460,6 +2535,25 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                 "model": "gpt-5.4-nano",
                 "max_tokens": 32768,
                 "mode": "parse_with_layout_file",
+            },
+        )
+    )
+
+    # =========================================================================
+    # Meta Muse - Parse with Layout (OpenAI-compatible Responses API)
+    # =========================================================================
+
+    # Meta Muse Ember 1.0 - Parse with Layout File - Low Reasoning (ParseBench 2 leaderboard)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="muse_ember_1_0_reasoning_low_parse_with_layout_file",
+            provider_name="meta",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "muse-ember-1.0",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+                "reasoning_effort": "low",
             },
         )
     )
@@ -2584,6 +2678,26 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                     "max_tokens": 32768,
                     "mode": "parse_with_layout_file",
                     "effort": _opus55_effort,
+                },
+            )
+        )
+
+    # Anthropic Opus 5.5 / Haiku 5.5 - Parse with Layout (image mode) (ParseBench 2 leaderboard)
+    # Pages are pre-resized to the high-resolution tier and the model answers in pixels
+    # of the uploaded image.
+    for _claude55_name, _claude55_model in (("opus", "claude-opus-5-5"), ("haiku", "claude-haiku-5-5")):
+        register_fn(
+            PipelineSpec(
+                pipeline_name=f"anthropic_{_claude55_name}_5_5_parse_with_layout",
+                provider_name="anthropic",
+                product_type=ProductType.PARSE,
+                config={
+                    "model": _claude55_model,
+                    "max_tokens": 32768,
+                    "mode": "parse_with_layout",
+                    "dpi": 150,
+                    "image_resolution": "high",
+                    "layout_bbox_space": "pixels",
                 },
             )
         )
@@ -2974,6 +3088,23 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             },
         )
     )
+
+    # Infinity-Parser2 Pro / Flash with figure deep parsing pinned on (ParseBench 2 leaderboard)
+    for _inf2_name, _inf2_model in (("pro", "infly/Infinity-Parser2-Pro"), ("flash", "infly/Infinity-Parser2-Flash")):
+        register_fn(
+            PipelineSpec(
+                pipeline_name=f"infinity_parser2_{_inf2_name}_deep",
+                provider_name="infinity_parser2",
+                product_type=ProductType.PARSE,
+                config={
+                    "model_name": _inf2_model,
+                    "backend": "vllm-server",
+                    "task_type": "doc2json",
+                    "output_format": "json",
+                    "deep_parsing_mode": True,
+                },
+            )
+        )
 
     register_fn(
         PipelineSpec(
