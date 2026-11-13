@@ -149,6 +149,12 @@ uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 | `deepseek_v4_1_flash_parse_with_layout` | DeepSeek-V4.1-Flash, parse + layout, thinking high | `DEEPSEEK_API_KEY` |
 | `deepseek_v4_1_flash_no_thinking_parse_with_layout` | DeepSeek-V4.1-Flash, parse + layout, thinking disabled | `DEEPSEEK_API_KEY` |
 
+### Tencent Hy (TokenHub)
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `hy4_parse_with_layout` | Tencent Hy4, parse + layout, thinking high | `TENCENT_TOKENHUB_API_KEY` |
+
 ### Azure Document Intelligence
 
 | Pipeline | Description | Env Vars |
