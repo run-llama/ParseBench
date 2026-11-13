@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import csv
 import subprocess
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -149,9 +149,6 @@ _MAP_HEADER = """\
 """
 
 
-_MAP_ENTRY_FIELDS = {f.name for f in fields(MapEntry)}
-
-
 def load_map(path: Path = MAP_PATH) -> ResultsMap:
     raw = yaml.safe_load(path.read_text())
     return ResultsMap(
@@ -159,9 +156,7 @@ def load_map(path: Path = MAP_PATH) -> ResultsMap:
         data_repo=raw["data_repo"],
         data_revision=raw["data_revision"],
         scored_with=raw.get("scored_with"),
-        # Unknown keys are dropped: the verification workflow reads a PR's map with the base branch's scripts,
-        # so a field a PR adds must not break them.
-        rows=[MapEntry(**{k: v for k, v in r.items() if k in _MAP_ENTRY_FIELDS}) for r in raw.get("rows", [])],
+        rows=[MapEntry(**r) for r in raw.get("rows", [])],
     )
 
 

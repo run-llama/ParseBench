@@ -256,15 +256,5 @@ def test_map_keeps_run_dates(tmp_path: Path) -> None:
     assert rows[1].run_dates is None
 
 
-def test_load_map_ignores_unknown_row_keys(tmp_path: Path) -> None:
-    """The verification workflow reads a PR's map with the base branch's scripts."""
-    path = tmp_path / "results.yaml"
-    path.write_text(
-        "results_repo: o/r\ndata_repo: o/d\ndata_revision: x\nscored_with: null\n"
-        "rows:\n- provider: A\n  status: unverified\n  some_future_field: 1\n"
-    )
-    assert load_map(path).rows == [MapEntry("A", "unverified")]
-
-
 def _v2_row(provider: str) -> dict[str, str]:
     return {"Provider": provider, "Category": "X", "Overall": "50.00", **dict.fromkeys(V2.dimensions, "50.00")}
