@@ -232,5 +232,14 @@ def test_v2_map_header_names_the_v2_csv(tmp_path: Path) -> None:
     assert "every leaderboard-v2.csv row" in path.read_text()
 
 
+def test_map_keeps_run_dates(tmp_path: Path) -> None:
+    path = tmp_path / "results.yaml"
+    entry = MapEntry("A", "verified", "pa", SHA, run_dates="2026-11-02 to 2026-11-04")
+    save_map(_map(entry, MapEntry("U", "unverified")), path)
+    rows = load_map(path).rows
+    assert rows[0].run_dates == "2026-11-02 to 2026-11-04"
+    assert rows[1].run_dates is None
+
+
 def _v2_row(provider: str) -> dict[str, str]:
     return {"Provider": provider, "Category": "X", "Overall": "50.00", **dict.fromkeys(V2.dimensions, "50.00")}
