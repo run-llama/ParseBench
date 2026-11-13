@@ -351,16 +351,19 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
     # LM-Kit (self-hosted LM-Kit One server, one pipeline per effort level)
     # =========================================================================
 
+    # lmkit_<effort> grounds hierarchically (element regions, then the units inside them);
+    # lmkit_<effort>_flat keeps the element regions alone, a partition of the page (ParseBench 2 Layout).
     for effort in ("low", "medium", "high"):
-        register_fn(
-            PipelineSpec(
-                pipeline_name=f"lmkit_{effort}",
-                provider_name="lmkit",
-                product_type=ProductType.PARSE,
-                config={"effort": effort.capitalize()},
-                per_file_timeout=1800.0,  # includes the wait in the server's queue beyond --max_concurrent 4
+        for suffix, grounding in (("", "hierarchical"), ("_flat", "flat")):
+            register_fn(
+                PipelineSpec(
+                    pipeline_name=f"lmkit_{effort}{suffix}",
+                    provider_name="lmkit",
+                    product_type=ProductType.PARSE,
+                    config={"effort": effort.capitalize(), "grounding": grounding},
+                    per_file_timeout=1800.0,  # includes the wait in the server's queue beyond --max_concurrent 4
+                )
             )
-        )
 
     # =========================================================================
     # Docling Pipelines

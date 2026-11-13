@@ -455,6 +455,9 @@ Each document is one `POST /lmkit/v1/document-parsing` (JSON with `include_markd
 | `lmkit_high` | LM-Kit document parser, High effort | `LMKIT_ONE_URL` (optional, default `http://localhost:5189`) |
 | `lmkit_medium` | LM-Kit document parser, Medium effort | `LMKIT_ONE_URL` (optional) |
 | `lmkit_low` | LM-Kit document parser, Low effort | `LMKIT_ONE_URL` (optional) |
+| `lmkit_high_flat` | LM-Kit document parser, High effort, flat layout (element regions only; ParseBench 2) | `LMKIT_ONE_URL` (optional) |
+| `lmkit_medium_flat` | LM-Kit document parser, Medium effort, flat layout | `LMKIT_ONE_URL` (optional) |
+| `lmkit_low_flat` | LM-Kit document parser, Low effort, flat layout | `LMKIT_ONE_URL` (optional) |
 
 ---
 

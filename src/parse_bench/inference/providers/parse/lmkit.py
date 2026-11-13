@@ -32,6 +32,11 @@ base_url : str
 api_key : str
     Optional bearer token, for a server reachable from the network. Falls back to
     ``LMKIT_ONE_API_KEY``.
+grounding : str
+    ``hierarchical`` (default): the element regions and, as a second tier, the grounding units the
+    parser lists inside them (a list as a whole, a line of a paragraph). ``flat``: the element
+    regions alone, one box per word's region, for metrics that read the layout as a partition of
+    the page and charge every box holding words another box already holds (ParseBench 2 Layout).
 request_timeout, job_timeout, poll_seconds : float
     Seconds. Defaults 1800, 3600 and 1.
 
@@ -74,6 +79,7 @@ PROVIDER_NAME = "lmkit"
 
 _DEFAULT_BASE_URL = "http://localhost:5189"
 _EFFORTS = ("Low", "Medium", "High")
+_GROUNDINGS = ("hierarchical", "flat")
 
 # LM-Kit element categories -> ParseBench canonical labels; anything else is Text.
 LABEL_MAP: dict[str, str] = {
@@ -160,11 +166,22 @@ def _units(page: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def project_page(page: dict[str, Any], page_markdown: str, element_markdown: list[str]) -> ParseLayoutPageIR:
+def _is_unit_element(element: dict[str, Any]) -> bool:
+    """A grounding unit sent the older way, as a layout-only element (servers up to 2026.10.5)."""
+    return (element.get("content") or {}).get("type") == "repeated_text"
+
+
+def project_page(
+    page: dict[str, Any], page_markdown: str, element_markdown: list[str], grounding: str = "hierarchical"
+) -> ParseLayoutPageIR:
     """One layout page: one item per grounding region (one element, the elements the parser
-    joined into one region, or a grounding unit with its own text), in reading order with running
-    heads first and running feet last, its box (the region's own when the parser gives one, else
-    its elements' bounds) normalized by the page frame."""
+    joined into one region, or, in the ``hierarchical`` grounding, a grounding unit with its own
+    text), in reading order with running heads first and running feet last, its box (the region's
+    own when the parser gives one, else its elements' bounds) normalized by the page frame. The
+    ``flat`` grounding keeps the element regions alone, so no two boxes hold the same words."""
+    if grounding not in _GROUNDINGS:
+        raise ValueError(f"grounding must be one of {', '.join(_GROUNDINGS)}, got {grounding!r}")
+    flat = grounding == "flat"
     elements = page.get("elements") or []
     if len(element_markdown) != len(elements):
         raise ValueError("element_markdown is not aligned with the page's elements")
@@ -179,14 +196,19 @@ def project_page(page: dict[str, Any], page_markdown: str, element_markdown: lis
         ([m for m in members if len(elements[m].get("bbox") or []) == 4], bbox)
         for members, bbox in _regions(page, len(elements))
     ]
-    regions = [(members, bbox) for members, bbox in regions if members]
+    regions = [
+        (members, bbox)
+        for members, bbox in regions
+        if members and not (flat and all(_is_unit_element(elements[m]) for m in members))
+    ]
 
     # The units read after the page's elements, as the elements they used to be.
     entries: list[tuple[tuple[int, int], list[int], list[float] | None, dict[str, Any] | None]] = [
         (min((order(i), i) for i in members), members, bbox, None) for members, bbox in regions
     ]
+    units = [] if flat else _units(page)
     entries.extend(
-        ((_rank(unit.get("category")), len(elements) + k), [], _box(unit), unit) for k, unit in enumerate(_units(page))
+        ((_rank(unit.get("category")), len(elements) + k), [], _box(unit), unit) for k, unit in enumerate(units)
     )
     entries.sort(key=lambda entry: entry[0])
 
@@ -246,6 +268,10 @@ class LMKitProvider(Provider):
         if effort not in _EFFORTS:
             raise ProviderConfigError(f"effort must be one of {', '.join(_EFFORTS)}, got {effort!r}")
         self._effort = effort
+        grounding = str(self.base_config.get("grounding", "hierarchical")).lower()
+        if grounding not in _GROUNDINGS:
+            raise ProviderConfigError(f"grounding must be one of {', '.join(_GROUNDINGS)}, got {grounding!r}")
+        self._grounding = grounding
         self._base_url = str(
             self.base_config.get("base_url") or os.environ.get("LMKIT_ONE_URL") or _DEFAULT_BASE_URL
         ).rstrip("/")
@@ -352,7 +378,7 @@ class LMKitProvider(Provider):
             for index, page in enumerate(doc_pages)
         ]
         layout_pages = [
-            project_page(page, page_markdown[index] or "", list(element_markdown[index]))
+            project_page(page, page_markdown[index] or "", list(element_markdown[index]), self._grounding)
             for index, page in enumerate(doc_pages)
         ]
         markdown = raw_output.get("markdown") or "\n\n".join(page.markdown for page in pages)

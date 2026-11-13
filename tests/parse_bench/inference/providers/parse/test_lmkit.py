@@ -275,6 +275,26 @@ def test_grounding_units_sent_as_regions_are_boxes_with_their_own_words():
     )
 
 
+def test_flat_grounding_keeps_the_element_regions_alone():
+    legacy, current = _unit_pages()
+    renderings = ["Net sales:", "EUR 4.3 billion", "A paragraph."]
+
+    items = project_page(current, "md", renderings, "flat").items
+
+    assert [item.value for item in items] == ["Net sales:\nEUR 4.3 billion", "A paragraph."]
+    old = project_page(legacy, "md", renderings + ["", ""], "flat").items
+    assert [item.model_dump() for item in items] == [item.model_dump() for item in old], (
+        "both server generations read the same"
+    )
+
+
+def test_an_unknown_grounding_is_refused():
+    with pytest.raises(ValueError):
+        project_page(_PAGE, "md", _ELEMENT_MARKDOWN, "nested")
+    with pytest.raises(ProviderConfigError):
+        LMKitProvider("lmkit", {"effort": "High", "grounding": "nested"})
+
+
 def test_a_region_listing_no_element_and_no_words_is_not_a_box():
     page = _row_page()
     page["regions"].append({"category": "text", "bbox": [60, 98, 540, 172], "members": []})
@@ -392,3 +412,6 @@ def test_each_effort_level_is_a_pipeline(effort):
     pipeline = get_pipeline(f"lmkit_{effort}")
     assert pipeline.provider_name == "lmkit"
     assert pipeline.config["effort"] == effort.capitalize()
+    assert pipeline.config["grounding"] == "hierarchical"
+    flat = get_pipeline(f"lmkit_{effort}_flat")
+    assert flat.config == {"effort": effort.capitalize(), "grounding": "flat"}
