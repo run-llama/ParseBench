@@ -38,6 +38,10 @@ All notable changes to `parse-bench` are recorded here. The format follows
   `lightonocr3` layout adapter instead of the LlamaParse fallback. The adapter collapses labels outside the 11 core
   classes (`Code`, `Document Index`, `Key-Value Region`) to their core class instead of failing the page.
 
+### Fixed
+- ParseBench 2 leaderboard verification checks the 1% missing-pages limit per subset. A dimension pools several
+  subsets, so a complete large subset could hide a small one missing more than 1% of its pages.
+
 ## [2.0.1] - 2026-11-12
 
 ### Added
