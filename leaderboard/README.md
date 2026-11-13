@@ -46,6 +46,7 @@ To add or update a ParseBench 2 row, publish the outputs with the results repo's
      status: verified
      pipeline: my_parser            # folder under results/
      results_revision: refs/pr/12   # the results-repo PR; a maintainer swaps in the merge commit
+     run_dates: 2026-11-02 to 2026-11-04   # optional: when the outputs were produced
    ```
    Then run `python scripts/leaderboard/check.py --fix` to set the `Verified` column.
 3. The **Leaderboard verification** workflow checks that every row is mapped, that the folder exists, and
