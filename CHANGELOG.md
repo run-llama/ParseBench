@@ -39,8 +39,9 @@ All notable changes to `parse-bench` are recorded here. The format follows
   classes (`Code`, `Document Index`, `Key-Value Region`) to their core class instead of failing the page.
 
 ### Fixed
-- ParseBench 2 leaderboard verification checks the 1% missing-pages limit per subset. A dimension pools several
-  subsets, so a complete large subset could hide a small one missing more than 1% of its pages.
+- `scripts/leaderboard/rescore.py` resolves `--gt-cache` to an absolute path. The workflows pass a relative one,
+  which `evaluation run --next` resolved against the results folder, so every ParseBench 2 subset came back
+  "not evaluated" and no v2 row could be verified or re-scored in CI.
 
 ## [2.0.1] - 2026-11-12
 

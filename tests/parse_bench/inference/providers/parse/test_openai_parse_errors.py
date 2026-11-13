@@ -246,6 +246,7 @@ def test_unknown_api_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     ("module", "cls", "env_var"),
     [
         ("deepseek", "DeepSeekParseProvider", "DEEPSEEK_API_KEY"),
+        ("tencent_hy", "TencentHYParseProvider", "TENCENT_TOKENHUB_API_KEY"),
         ("glm_zai", "GLMZaiParseProvider", "GLM_ZAI_API_KEY"),
     ],
 )

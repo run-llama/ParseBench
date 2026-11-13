@@ -138,25 +138,63 @@ def test_apply_writes_scores_and_records_harness(tmp_path: Path) -> None:
     assert load_map(map_path).scored_with == "b" * 40
 
 
-def test_rows_missing_more_than_one_percent_are_incomplete() -> None:
-    def gaps(**counts: tuple[int, int]) -> list:
-        return lb_apply._gaps({c: {"published": a, "total": t} for c, (a, t) in counts.items()})
+@pytest.mark.parametrize("board", ["v1", "v2"])
+@pytest.mark.parametrize("published", [0, 1, 85, 99, 100])
+def test_compare_does_not_gate_on_published_page_share(tmp_path: Path, board: str, published: int) -> None:
+    selected = lb_apply.BOARDS[board]
+    csv_path, map_path, rescore_path = (tmp_path / name for name in ("rows.csv", "map.yaml", "rescore.json"))
+    row = _row("A") if board == "v1" else _v2_row("A")
+    csv_path.write_text(",".join(row) + "\n" + ",".join(row.values()) + "\n")
+    save_map(_map(MapEntry("A", "verified", "pa", SHA)), map_path)
+    rescore_path.write_text(
+        json.dumps(
+            {
+                "board": board,
+                "scored_with": SHA,
+                "results": {
+                    "pa": {
+                        "scores": dict.fromkeys(selected.dimensions, 50.0),
+                        "details": {
+                            selected.dimensions[0]: {
+                                "published": published,
+                                "total": 100,
+                                "by_subset": {"sample": [published, 100]},
+                            }
+                        },
+                    }
+                },
+            }
+        )
+    )
+    args = lb_apply.argparse.Namespace(
+        board=board,
+        rescore=rescore_path,
+        csv=csv_path,
+        map=map_path,
+        report=tmp_path / "report.md",
+        tolerance=0.5,
+    )
+    assert lb_apply.cmd_compare(args) == 0
+    assert "Result: pass" in args.report.read_text()
+    payload = json.loads(rescore_path.read_text())
+    payload["results"]["pa"]["scores"][selected.dimensions[0]] = 60.0
+    rescore_path.write_text(json.dumps(payload))
+    assert lb_apply.cmd_compare(args) == 1  # Score validation remains independent of coverage.
+    payload["results"]["pa"] = {"error": "Published outputs unavailable"}
+    rescore_path.write_text(json.dumps(payload))
+    assert lb_apply.cmd_compare(args) == 1
 
-    assert gaps(Tables=(501, 503)) == []  # 2 pages: scored 0, still verified
-    assert gaps(Content_Faithfulness=(85, 506)) == [("Content_Faithfulness", 85, 506)]
-    assert lb_apply._incomplete({"gaps": []}) is False
-    assert lb_apply._incomplete({"gaps": gaps(Content_Faithfulness=(85, 506))}) is True
 
+def test_hf_results_presence_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
 
-def test_v2_dimension_checks_each_subset_against_the_limit() -> None:
-    """Pooled, 6 of 100 strikeout pages missing is 6 of ~800 formatting pages and would pass."""
-    by_subset = {"strikeout": [94, 100], "underline": [125, 125], "headings": [100, 100], "text": [508, 508]}
-    details = {
-        "Formatting": {"published": 827, "total": 833, "by_subset": by_subset, "error": None},
-        "Tables": {"published": 1752, "total": 1753, "by_subset": {"tables": [499, 500]}, "error": None},
-    }
-    assert lb_apply._gaps(details) == [("Formatting/strikeout", 94, 100)]
-    assert lb_apply._gap_label("Formatting/strikeout", V2) == f"{V2.short['Formatting']} (strikeout)"
+    from huggingface_hub import HfApi
+
+    rmap = _map(MapEntry("A", "verified", "pa", SHA))
+    monkeypatch.setattr(HfApi, "list_repo_tree", lambda *a, **kw: [SimpleNamespace(path="results/pa/table.jsonl")])
+    assert lb_check.hf_errors(rmap) == []
+    monkeypatch.setattr(HfApi, "list_repo_tree", lambda *a, **kw: [SimpleNamespace(path="results/pa/README.md")])
+    assert "has no <category>.jsonl files" in lb_check.hf_errors(rmap)[0]
 
 
 def test_merge_combines_shards_from_one_run(tmp_path: Path) -> None:
@@ -258,3 +296,86 @@ def test_map_keeps_run_dates(tmp_path: Path) -> None:
 
 def _v2_row(provider: str) -> dict[str, str]:
     return {"Provider": provider, "Category": "X", "Overall": "50.00", **dict.fromkeys(V2.dimensions, "50.00")}
+
+
+def test_rescore_resolves_a_relative_gt_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """`--next` resolves test_cases_dir against the results folder, so the cache path must be absolute."""
+    import rescore
+
+    seen = {}
+    monkeypatch.setattr(rescore, "cmd_run", lambda args: seen.setdefault("gt_cache", args.gt_cache) and 0)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["rescore.py", "run", "--gt-cache", ".cache/gt", "--out", "r.json"])
+    rescore.main()
+    assert seen["gt_cache"] == tmp_path.resolve() / ".cache/gt"
+
+
+def _published(tmp_path: Path, records: dict[str, list[str]], failed: object | None = None) -> Path:
+    results = tmp_path / "hf" / "results" / "p"
+    results.mkdir(parents=True)
+    for category, ids in records.items():
+        lines = [json.dumps({"request": {"example_id": i}}) for i in ids]
+        (results / f"{category}.jsonl").write_text("\n".join(lines) + "\n")
+    if failed is not None:
+        (results / "failed.json").write_text(json.dumps(failed))
+    tools = tmp_path / "hf" / "tools"
+    tools.mkdir()
+    (tools / "explode.py").write_text("")
+    return results
+
+
+def test_recorded_failures_are_validated(tmp_path: Path) -> None:
+    import rescore
+
+    records = {"chart": {"chart/a"}}
+    results = _published(tmp_path, {"chart": ["chart/a"]})
+    assert rescore.recorded_failures(results, records) == {}  # no file: unchanged behaviour
+    ok = {"chart": [{"id": "chart/b", "error": "timeout"}]}
+    (results / "failed.json").write_text(json.dumps(ok))
+    assert rescore.recorded_failures(results, records) == {"chart": {"chart/b"}}
+    for bad in [
+        {"chart": [{"id": "chart/a", "error": "timeout"}]},  # also a published record
+        {"chart": [{"id": "chart/b", "error": "timeout"}, {"id": "chart/b", "error": "timeout"}]},
+        {"chart": [{"id": "text/b", "error": "timeout"}]},
+        {"chart": [{"id": "chart/b", "error": "Timeout after 1800 s"}]},
+        {"chart": [{"id": "chart/b", "error": "timeout", "output": ""}]},
+        {"charts": [{"id": "charts/b", "error": "timeout"}]},
+    ]:
+        (results / "failed.json").write_text(json.dumps(bad))
+        with pytest.raises(ValueError):
+            rescore.recorded_failures(results, records)
+
+
+def _rescore_with(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failed: object | None) -> dict:
+    """Re-score one pipeline whose chart GT is chart/a..chart/d with records for a and b only."""
+    import rescore
+
+    _published(tmp_path, {c: [f"{c}/a", f"{c}/b"] for c in ("table", "chart", "text", "layout")}, failed)
+    monkeypatch.setattr(rescore, "_download", lambda *a, **k: tmp_path / "hf")
+
+    def fake_evaluate(output_dir: Path, data_dir: Path, group: str, report_dir: Path) -> dict:
+        category = rescore.CATEGORY_FOR_GROUP[group]
+        ids = [f"{category}/{s}" for s in "abcd"]
+        per_example = [
+            {"test_id": i, "example_id": i, "pipeline_name": "p", "product_type": "parse", "success": True} for i in ids
+        ]
+        return {"aggregate_metrics": {}, "per_example_results": per_example, "total_examples": 4}
+
+    monkeypatch.setattr(rescore, "_evaluate", fake_evaluate)
+    return rescore.rescore_pipeline("p", results_repo="r", results_revision=SHA, data_dir=tmp_path, work_dir=tmp_path)
+
+
+def test_recorded_failures_count_as_published_but_omissions_stay_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    failed = {"chart": [{"id": "chart/c", "error": "timeout"}, {"id": "chart/d", "error": "timeout"}]}
+    details = _rescore_with(tmp_path, monkeypatch, failed)["details"]
+    assert details["Charts"]["published"] == 4 and details["Charts"]["recorded_failures"] == 2
+    assert details["Tables"]["published"] == 2  # tables c and d have neither a record nor a failure entry
+
+
+def test_recorded_failures_outside_the_ground_truth_are_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(ValueError, match="not in the ground truth"):
+        _rescore_with(tmp_path, monkeypatch, {"chart": [{"id": "chart/zz", "error": "timeout"}]})

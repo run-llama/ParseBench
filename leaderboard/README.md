@@ -11,9 +11,12 @@ re-score it and the numbers stay current as the harness improves.
   empty output, no layout) score 0, exactly as in `parse-bench run`. If the evaluator leaves any page of a dimension
   out of its average (a harness error such as an unknown label, or layout data missing from the record), that
   dimension is not re-scored: it keeps its old value and is listed in the re-score report.
-- **Unverified** rows (`Verified=no`, marked † in the README) have no published outputs, or published outputs that miss
-  more than 1% of a category's pages; their numbers are as submitted, and the map's `note` says what is missing.
-  They cannot be added or changed until complete outputs are published.
+- **Unverified** rows (`Verified=no`, marked † in the README) have no published outputs; their numbers are as
+  submitted, and the map's `note` says why. They cannot be added or changed until outputs are published.
+- Documents the provider was run on but that failed without output (a timeout, a provider error) have no record;
+  list them in `results/<pipeline>/failed.json` as `{"<category>": [{"id": "<category>/<stem>", "error": "timeout"}]}`.
+  They still score 0 and count as published for the missing-pages check (ParseBench 1 rows); pages with neither a
+  record nor a failure entry stay missing.
 
 ## ParseBench 2
 
