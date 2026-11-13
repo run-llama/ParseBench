@@ -70,6 +70,7 @@ OpenAI GPT-6 Luna (Reasoning Low),VLM - Proprietary,58.02,84.21,39.05,84.65,59.9
 OpenAI GPT-6 Luna (Reasoning None),VLM - Proprietary,51.34,81.44,15.48,84.75,59.84,15.20,0.09,0.06,0.13,0.07,0.10,,yes
 OpenAI GPT-5.4 Nano,VLM - Proprietary,42.24,60.28,16.67,79.19,48.71,6.37,0.25,0.17,0.35,0.19,0.28,,yes
 Amazon Nova 2 Lite,VLM - Proprietary,40.43,68.38,6.7,77.04,45.26,4.78,0.70,0.30,0.70,0.99,0.79,,no
+Tencent Hy4 (Thinking High),VLM - Proprietary,73.95,82.21,70.96,85.74,75.41,55.42,2.44,2.61,2.36,2.13,2.64,,yes
 AWS Textract,Commercial - IDP,48.31,84.46,4.47,77.61,4.65,70.36,1.5,,,,,,yes
 Google Cloud Document AI,Commercial - IDP,48.66,54.95,1.59,84.01,41.47,61.26,1,,,,,,yes
 Azure Document Intelligence (Layout),Commercial - IDP,56.76,85.97,1.27,84.55,40.17,71.82,1,,,,,,yes

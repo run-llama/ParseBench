@@ -296,3 +296,77 @@ def test_map_keeps_run_dates(tmp_path: Path) -> None:
 
 def _v2_row(provider: str) -> dict[str, str]:
     return {"Provider": provider, "Category": "X", "Overall": "50.00", **dict.fromkeys(V2.dimensions, "50.00")}
+
+
+def _published(tmp_path: Path, records: dict[str, list[str]], failed: object | None = None) -> Path:
+    results = tmp_path / "hf" / "results" / "p"
+    results.mkdir(parents=True)
+    for category, ids in records.items():
+        lines = [json.dumps({"request": {"example_id": i}}) for i in ids]
+        (results / f"{category}.jsonl").write_text("\n".join(lines) + "\n")
+    if failed is not None:
+        (results / "failed.json").write_text(json.dumps(failed))
+    tools = tmp_path / "hf" / "tools"
+    tools.mkdir()
+    (tools / "explode.py").write_text("")
+    return results
+
+
+def test_recorded_failures_are_validated(tmp_path: Path) -> None:
+    import rescore
+
+    records = {"chart": {"chart/a"}}
+    results = _published(tmp_path, {"chart": ["chart/a"]})
+    assert rescore.recorded_failures(results, records) == {}  # no file: unchanged behaviour
+    ok = {"chart": [{"id": "chart/b", "error": "timeout"}]}
+    (results / "failed.json").write_text(json.dumps(ok))
+    assert rescore.recorded_failures(results, records) == {"chart": {"chart/b"}}
+    for bad in [
+        {"chart": [{"id": "chart/a", "error": "timeout"}]},  # also a published record
+        {"chart": [{"id": "chart/b", "error": "timeout"}, {"id": "chart/b", "error": "timeout"}]},
+        {"chart": [{"id": "text/b", "error": "timeout"}]},
+        {"chart": [{"id": "chart/b", "error": "Timeout after 1800 s"}]},
+        {"chart": [{"id": "chart/b", "error": "timeout", "output": ""}]},
+        {"charts": [{"id": "charts/b", "error": "timeout"}]},
+    ]:
+        (results / "failed.json").write_text(json.dumps(bad))
+        with pytest.raises(ValueError):
+            rescore.recorded_failures(results, records)
+
+
+def _rescore_with(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failed: object | None) -> dict:
+    """Re-score one pipeline whose chart GT is chart/a..chart/d with records for a and b only."""
+    import rescore
+
+    _published(tmp_path, {c: [f"{c}/a", f"{c}/b"] for c in ("table", "chart", "text", "layout")}, failed)
+    monkeypatch.setattr(rescore, "_download", lambda *a, **k: tmp_path / "hf")
+
+    def fake_evaluate(output_dir: Path, data_dir: Path, group: str, report_dir: Path) -> dict:
+        category = rescore.CATEGORY_FOR_GROUP[group]
+        ids = [f"{category}/{s}" for s in "abcd"]
+        per_example = [
+            {"test_id": i, "example_id": i, "pipeline_name": "p", "product_type": "parse", "success": True} for i in ids
+        ]
+        return {"aggregate_metrics": {}, "per_example_results": per_example, "total_examples": 4}
+
+    monkeypatch.setattr(rescore, "_evaluate", fake_evaluate)
+    return rescore.rescore_pipeline("p", results_repo="r", results_revision=SHA, data_dir=tmp_path, work_dir=tmp_path)
+
+
+def test_recorded_failures_count_as_published_but_omissions_stay_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    failed = {"chart": [{"id": "chart/c", "error": "timeout"}, {"id": "chart/d", "error": "timeout"}]}
+    details = _rescore_with(tmp_path, monkeypatch, failed)["details"]
+    assert details["Charts"]["published"] == 4 and details["Charts"]["recorded_failures"] == 2
+    assert details["Tables"]["published"] == 2  # tables c and d have neither a record nor a failure entry
+    gaps = lb_apply._gaps(details)
+    assert ("Tables", 2, 4) in gaps
+    assert not any(g[0] == "Charts" for g in gaps)
+
+
+def test_recorded_failures_outside_the_ground_truth_are_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(ValueError, match="not in the ground truth"):
+        _rescore_with(tmp_path, monkeypatch, {"chart": [{"id": "chart/zz", "error": "timeout"}]})
