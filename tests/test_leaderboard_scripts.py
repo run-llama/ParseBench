@@ -258,3 +258,15 @@ def test_map_keeps_run_dates(tmp_path: Path) -> None:
 
 def _v2_row(provider: str) -> dict[str, str]:
     return {"Provider": provider, "Category": "X", "Overall": "50.00", **dict.fromkeys(V2.dimensions, "50.00")}
+
+
+def test_rescore_resolves_a_relative_gt_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """`--next` resolves test_cases_dir against the results folder, so the cache path must be absolute."""
+    import rescore
+
+    seen = {}
+    monkeypatch.setattr(rescore, "cmd_run", lambda args: seen.setdefault("gt_cache", args.gt_cache) and 0)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["rescore.py", "run", "--gt-cache", ".cache/gt", "--out", "r.json"])
+    rescore.main()
+    assert seen["gt_cache"] == tmp_path.resolve() / ".cache/gt"
