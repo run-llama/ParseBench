@@ -427,3 +427,29 @@ src/parse_bench/
 - **ExtractBench**: [run-llama/ExtractBench](https://github.com/run-llama/ExtractBench) - A Benchmark for Schema-Guided Enterprise Document Extraction
 
 
+
+### Rescore with a Metric Lab policy
+
+Set your weights and error classes in [Metric Lab](https://www.parsebench.ai/lab/index.html),
+then click **Export policy JSON**. Use the downloaded file with saved evaluation results:
+
+```bash
+# Generate extended scores and retain the counts needed for later policy changes.
+parse-bench evaluation run ./output/parser --next=text --next_only
+parse-bench rescore ./output/parser --policy parsebench-policy.json --next=text
+
+# Combine separately evaluated subsets using the same mapping as evaluation.
+parse-bench rescore ./output/parser --policy parsebench-policy.json \
+  --next='text=text-results,tables=table-results,charts=chart-results'
+```
+
+`rescore` reads `_evaluation_report.json` in each directory and writes `_policy_score.json`.
+Use `--report_dir` to choose its destination. The output contains the policy, per-page scores,
+dimension scores and overall score, all on a 0–1 scale. Original evaluation reports stay unchanged.
+It makes no inference requests. Missing dimensions with positive weights leave the overall score
+unavailable; dimensions weighted zero are excluded.
+
+The versioned JSON includes severity weights, dimension weights, scaling constants and error classes.
+Older reports without exact counts must be regenerated with `evaluation run --next --next_only`
+using saved parser outputs. The CLI preserves exact mixed-severity counts and per-chart omission
+limits, so custom scores can differ from Metric Lab's legacy data where those details were estimated.

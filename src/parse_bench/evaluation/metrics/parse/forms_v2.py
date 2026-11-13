@@ -3172,11 +3172,14 @@ class FormsResult:
         return c
 
     def metadata(self, max_examples: int = 25) -> dict[str, Any]:
+        from parse_bench.evaluation.metric_policy import atom_inputs
+
         kinds: dict[str, int] = {}
         for e in self.events:
             kinds[e.kind] = kinds.get(e.kind, 0) + 1
         ordered = sorted(self.events, key=lambda e: (-SEV_ORDER.get(e.cls, 0), not e.charged))
         return {
+            "policy_inputs": atom_inputs(self.events, "forms"),
             "proportional": self.proportional,
             "floor": self.floor,
             "coverage": self.coverage,

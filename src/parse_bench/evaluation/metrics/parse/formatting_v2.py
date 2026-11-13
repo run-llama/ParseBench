@@ -827,10 +827,13 @@ class FormattingResult:
         return c
 
     def metadata(self, max_examples: int = 25) -> dict[str, Any]:
+        from parse_bench.evaluation.metric_policy import atom_inputs
+
         kinds: dict[str, int] = {}
         for e in self.events:
             kinds[e.kind] = kinds.get(e.kind, 0) + 1
         return {
+            "policy_inputs": atom_inputs(self.events, "fmt"),
             "proportional": self.proportional,
             "floor": self.floor,
             "coverage": self.coverage,
