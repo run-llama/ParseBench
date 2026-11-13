@@ -498,6 +498,11 @@ def main() -> int:
     merge.add_argument("shards", type=Path, nargs="+")
     merge.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    if getattr(args, "gt_cache", None) is not None:
+        # `evaluation run --next` resolves a relative test_cases_dir against the results folder, not the working
+        # directory, so a relative cache path (the workflows pass one) finds no test cases and every ParseBench 2
+        # subset comes back "not evaluated".
+        args.gt_cache = args.gt_cache.resolve()
     return {"run": cmd_run, "merge": cmd_merge, "ground-truth": cmd_ground_truth}[args.command](args)
 
 
