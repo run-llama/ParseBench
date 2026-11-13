@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -98,6 +99,51 @@ def _evaluate(output_dir: Path, data_dir: Path, group: str, report_dir: Path) ->
     return json.loads(report.read_text())
 
 
+# Inference attempts that produced no output (a timeout, a provider error) are not
+# predictions, so they have no record in ``<category>.jsonl``. They are published in
+# ``results/<pipeline>/failed.json`` as {"<category>": [{"id": "<category>/<stem>",
+# "error": "timeout"}, ...]}. The evaluator still scores those pages 0; listing them
+# only counts them as published for the missing-pages check, so a row is not reported
+# as incomplete for documents its provider was run on and failed. Pages with neither a
+# record nor a failure entry stay missing.
+FAILED_FILE = "failed.json"
+_ERROR_LABEL = re.compile(r"[a-z][a-z0-9_]{0,39}")
+
+
+def record_ids(path: Path) -> set[str]:
+    """``request.example_id`` of every record in a published ``<category>.jsonl``."""
+    with path.open(encoding="utf-8") as f:
+        return {json.loads(line)["request"]["example_id"] for line in f if line.strip()}
+
+
+def recorded_failures(results_dir: Path, records: dict[str, set[str]]) -> dict[str, set[str]]:
+    """Validated ``failed.json`` ids per category (empty when the file is absent)."""
+    path = results_dir / FAILED_FILE
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{FAILED_FILE} must be an object of category -> entries")
+    out: dict[str, set[str]] = {}
+    for category, entries in data.items():
+        if category not in set(CATEGORY_FOR_GROUP.values()) or not isinstance(entries, list):
+            raise ValueError(f"{FAILED_FILE}: unknown category or malformed entries {category!r}")
+        ids: set[str] = set()
+        for entry in entries:
+            if not isinstance(entry, dict) or set(entry) != {"id", "error"}:
+                raise ValueError(f"{FAILED_FILE}: entries need exactly 'id' and 'error': {entry!r}")
+            example_id, label = entry["id"], entry["error"]
+            if not isinstance(example_id, str) or not example_id.startswith(f"{category}/") or example_id in ids:
+                raise ValueError(f"{FAILED_FILE}: bad or duplicate id {example_id!r}")
+            if not isinstance(label, str) or not _ERROR_LABEL.fullmatch(label):
+                raise ValueError(f"{FAILED_FILE}: error must be a short lowercase label, got {label!r}")
+            if example_id in records.get(category, set()):
+                raise ValueError(f"{FAILED_FILE}: {example_id} is also a published record")
+            ids.add(example_id)
+        out[category] = ids
+    return out
+
+
 def rescore_pipeline(
     pipeline: str,
     *,
@@ -129,6 +175,8 @@ def rescore_pipeline(
     )
 
     published = {c: _count_lines(results_dir / f"{c}.jsonl") for c in categories}
+    failures = recorded_failures(results_dir, {c: record_ids(results_dir / f"{c}.jsonl") for c in categories})
+    gt_ids: dict[str, set[str]] = {}
 
     scores: dict[str, float | None] = {}
     details: dict[str, Any] = {}
@@ -150,15 +198,23 @@ def rescore_pipeline(
         if dropped:
             error = f"{sum(dropped.values())} page(s) left out of the average: {dropped.most_common(3)}"
         scores[column] = None if error else (100.0 * float(value) if value is not None else 0.0)
+        category = CATEGORY_FOR_GROUP[group]
+        group_ids = {str(x.get("example_id")) for x in report.get("per_example_results") or []}
+        gt_ids.setdefault(category, set()).update(group_ids)
+        failed_here = len(failures.get(category, set()) & group_ids)
         details[column] = {
             "group": group,
             "metric": metric,
-            "published": published.get(CATEGORY_FOR_GROUP[group], 0),
+            "published": published.get(category, 0) + failed_here,
+            "recorded_failures": failed_here,
             "total": report.get("total_examples"),
             "successful": report.get("successful"),
             "failed": report.get("failed"),
             "error": error,
         }
+    unknown = sorted(i for c, ids in failures.items() for i in ids - gt_ids.get(c, set()))
+    if unknown:
+        raise ValueError(f"{FAILED_FILE} lists ids that are not in the ground truth: {unknown[:5]}")
     complete = all(v is not None for v in scores.values())
     return {
         "pipeline": pipeline,
