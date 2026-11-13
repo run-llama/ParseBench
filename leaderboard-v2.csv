@@ -20,7 +20,7 @@ Gemini 3 Flash (minimal),Vision Models,76.62,86.71,86.12,88.91,57.97,66.26,73.76
 Chandra 2,Open Weight,76.32,77.19,88.80,85.49,62.48,69.63,74.35,,yes
 LightOnOCR-3 0.8B,Open Weight,75.88,81.02,80.87,78.56,61.22,79.20,74.42,,yes
 Gemini 3.7 Flash (low),Vision Models,75.58,86.71,86.56,89.41,33.94,80.93,75.92,0.845,yes
-MinerU2.5-Pro,Open Weight,75.59,76.64,79.04,80.56,63.96,82.23,71.12,,no
+MinerU2.5-Pro,Open Weight,75.59,76.64,79.04,80.56,63.96,82.23,71.12,,yes
 Gemini 3.8 Flash (low),Vision Models,75.52,87.07,86.69,88.79,33.30,81.27,75.98,0.848,yes
 Gemini 3.5 Flash,Vision Models,74.73,88.51,86.16,89.96,31.12,75.25,77.37,4.967,yes
 Gemini 3.6 Flash,Vision Models,74.68,88.18,85.83,89.84,30.38,76.01,77.83,4.159,yes
