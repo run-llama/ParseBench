@@ -299,7 +299,7 @@ rows:
 - provider: Tencent Hy4 (Thinking High)
   status: verified
   pipeline: hy4_parse_with_layout
-  results_revision: refs/pr/9
+  results_revision: 3fdb56870980af875ab4ec0657932ef28159cc5c
 - provider: AWS Textract
   status: verified
   pipeline: aws_textract
