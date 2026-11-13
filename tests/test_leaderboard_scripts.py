@@ -138,25 +138,63 @@ def test_apply_writes_scores_and_records_harness(tmp_path: Path) -> None:
     assert load_map(map_path).scored_with == "b" * 40
 
 
-def test_rows_missing_more_than_one_percent_are_incomplete() -> None:
-    def gaps(**counts: tuple[int, int]) -> list:
-        return lb_apply._gaps({c: {"published": a, "total": t} for c, (a, t) in counts.items()})
+@pytest.mark.parametrize("board", ["v1", "v2"])
+@pytest.mark.parametrize("published", [0, 1, 85, 99, 100])
+def test_compare_does_not_gate_on_published_page_share(tmp_path: Path, board: str, published: int) -> None:
+    selected = lb_apply.BOARDS[board]
+    csv_path, map_path, rescore_path = (tmp_path / name for name in ("rows.csv", "map.yaml", "rescore.json"))
+    row = _row("A") if board == "v1" else _v2_row("A")
+    csv_path.write_text(",".join(row) + "\n" + ",".join(row.values()) + "\n")
+    save_map(_map(MapEntry("A", "verified", "pa", SHA)), map_path)
+    rescore_path.write_text(
+        json.dumps(
+            {
+                "board": board,
+                "scored_with": SHA,
+                "results": {
+                    "pa": {
+                        "scores": dict.fromkeys(selected.dimensions, 50.0),
+                        "details": {
+                            selected.dimensions[0]: {
+                                "published": published,
+                                "total": 100,
+                                "by_subset": {"sample": [published, 100]},
+                            }
+                        },
+                    }
+                },
+            }
+        )
+    )
+    args = lb_apply.argparse.Namespace(
+        board=board,
+        rescore=rescore_path,
+        csv=csv_path,
+        map=map_path,
+        report=tmp_path / "report.md",
+        tolerance=0.5,
+    )
+    assert lb_apply.cmd_compare(args) == 0
+    assert "Result: pass" in args.report.read_text()
+    payload = json.loads(rescore_path.read_text())
+    payload["results"]["pa"]["scores"][selected.dimensions[0]] = 60.0
+    rescore_path.write_text(json.dumps(payload))
+    assert lb_apply.cmd_compare(args) == 1  # Score validation remains independent of coverage.
+    payload["results"]["pa"] = {"error": "Published outputs unavailable"}
+    rescore_path.write_text(json.dumps(payload))
+    assert lb_apply.cmd_compare(args) == 1
 
-    assert gaps(Tables=(501, 503)) == []  # 2 pages: scored 0, still verified
-    assert gaps(Content_Faithfulness=(85, 506)) == [("Content_Faithfulness", 85, 506)]
-    assert lb_apply._incomplete({"gaps": []}) is False
-    assert lb_apply._incomplete({"gaps": gaps(Content_Faithfulness=(85, 506))}) is True
 
+def test_hf_results_presence_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
 
-def test_v2_dimension_checks_each_subset_against_the_limit() -> None:
-    """Pooled, 6 of 100 strikeout pages missing is 6 of ~800 formatting pages and would pass."""
-    by_subset = {"strikeout": [94, 100], "underline": [125, 125], "headings": [100, 100], "text": [508, 508]}
-    details = {
-        "Formatting": {"published": 827, "total": 833, "by_subset": by_subset, "error": None},
-        "Tables": {"published": 1752, "total": 1753, "by_subset": {"tables": [499, 500]}, "error": None},
-    }
-    assert lb_apply._gaps(details) == [("Formatting/strikeout", 94, 100)]
-    assert lb_apply._gap_label("Formatting/strikeout", V2) == f"{V2.short['Formatting']} (strikeout)"
+    from huggingface_hub import HfApi
+
+    rmap = _map(MapEntry("A", "verified", "pa", SHA))
+    monkeypatch.setattr(HfApi, "list_repo_tree", lambda *a, **kw: [SimpleNamespace(path="results/pa/table.jsonl")])
+    assert lb_check.hf_errors(rmap) == []
+    monkeypatch.setattr(HfApi, "list_repo_tree", lambda *a, **kw: [SimpleNamespace(path="results/pa/README.md")])
+    assert "has no <category>.jsonl files" in lb_check.hf_errors(rmap)[0]
 
 
 def test_merge_combines_shards_from_one_run(tmp_path: Path) -> None:
