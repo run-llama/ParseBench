@@ -163,6 +163,8 @@ _RE_DEC_ENT = re.compile(r"&#([0-9]{1,8});")
 _RE_NAMED_ENT = re.compile(r"&([A-Za-z][A-Za-z0-9]{1,31});")
 # a blank table cell: an HTML cell holding only space, or a Markdown cell between two pipes holding only space
 _RE_BLANK_CELL = re.compile(r"<t[hd](?:\s[^>]*)?>(?:\s|&nbsp;|<br\s*/?>)*</t[hd]\s*>|\|[ \t]*(?=\|)", re.IGNORECASE)
+_RE_MD_PIPE = re.compile(r"(?<!\\)\|")
+_RE_MD_INLINE = re.compile(r"<[^>]+>|\\([!-/:-@\[-`{-~])|(?<!`)(`+)(?!`)(.*?)(?<!`)\2(?!`)")
 _RE_MD_SEP = re.compile(rf"{_S}*\|?{_S}*:?-{{3,}}[-|: ]*\Z")
 _SPAN_RX = {k: re.compile(rf"{k}{_S}*={_S}*[\"']?([0-9]+)", re.IGNORECASE) for k in ("rowspan", "colspan")}
 
@@ -199,7 +201,9 @@ _RE_BARE_SEP = re.compile(rf"{_S}*\|?{_S}*:?-+:?{_S}*(?:\|{_S}*:?-+:?{_S}*)+\|?{
 
 
 def _md_cells(line: str) -> list[str]:
-    return [_trim(x) for x in re.sub(r"\|\Z", "", re.sub(r"\A\|", "", _trim(line))).split("|")]
+    # GFM pipes must be escaped even inside an inline code span.
+    row = re.sub(r"(?<!\\)\|\Z", "", re.sub(r"\A\|", "", _trim(line)))
+    return [_trim(x.replace("\\|", "|")) for x in _RE_MD_PIPE.split(row)]
 
 
 def _is_bare_pipe_table(lines: Sequence[str], i: int) -> bool:
@@ -283,6 +287,19 @@ def _html_cell(raw: str, tag: str, attrs: str, row_spans: bool) -> dict[str, Any
     return {"rs": span("rowspan") if row_spans else 1, "cs": span("colspan"), "text": text, "th": tag == "th"}
 
 
+def _md_cell(raw: str, tag: str, row_spans: bool) -> dict[str, Any]:
+    def literal(m: re.Match[str]) -> str:
+        if m.group(1) is None and m.group(2) is None:
+            return m.group(0)  # raw HTML: backticks in attributes are not code delimiters
+        text = m.group(1) if m.group(1) is not None else m.group(3)
+        if m.group(2) and text.startswith(" ") and text.endswith(" ") and text.strip(" "):
+            text = text[1:-1]
+        return html.escape(text).replace("^", "&#94;")  # protect literal carets from LaTeX superscript handling
+
+    # Escapes and code spans are literal text, including any HTML-looking content.
+    return _html_cell(_RE_MD_INLINE.sub(literal, raw), tag, "", row_spans)
+
+
 def parse_tables(md: str | None, row_spans: bool = True) -> list[ParsedTable]:
     """Every HTML table and Markdown pipe table of ``md``, in document order (``row_spans=False`` reads every
     rowspan as 1: the reading of a span that was not meant to cover the rows below)."""
@@ -338,10 +355,7 @@ def parse_tables(md: str | None, row_spans: bool = True) -> list[ParsedTable]:
                 if not (_RE_MD_SEP.match(line) or (bare and _RE_BARE_SEP.match(line)))
             ]
             if j - i >= 2:
-                rows_md = [
-                    [{"rs": 1, "cs": 1, "text": _RE_LATEX_SUP.sub(r"<sup>\1</sup>", x), "th": k == 0} for x in r]
-                    for k, r in enumerate(body)
-                ]
+                rows_md = [[_md_cell(x, "th" if k == 0 else "td", row_spans) for x in r] for k, r in enumerate(body)]
                 tables.append(
                     ParsedTable(
                         "md", _place(rows_md), _last_line("\n".join(orig[:i])), offs[i], offs[j - 1] + len(lines[j - 1])
