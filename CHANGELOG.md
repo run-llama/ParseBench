@@ -37,6 +37,10 @@ All notable changes to `parse-bench` are recorded here. The format follows
 - The ParseBench leaderboard's LightOnOCR-3 rows (`lightonocr3_{4b,1b,0_8b}_vllm`) are scored with the new
   `lightonocr3` layout adapter instead of the LlamaParse fallback. The adapter collapses labels outside the 11 core
   classes (`Code`, `Document Index`, `Key-Value Region`) to their core class instead of failing the page.
+- `table_next` reads Markdown pipe-table cells like HTML cells: escaped pipes (`\|`) stay inside the cell, backslash
+  escapes and entities are decoded, and inline tags are stripped. A Markdown table now scores the same as the equivalent
+  HTML table. ParseBench 2 Tables: Nemotron Parse 3.5 +0.10, Qwen3.8 27B +0.02; no other change on the 11 systems
+  most affected.
 
 ### Fixed
 - `scripts/leaderboard/rescore.py` resolves `--gt-cache` to an absolute path. The workflows pass a relative one,
