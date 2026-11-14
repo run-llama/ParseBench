@@ -327,29 +327,74 @@ def extract_layout_blocks_lenient(content: str) -> list[dict[str, Any]]:
         if not isinstance(bbox, list) or len(bbox) != 4:
             continue
 
-        name = wrapper.group(2).lower()
-        end = len(content)
-        depth = 0
-        for tag in tags:
-            if tag.start() < wrapper.end():
-                continue
-            if tag.group(2).lower() != name:
-                continue
-            if tag.group(1):
-                if depth == 0:
-                    end = tag.start()
-                    break
-                depth -= 1
-            else:
-                depth += 1
-        if position + 1 < len(wrappers):
-            end = min(end, wrappers[position + 1].start())
-
-        text = content[wrapper.end() : end].strip()
+        next_start = wrappers[position + 1].start() if position + 1 < len(wrappers) else None
+        text = content[wrapper.end() : _element_end(content, tags, wrapper, next_start)].strip()
         if not text:
             continue
         blocks.append({"bbox": bbox, "label": label_match.group(1) if label_match else "Text", "text": text})
 
+    return blocks
+
+
+def _element_end(content: str, tags: list[re.Match[str]], wrapper: re.Match[str], next_start: int | None) -> int:
+    """End of a wrapper element: its own closing tag (depth-aware), the next element, or end of content."""
+    name = wrapper.group(2).lower()
+    end = len(content)
+    depth = 0
+    for tag in tags:
+        if tag.start() < wrapper.end() or tag.group(2).lower() != name:
+            continue
+        if tag.group(1):
+            if depth == 0:
+                end = tag.start()
+                break
+            depth -= 1
+        else:
+            depth += 1
+    return min(end, next_start) if next_start is not None else end
+
+
+_BARE_BBOX_ATTR_RE = re.compile(r"data-bbox=[\"']\s*\[?\s*([-\d.]+(?:\s*,\s*[-\d.]+){3})\s*\]?\s*[\"']", re.IGNORECASE)
+_DIV_TAG_RE = re.compile(r"</?div\b[^>]*>", re.IGNORECASE)
+
+
+def extract_layout_blocks_tolerant(content: str) -> list[dict[str, Any]]:
+    """Parse layout elements from a model that varies its markup from page to page.
+
+    Gemma 4 answers the ``<div data-bbox data-label>`` prompt in several shapes
+    on the same benchmark: the bbox with or without brackets
+    (``"[121, 163, 319, 217]"`` or ``"121, 163, 319, 217"``), and sometimes an
+    outer ``<div data-bbox>`` whose label sits on the inner ``<div data-label>``
+    elements it wraps. All of them carry a box, a label and the content, so each
+    is read as one element. Element spans follow ``extract_layout_blocks_lenient``;
+    the inner ``<div>`` tags are dropped from the text and the first inner label
+    stands in when the wrapper has none. Elements without text (pictures) keep
+    their box; only containers of other boxed elements are skipped.
+    """
+    tags = list(_WRAPPER_TAG_RE.finditer(content))
+    wrappers = [t for t in tags if not t.group(1) and "data-bbox=" in t.group(3).lower()]
+    blocks: list[dict[str, Any]] = []
+    for position, wrapper in enumerate(wrappers):
+        bbox_match = _BARE_BBOX_ATTR_RE.search(wrapper.group(3))
+        if not bbox_match:
+            continue
+        bbox = [float(v) for v in re.split(r"\s*,\s*", bbox_match.group(1).strip())]
+        next_start = wrappers[position + 1].start() if position + 1 < len(wrappers) else None
+        end = _element_end(content, tags, wrapper, next_start)
+        span = content[wrapper.end() : end]
+        label_match = _LABEL_ATTR_RE.search(wrapper.group(3)) or _LABEL_ATTR_RE.search(span)
+        text = re.sub(r"\n{3,}", "\n\n", _DIV_TAG_RE.sub("\n", span)).strip()
+        # A wrapper around other boxed elements is a container: its span is cut
+        # short by the first nested element. A childless element with no text
+        # (a picture) is still an element and keeps its box.
+        if (
+            not text
+            and next_start is not None
+            and end == next_start
+            and _element_end(content, tags, wrapper, None) > next_start
+        ):
+            continue
+        blocks.append({"bbox": bbox, "label": label_match.group(1) if label_match else "Text", "text": text})
     return blocks
 
 

@@ -193,3 +193,22 @@ class TestRequireLayoutAwareSegments:
         )
         assert len(blocks) == 1
         assert blocks[0].text == "bcd"
+
+    def test_html_table_md_reduces_to_cell_text(self):
+        md = '<table><tr><th colspan="2">Region</th></tr><tr><td>EU</td><td>12</td></tr></table>'
+        items = [
+            {
+                "type": "table",
+                "md": md,
+                "bBox": {"x": 100, "y": 100, "w": 200, "h": 50},
+                "layoutAwareBbox": [{"x": 100, "y": 100, "w": 200, "h": 50, "label": "table"}],
+            }
+        ]
+        blocks = parse_pred_blocks(
+            items,
+            page_md=md,
+            page_width=1000.0,
+            page_height=1000.0,
+            require_layout_aware_segments=True,
+        )
+        assert blocks[0].tokens == ["region", "eu", "12"]

@@ -4,24 +4,168 @@ All notable changes to `parse-bench` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [1.0.4] - 2026-09-04
-
-### Added
-- `LayoutDetectionModel.FIRECRAWL_LAYOUT` (with a `LAYOUT_MODEL_INFO` entry) so
-  Firecrawl parse output can be cross-evaluated on the layout-attribution
-  datasets, matching the other layout-capable parse providers.
-
 ## [Unreleased]
 
+### Added
+- ParseBench 2 leaderboard accountability, as for ParseBench v1: `leaderboard/results-v2.yaml` ties every
+  `leaderboard-v2.csv` row to its published outputs in `llamaindex/ParseBench-2-results`, `leaderboard-v2.csv` gains a
+  `Verified` column (unverified rows are marked † in the README), and the leaderboard scripts take `--board v2`.
+  A verified row is re-scored over all 13 subsets with `evaluation run --next ... --next_only`. The verification and
+  daily re-score workflows cover both leaderboards. All 44 rows are verified.
+- Optional `run_dates` on results-map rows: when the published outputs were produced, from the records'
+  `started_at`/`completed_at`. Filled for every ParseBench 2 row.
+- The remaining ParseBench 2 leaderboard pipelines, under their leaderboard names, so their published outputs replay
+  with the provider's layout adapter: `anthropic_{opus,haiku}_5_5_parse_with_layout`,
+  `openai_gpt_5_6_{terra,luna}_reasoning_low_parse_with_layout`, `openai_gpt_6_luna_reasoning_low_parse_with_layout`,
+  `gemini_4_argon_thinking_low_parse_with_layout_file`, `muse_ember_1_0_reasoning_low_parse_with_layout_file`,
+  `lightonocr3_{4b,0_8b}_vllm` and `infinity_parser2_{pro,flash}_deep`; also `lightonocr3_1b_vllm` (ParseBench
+  leaderboard).
+- `meta` parse provider for Meta Muse models (OpenAI-compatible Responses API, `META_API_KEY`), with a `meta` layout
+  adapter.
+- `lightonocr3` parse provider: the `lightonocr-3` grounding request with labels mapped through the shared layout
+  label map, with a `lightonocr3` layout adapter. Each model size reads its own server URL variable
+  (`LIGHTONOCR_3_4B_SERVER_URL`, `LIGHTONOCR_3_1B_SERVER_URL`, `LIGHTONOCR_3_0_8B_SERVER_URL`).
+- Anthropic provider: `image_resolution` (`"high"` pre-resizes pixel-frame pages to the 2576 px / 4784 token tier)
+  and `layout_bbox_space: "pixels"` (`parse_with_layout`: asks for bboxes in pixels of the uploaded image, stating its
+  exact size in the prompt).
+- Gemini 4 Argon pricing in the Google provider.
+
+### Scoring
+- Layout adapters for the `mineru2605pro` and `mistral_ocr` providers. Their results fell back to the LlamaParse
+  adapter, which re-scaled MinerU2.5-Pro's normalized boxes to the page corner (ParseBench 2 visual grounding 75.81
+  instead of 82.23) and read Mistral OCR's blocks slightly differently (81.86 instead of 81.82).
+- The ParseBench leaderboard's LightOnOCR-3 rows (`lightonocr3_{4b,1b,0_8b}_vllm`) are scored with the new
+  `lightonocr3` layout adapter instead of the LlamaParse fallback. The adapter collapses labels outside the 11 core
+  classes (`Code`, `Document Index`, `Key-Value Region`) to their core class instead of failing the page.
+
 ### Fixed
-- `diagram_graph` rules no longer crash when their `reference_image` resolves.
-  The rule reached for `rules_image.thumbnail_data_uri`, a module that only
-  exists in the internal harness, so scoring a diagram with a reference render
-  raised `ModuleNotFoundError` instead of returning a score. The crash was
-  latent until 1.0.1 started forwarding the test case and source paths, which
-  is what lets the reference resolve in the first place.
+- `scripts/leaderboard/rescore.py` resolves `--gt-cache` to an absolute path. The workflows pass a relative one,
+  which `evaluation run --next` resolved against the results folder, so every ParseBench 2 subset came back
+  "not evaluated" and no v2 row could be verified or re-scored in CI.
+
+## [2.0.1] - 2026-11-12
 
 ### Added
+- `leaderboard-v2.csv`, the ParseBench 2 leaderboard (the systems ranked in the ParseBench 2 paper, all six dimensions
+  scored), and its top 10 in the README. `scripts/update_readme.py` regenerates both README tables, between
+  `LEADERBOARD:START`/`END` and `LEADERBOARD-V2:START`/`END`.
+
+### Changed
+- Faster scoring, with identical scores. `table_next` caches its label-similarity and digit-normalization helpers,
+  which large tables call millions of times (one dense-tables page goes from 67 s to 5 s). Documents with both layout
+  and parse rules (most ParseBench 2 layout pages) are scored in the worker pool instead of one at a time in the
+  main process, unless an extension registered its own `parse` or `layout_detection` evaluator.
+- `evaluation run --next_only` computes only the extended scorers and skips the ParseBench v1 metrics (GriTS, rule
+  pass rates, v1 visual grounding and the rest), which the ParseBench 2 score does not use. `run --dataset
+  parsebench-2` turns it on. The per-page reports then hold only the extended metrics. A page whose v1 evaluator
+  crashed used to count 0 in the ParseBench 2 aggregates even when its extended metrics were computed; with
+  `--next_only` it keeps them. On one parser's outputs, scoring all 13 subsets drops from about 15.5 to 6 minutes,
+  with identical extended metrics on every page.
+
+## [2.0.0] - 2026-11-11
+
+ParseBench 2: `--dataset parsebench-2` runs the 13 ParseBench 2 subsets and scores them into six dimensions and an
+overall score. The extended scorers are synced with the internal harness. Scores change for
+tables, formatting and layout (see Scoring); ParseBench 2 scores are not comparable with ParseBench v1
+scores.
+
+### Scoring (changes evaluation numbers)
+- `table_next`: a blank cell drawn as a dash is no longer an error wherever it sits (row label, section row, corner
+  cell), as was already the case for values; a dash written over a value is still a wrong value. A label that takes
+  another name of the reference (headers swapped or shifted, so the values sit under the wrong label) or whose number
+  changes by an inserted decimal point ("2025" read "202.5") is now a critical error, where it was read as a
+  rewording. A `th` row of column numbers that holds a formula is a header row, and a reference whose values are all
+  empty markers ("None", "N/A") is scored. About 1.5% of page scores change on saved outputs; the Tables score of a
+  system moves by about 0.1 point or less.
+- `table_next`: a whole cell holding one of the protocol's bracketed mark words reads as the mark it names:
+  `[yes]`, `[checked]`, `[icon: bullet]` as checked, `[unchecked]` / `[empty]` as unchecked, `[no]` / `[cross]` as `✗`.
+  Against a reference `●` these words scored 0.6, below an empty cell; they now score 0.95 like `✓`.
+- `formatting_v2`: a strike written with a space inside its delimiters (`~~Risk ~~Factors`) reads as struck instead of
+  plain text, and no longer pairs with a later span's `~~`. `a.`, `b)` and `i.` are list markers like `1.`, and a marker
+  inside the item's opening style (`~~a. Violation~~`) reads the same as one outside it (`a. ~~Violation~~`). Scores on
+  strikeout pages written this way rise (four audited LlamaParse pages go from 0.00–0.71 to 1.00).
+- `formatting_v2`: Markdown delimiters inside HTML table cells stay literal (`<td>**x**</td>` is not bold), and a link
+  label counts as underlined only where the reference underlines that text; elsewhere link markup is neutral.
+  `table_next`: a non-numeric cell that only partly matches is charged as "value partly differs", not "unit lost"
+  (same severity).
+- `layout_grounding_pass_rate`: a predicted box on an ignore/optional element inside a table (a checkbox mark) is
+  neutral instead of a garbage child of the table.
+- Visual Grounding attribution for PARSE results no longer depends on whether the raw provider response is
+  present. Cross-evaluation evaluated a synthetic layout result and re-resolved its adapter from it, which only
+  sees `raw_output`; LlamaParse-style adapters then lost the pages read from `ParseOutput.layout_pages` and fell
+  back to prediction-level blocks that drop chart and table content. The runner now passes the adapter that
+  produced the layout to the evaluator. Published results carry no raw response, so Visual Grounding rises for
+  providers read through the LlamaParse adapter (on LlamaParse Agentic, 57.77 -> 69.42 for the same outputs,
+  matching a local run that kept the raw response).
+- A layout page the provider returned no layout for ("<adapter> requires non-empty layout_pages") now counts as 0
+  in the aggregate, like output that cannot be adapted to a `LayoutOutput` already did. It was treated as a harness
+  error and silently dropped from the denominator, so a pipeline that returned nothing on its hardest pages scored
+  as if those pages did not exist. Visual Grounding drops for affected pipelines (median 3 of 500 pages; up to 78
+  for some lightweight models).
+- Layout adapters read `layout_pages` whose boxes are 0-1 fractions of the page, which `LayoutSegmentIR` allows
+  alongside page units. Fractional pages are scaled to page units before projection, for detection and attribution
+  alike. Without it, providers without a dedicated adapter (Surya, MinerU, Unlimited-OCR, Qianfan, LightOnOCR, GLM,
+  Mistral OCR, Nova) and Nutrient DWS localized nothing and scored 0 Visual Grounding.
+- The LlamaParse layout adapter reads `raw_output["pages"]` only when it is LlamaParse's own page payload (items with
+  `bBox`/`layoutAwareBbox`). Providers that keep a native `pages` list (Mistral OCR, GLM, Nova) now fall through to
+  their normalized `layout_pages` instead of yielding no boxes.
+- The Upstage label mapper accepts canonical labels (`Page-header`, `Text`) as well as Upstage categories, and
+  `openai_compatible_vlm_layout` (DeepSeek parse-with-layout) maps through the Qwen3-VL label indices like the other
+  parse-with-layout VLMs. Both previously raised on every page.
+
+### Added
+- Leaderboard accountability: `leaderboard/results.yaml` ties every `leaderboard.csv` row to its published outputs
+  in `llamaindex/ParseBench-results`, `leaderboard.csv` gains a `Verified` column, and `scripts/leaderboard/`
+  re-scores rows from those outputs. Two workflows use it: *Leaderboard verification* checks
+  leaderboard PRs against a re-score, and *Leaderboard re-score* re-scores every verified row daily when the harness
+  changes and opens a PR. See `leaderboard/README.md`.
+- `--dataset parsebench-2` on `download`, `status` and `run` for ParseBench 2 (`llamaindex/ParseBench-2`, 13 subsets,
+  downloaded to `./data_parsebench-2`). `parse-bench run <pipeline> --dataset parsebench-2` runs inference on each
+  subset folder and scores every subset with results with the extended scorers (`evaluation run --next`) into the six
+  dimensions and the overall score, written to `output/parsebench-2/_score/<pipeline>/_next_score.json`. `--group`
+  takes subset names (`charts,tables`) to run only those.
+- The `markdown_attribution` rule and its scorer (`md_attribution_v1_*` metrics, scorer version 2), ported from the
+  internal harness. ParseBench 2's `layout` subset carries one on each of its 86 `markdown_block_layout` pages,
+  which failed to load before. Its metrics are diagnostics: the Layout dimension stays `layout_grounding_pass_rate`.
+  Re-scoring the internal Azure Document Intelligence layout run with this code reproduces all of its layout and
+  attribution aggregates and every page's layout score.
+
+### Fixed
+- `tables_values` rules no longer crash scoring when the table is matched but too few cells match exactly.
+  That failure path returned a third tuple item, which the metric read as a score
+  (`could not convert string to float`), so the page lost every rule result instead of failing this one rule.
+  Such pages are now scored, with the rule reported as failed.
+
+## [1.0.7] - 2026-11-01
+
+Released as 1.0.5 to 1.0.7 without per-version entries; this lists what shipped by 1.0.7.
+
+### Added
+- `repetition_overshoot`, a built-in rule that fails an output repeating anything (a leader, a unit, a token, a line,
+  a table row, a whole table) more than the page holds. `parse-bench repetition make <dir>` writes this test next to
+  each of your own PDFs, budgeted from its text layer. See `docs/repetition-overshoot.md`.
+- `--dataset` on `download`, `status` and `run` accepts any HuggingFace dataset repo id (`org/name`) in the ParseBench
+  layout, downloaded to `./data/<name>`.
+- `ovisocr3_vllm` pipeline and `ovisocr3` provider for OvisOCR3
+  (`OVISOCR3_SERVER_URL`). Sends the official structured-parsing prompt, re-reads
+  each chart region with the official chart-parsing prompt, and scores layout
+  through `LayoutDetectionModel.OVISOCR3_LAYOUT`.
+- `unlimitedocr2` pipeline and provider for Unlimited-OCR 2
+  (`UNLIMITEDOCR2_SERVER_URL`). Converts the model's layout-block output with
+  Baidu's official converter (vendored) and scores layout through
+  `LayoutDetectionModel.UNLIMITED_OCR_2_LAYOUT`.
+- `nemotron_parse_3_5_sdk` pipeline and `nemotron_parse_3_5` provider for
+  Nemotron 3.5 Parse, driven by an SDK server that runs the model repository's
+  triple-pass pipeline (`NEMOTRON_PARSE_3_5_SERVER_URL`). Its layout adapter
+  keeps the Canonical17 label strings under the new
+  `LayoutDetectionModel.NEMOTRON_PARSE_LAYOUT` (with a `LAYOUT_MODEL_INFO`
+  entry), and a passthrough label mapper resolves them, so Visual Grounding is
+  scored instead of raising `UnknownRawLayoutLabelError`.
+- `minicpm_ocr_sdk` pipeline and `minicpm_ocr` provider for MiniCPM-OCR 1.0,
+  driven by a server running the official `minicpmvocr` SDK
+  (`MINICPM_OCR_SERVER_URL`). PP-DocLayoutV3 regions are mapped to canonical
+  labels and scored for Visual Grounding under the new
+  `LayoutDetectionModel.MINICPM_OCR_LAYOUT` (with a `LAYOUT_MODEL_INFO` entry).
 - `register_reference_thumbnailer` (exported from `parse_bench.extensions`):
   how a rule's `reference_image` is rendered into the detailed report. parse-bench
   keeps no image stack in its core dependencies, so it ships no default and
@@ -34,6 +178,33 @@ All notable changes to `parse-bench` are recorded here. The format follows
   now computed with a small numpy implementation that matches
   `sklearn.metrics.average_precision_score` (including tied-score handling),
   so evaluation numbers are unchanged. `scipy` remains a core dependency.
+- Built-in providers now register on the first `create_provider` call instead
+  of when `parse_bench.inference.providers` (or any module under it) is
+  imported. Importing `parse_bench.extensions` or the layout adapter and label
+  mapper registries no longer loads every provider and its SDK: about 0.4 s
+  instead of about 4.8 s in a full install. The provider subpackages expose
+  `load_providers()` and the registry `load_builtin_providers()`; code that
+  read `_PROVIDER_REGISTRY` directly should call the latter first.
+
+### Fixed
+- Layout attribution no longer crashes on layout rules without an `ro_index`.
+  `LayoutDetectionEvaluator` dumps rules with `ro_index=None`, which
+  `parse_gt_elements` kept, so the reading-order sort raised `TypeError` and
+  the page was dropped. A null `ro_index` now reads as `0`, as an absent key
+  already did.
+- `diagram_graph` rules no longer crash when their `reference_image` resolves.
+  The rule reached for `rules_image.thumbnail_data_uri`, a module that only
+  exists in the internal harness, so scoring a diagram with a reference render
+  raised `ModuleNotFoundError` instead of returning a score. The crash was
+  latent until 1.0.1 started forwarding the test case and source paths, which
+  is what lets the reference resolve in the first place.
+
+## [1.0.4] - 2026-09-04
+
+### Added
+- `LayoutDetectionModel.FIRECRAWL_LAYOUT` (with a `LAYOUT_MODEL_INFO` entry) so
+  Firecrawl parse output can be cross-evaluated on the layout-attribution
+  datasets, matching the other layout-capable parse providers.
 
 ## [1.0.2] - 2026-09-04
 

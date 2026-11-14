@@ -1,0 +1,381 @@
+"""Tests for the leaderboard accountability scripts (scripts/leaderboard/)."""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "leaderboard"))
+
+import apply as lb_apply  # noqa: E402
+import check as lb_check  # noqa: E402
+from common import DIMENSIONS, V2, MapEntry, ResultsMap, load_csv, load_map, overall, save_map  # noqa: E402
+
+SHA = "a" * 40
+
+
+def _row(provider: str, verified: str = "yes", **scores: str) -> dict[str, str]:
+    row = {"Provider": provider, "Category": "X", "Overall": "50.00", "Verified": verified}
+    row.update(dict.fromkeys(DIMENSIONS, "50.00"))
+    row.update(scores)
+    return row
+
+
+def _map(*entries: MapEntry) -> ResultsMap:
+    return ResultsMap(
+        results_repo="org/results", data_repo="org/data", data_revision=SHA, scored_with=None, rows=list(entries)
+    )
+
+
+def test_repo_leaderboard_is_consistent_with_results_map() -> None:
+    _, rows = load_csv()
+    rmap = load_map()
+    assert lb_check.static_errors(rows, rmap) == []
+    assert lb_check.verified_column_errors(rows, rmap) == []
+
+
+def test_static_errors_catch_unmapped_duplicate_and_unsafe_entries() -> None:
+    rows = [_row("A"), _row("B")]
+    rmap = _map(
+        MapEntry("A", "verified", "pipe", SHA),
+        MapEntry("C", "verified", "pipe", SHA),
+        MapEntry("D", "verified", "bad name; rm -rf /", "main"),
+        MapEntry("E", "verified"),
+    )
+    errors = "\n".join(lb_check.static_errors(rows, rmap))
+    assert "'B' has no entry" in errors
+    assert "'C' matches no leaderboard row" in errors
+    assert "'pipe' is mapped to more than one row" in errors
+    assert "pipeline 'bad name; rm -rf /' must match" in errors
+    assert "results_revision 'main' must match" in errors
+    assert "'E': verified entries need" in errors
+
+
+def test_results_revision_accepts_commit_and_hf_pr_refs() -> None:
+    assert lb_check.SAFE_REVISION.fullmatch(SHA)
+    assert lb_check.SAFE_REVISION.fullmatch("refs/pr/12")
+    assert not lb_check.SAFE_REVISION.fullmatch("main")
+
+
+def test_changed_rows_detects_new_and_edited_scores_only() -> None:
+    base = [_row("A"), _row("B")]
+    head = [_row("A", Category="renamed"), _row("B", Charts="60.00"), _row("C")]
+    assert lb_check.changed_rows(head, base) == ["B", "C"]
+
+
+def test_new_values_rounds_dimensions_before_overall() -> None:
+    result = {"scores": {c: 10.0 + i + 0.004 for i, c in enumerate(DIMENSIONS)}}
+    old = dict.fromkeys(["Overall", *DIMENSIONS], 50.0)
+    new = lb_apply.new_values(result, old)
+    assert all(new[c] == round(10.0 + i, 2) for i, c in enumerate(DIMENSIONS))
+    assert new["Overall"] == round(overall({c: new[c] for c in DIMENSIONS}), 2)
+
+
+def test_new_values_keeps_old_value_for_dimension_that_errored() -> None:
+    result = {"scores": {**dict.fromkeys(DIMENSIONS, 60.0), "Visual_Grounding": None}}
+    old = dict.fromkeys(["Overall", *DIMENSIONS], 50.0)
+    new = lb_apply.new_values(result, old)
+    assert new["Visual_Grounding"] == 50.0 and new["Charts"] == 60.0
+    assert new["Overall"] == pytest.approx(58.0)  # recomputed from the values that are published
+
+
+def test_diff_rows_reports_deltas_and_errors() -> None:
+    rows = [_row("A"), _row("B"), _row("U", verified="no")]
+    rescore = {
+        "results": {
+            "pa": {"scores": dict.fromkeys(DIMENSIONS, 53.0)},
+            "pb": {"error": "boom"},
+        }
+    }
+    records = lb_apply.diff_rows(rows, rescore, {"A": "pa", "B": "pb"})
+    assert [r["provider"] for r in records] == ["A", "B"]
+    assert records[0]["delta"]["Charts"] == pytest.approx(3.0)
+    assert lb_apply.max_abs_delta(records[0]) == pytest.approx(3.0)
+    assert records[1]["error"] == "boom"
+
+
+def test_diff_rows_reports_dimension_errors_and_coverage() -> None:
+    details = {c: {"published": 503, "total": 503, "error": None} for c in DIMENSIONS}
+    details["Visual_Grounding"]["error"] = "497 page(s) failed in the harness"
+    details["Content_Faithfulness"]["published"] = 85
+    scores = {**dict.fromkeys(DIMENSIONS, 50.0), "Visual_Grounding": None}
+    records = lb_apply.diff_rows([_row("A")], {"results": {"pa": {"scores": scores, "details": details}}}, {"A": "pa"})
+    rec = records[0]
+    assert rec["dim_errors"] == {"Visual_Grounding": "497 page(s) failed in the harness"}
+    assert rec["coverage"] == {"Content_Faithfulness": (85, 503)}
+    assert rec["new"]["Visual_Grounding"] == 50.0  # old value kept
+    assert "❌" in lb_apply.render_report("t", records, 2.0, "intro")
+
+
+def test_apply_writes_scores_and_records_harness(tmp_path: Path) -> None:
+    csv_path, map_path = tmp_path / "lb.csv", tmp_path / "results.yaml"
+    fieldnames = ["Provider", "Category", "Overall", *DIMENSIONS, "Verified"]
+    from common import write_csv
+
+    write_csv(fieldnames, [_row("A"), _row("U", verified="no")], csv_path)
+    save_map(_map(MapEntry("A", "verified", "pa", SHA), MapEntry("U", "unverified")), map_path)
+    rescore = tmp_path / "rescore.json"
+    rescore.write_text(
+        json.dumps(
+            {
+                "scored_with": "b" * 40,
+                "data_repo": "org/data",
+                "data_revision": SHA,
+                "results_repo": "org/results",
+                "results": {"pa": {"scores": dict.fromkeys(DIMENSIONS, 60.0)}},
+            }
+        )
+    )
+    args = lb_apply.argparse.Namespace(rescore=rescore, csv=csv_path, map=map_path, report=None, threshold=2.0)
+    assert lb_apply.cmd_apply(args) == 0
+    _, rows = load_csv(csv_path)
+    by = {r["Provider"]: r for r in rows}
+    assert by["A"]["Charts"] == "60.00" and by["A"]["Overall"] == "60.00"
+    assert by["U"]["Charts"] == "50.00"
+    assert load_map(map_path).scored_with == "b" * 40
+
+
+@pytest.mark.parametrize("board", ["v1", "v2"])
+@pytest.mark.parametrize("published", [0, 1, 85, 99, 100])
+def test_compare_does_not_gate_on_published_page_share(tmp_path: Path, board: str, published: int) -> None:
+    selected = lb_apply.BOARDS[board]
+    csv_path, map_path, rescore_path = (tmp_path / name for name in ("rows.csv", "map.yaml", "rescore.json"))
+    row = _row("A") if board == "v1" else _v2_row("A")
+    csv_path.write_text(",".join(row) + "\n" + ",".join(row.values()) + "\n")
+    save_map(_map(MapEntry("A", "verified", "pa", SHA)), map_path)
+    rescore_path.write_text(
+        json.dumps(
+            {
+                "board": board,
+                "scored_with": SHA,
+                "results": {
+                    "pa": {
+                        "scores": dict.fromkeys(selected.dimensions, 50.0),
+                        "details": {
+                            selected.dimensions[0]: {
+                                "published": published,
+                                "total": 100,
+                                "by_subset": {"sample": [published, 100]},
+                            }
+                        },
+                    }
+                },
+            }
+        )
+    )
+    args = lb_apply.argparse.Namespace(
+        board=board,
+        rescore=rescore_path,
+        csv=csv_path,
+        map=map_path,
+        report=tmp_path / "report.md",
+        tolerance=0.5,
+    )
+    assert lb_apply.cmd_compare(args) == 0
+    assert "Result: pass" in args.report.read_text()
+    payload = json.loads(rescore_path.read_text())
+    payload["results"]["pa"]["scores"][selected.dimensions[0]] = 60.0
+    rescore_path.write_text(json.dumps(payload))
+    assert lb_apply.cmd_compare(args) == 1  # Score validation remains independent of coverage.
+    payload["results"]["pa"] = {"error": "Published outputs unavailable"}
+    rescore_path.write_text(json.dumps(payload))
+    assert lb_apply.cmd_compare(args) == 1
+
+
+def test_hf_results_presence_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from huggingface_hub import HfApi
+
+    rmap = _map(MapEntry("A", "verified", "pa", SHA))
+    monkeypatch.setattr(HfApi, "list_repo_tree", lambda *a, **kw: [SimpleNamespace(path="results/pa/table.jsonl")])
+    assert lb_check.hf_errors(rmap) == []
+    monkeypatch.setattr(HfApi, "list_repo_tree", lambda *a, **kw: [SimpleNamespace(path="results/pa/README.md")])
+    assert "has no <category>.jsonl files" in lb_check.hf_errors(rmap)[0]
+
+
+def test_merge_combines_shards_from_one_run(tmp_path: Path) -> None:
+    import rescore
+
+    header = {"scored_with": "c" * 40, "data_repo": "org/data", "data_revision": SHA, "results_repo": "org/results"}
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    a.write_text(json.dumps({**header, "results": {"pb": {"scores": {}}}}))
+    b.write_text(json.dumps({**header, "results": {"pa": {"error": "boom"}}}))
+    out = tmp_path / "merged.json"
+    assert rescore.cmd_merge(lb_apply.argparse.Namespace(shards=[a, b], out=out)) == 0
+    merged = json.loads(out.read_text())
+    assert list(merged["results"]) == ["pa", "pb"] and merged["scored_with"] == "c" * 40
+
+
+def test_merge_rejects_shards_from_different_runs(tmp_path: Path) -> None:
+    import rescore
+
+    header = {"scored_with": "c" * 40, "data_repo": "org/data", "data_revision": SHA, "results_repo": "org/results"}
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    a.write_text(json.dumps({**header, "results": {}}))
+    b.write_text(json.dumps({**header, "scored_with": "d" * 40, "results": {}}))
+    with pytest.raises(SystemExit):
+        rescore.cmd_merge(lb_apply.argparse.Namespace(shards=[a, b], out=tmp_path / "m.json"))
+
+
+def test_ground_truth_download_retries_dropped_connections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+    import huggingface_hub
+    import rescore
+    from huggingface_hub.errors import HfHubHTTPError
+
+    calls: list[dict] = []
+
+    def flaky_snapshot_download(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            response = httpx.Response(499, request=httpx.Request("GET", "https://huggingface.co/x"))
+            raise HfHubHTTPError("Client error '499 unknown'", response=response)
+        Path(kwargs["local_dir"]).mkdir(parents=True, exist_ok=True)
+        return kwargs["local_dir"]
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", flaky_snapshot_download)
+    monkeypatch.setattr(rescore.time, "sleep", lambda _seconds: None)
+    path = rescore.ground_truth("org/data", SHA, tmp_path, None)
+    assert len(calls) == 2 and calls[0]["max_workers"] == rescore.GT_DOWNLOAD_WORKERS
+    assert (path / ".complete").read_text() == SHA
+    assert rescore.ground_truth("org/data", SHA, tmp_path, None) == path and len(calls) == 2  # cached
+
+
+def test_repo_v2_leaderboard_is_consistent_with_its_results_map() -> None:
+    _, rows = load_csv(V2.csv_path)
+    rmap = load_map(V2.map_path)
+    assert lb_check.static_errors(rows, rmap, V2) == []
+    assert lb_check.verified_column_errors(rows, rmap) == []
+    assert rmap.results_repo == "llamaindex/ParseBench-2-results" and rmap.data_repo == "llamaindex/ParseBench-2"
+
+
+def test_v2_board_uses_the_six_parsebench_2_dimensions() -> None:
+    assert V2.dimensions == ("Text", "Formatting", "Tables", "Charts", "Visual_Grounding", "Forms")
+    assert overall(dict(zip(V2.dimensions, [10.0, 20.0, 30.0, 40.0, 50.0, 60.0], strict=True)), V2) == 35.0
+
+
+def test_v2_new_values_average_six_dimensions() -> None:
+    result = {"scores": dict.fromkeys(V2.dimensions, 60.004)}
+    old = dict.fromkeys(["Overall", *V2.dimensions], 50.0)
+    new = lb_apply.new_values(result, old, V2)
+    assert all(new[c] == 60.0 for c in V2.dimensions) and new["Overall"] == 60.0
+
+
+def test_v2_static_errors_name_the_v2_files() -> None:
+    errors = "\n".join(lb_check.static_errors([_v2_row("A"), _v2_row("A")], _map(), V2))
+    assert "leaderboard-v2.csv has duplicate Provider 'A'" in errors
+    assert "has no entry in results-v2.yaml" in errors
+
+
+def test_apply_refuses_a_rescore_of_the_other_board(tmp_path: Path) -> None:
+    rescore = tmp_path / "rescore.json"
+    rescore.write_text(json.dumps({"board": "v1", "results": {}}))
+    args = lb_apply.argparse.Namespace(rescore=rescore, csv=V2.csv_path, map=V2.map_path, report=None, board="v2")
+    with pytest.raises(SystemExit, match="v1 re-score given for --board v2"):
+        lb_apply.cmd_compare(args)
+
+
+def test_v2_map_header_names_the_v2_csv(tmp_path: Path) -> None:
+    path = tmp_path / V2.map_path.name
+    save_map(_map(MapEntry("A", "unverified")), path)
+    assert "every leaderboard-v2.csv row" in path.read_text()
+
+
+def test_map_keeps_run_dates(tmp_path: Path) -> None:
+    path = tmp_path / "results.yaml"
+    entry = MapEntry("A", "verified", "pa", SHA, run_dates="2026-11-02 to 2026-11-04")
+    save_map(_map(entry, MapEntry("U", "unverified")), path)
+    rows = load_map(path).rows
+    assert rows[0].run_dates == "2026-11-02 to 2026-11-04"
+    assert rows[1].run_dates is None
+
+
+def _v2_row(provider: str) -> dict[str, str]:
+    return {"Provider": provider, "Category": "X", "Overall": "50.00", **dict.fromkeys(V2.dimensions, "50.00")}
+
+
+def test_rescore_resolves_a_relative_gt_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """`--next` resolves test_cases_dir against the results folder, so the cache path must be absolute."""
+    import rescore
+
+    seen = {}
+    monkeypatch.setattr(rescore, "cmd_run", lambda args: seen.setdefault("gt_cache", args.gt_cache) and 0)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["rescore.py", "run", "--gt-cache", ".cache/gt", "--out", "r.json"])
+    rescore.main()
+    assert seen["gt_cache"] == tmp_path.resolve() / ".cache/gt"
+
+
+def _published(tmp_path: Path, records: dict[str, list[str]], failed: object | None = None) -> Path:
+    results = tmp_path / "hf" / "results" / "p"
+    results.mkdir(parents=True)
+    for category, ids in records.items():
+        lines = [json.dumps({"request": {"example_id": i}}) for i in ids]
+        (results / f"{category}.jsonl").write_text("\n".join(lines) + "\n")
+    if failed is not None:
+        (results / "failed.json").write_text(json.dumps(failed))
+    tools = tmp_path / "hf" / "tools"
+    tools.mkdir()
+    (tools / "explode.py").write_text("")
+    return results
+
+
+def test_recorded_failures_are_validated(tmp_path: Path) -> None:
+    import rescore
+
+    records = {"chart": {"chart/a"}}
+    results = _published(tmp_path, {"chart": ["chart/a"]})
+    assert rescore.recorded_failures(results, records) == {}  # no file: unchanged behaviour
+    ok = {"chart": [{"id": "chart/b", "error": "timeout"}]}
+    (results / "failed.json").write_text(json.dumps(ok))
+    assert rescore.recorded_failures(results, records) == {"chart": {"chart/b"}}
+    for bad in [
+        {"chart": [{"id": "chart/a", "error": "timeout"}]},  # also a published record
+        {"chart": [{"id": "chart/b", "error": "timeout"}, {"id": "chart/b", "error": "timeout"}]},
+        {"chart": [{"id": "text/b", "error": "timeout"}]},
+        {"chart": [{"id": "chart/b", "error": "Timeout after 1800 s"}]},
+        {"chart": [{"id": "chart/b", "error": "timeout", "output": ""}]},
+        {"charts": [{"id": "charts/b", "error": "timeout"}]},
+    ]:
+        (results / "failed.json").write_text(json.dumps(bad))
+        with pytest.raises(ValueError):
+            rescore.recorded_failures(results, records)
+
+
+def _rescore_with(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failed: object | None) -> dict:
+    """Re-score one pipeline whose chart GT is chart/a..chart/d with records for a and b only."""
+    import rescore
+
+    _published(tmp_path, {c: [f"{c}/a", f"{c}/b"] for c in ("table", "chart", "text", "layout")}, failed)
+    monkeypatch.setattr(rescore, "_download", lambda *a, **k: tmp_path / "hf")
+
+    def fake_evaluate(output_dir: Path, data_dir: Path, group: str, report_dir: Path) -> dict:
+        category = rescore.CATEGORY_FOR_GROUP[group]
+        ids = [f"{category}/{s}" for s in "abcd"]
+        per_example = [
+            {"test_id": i, "example_id": i, "pipeline_name": "p", "product_type": "parse", "success": True} for i in ids
+        ]
+        return {"aggregate_metrics": {}, "per_example_results": per_example, "total_examples": 4}
+
+    monkeypatch.setattr(rescore, "_evaluate", fake_evaluate)
+    return rescore.rescore_pipeline("p", results_repo="r", results_revision=SHA, data_dir=tmp_path, work_dir=tmp_path)
+
+
+def test_recorded_failures_count_as_published_but_omissions_stay_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    failed = {"chart": [{"id": "chart/c", "error": "timeout"}, {"id": "chart/d", "error": "timeout"}]}
+    details = _rescore_with(tmp_path, monkeypatch, failed)["details"]
+    assert details["Charts"]["published"] == 4 and details["Charts"]["recorded_failures"] == 2
+    assert details["Tables"]["published"] == 2  # tables c and d have neither a record nor a failure entry
+
+
+def test_recorded_failures_outside_the_ground_truth_are_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(ValueError, match="not in the ground truth"):
+        _rescore_with(tmp_path, monkeypatch, {"chart": [{"id": "chart/zz", "error": "timeout"}]})

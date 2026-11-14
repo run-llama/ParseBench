@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 
 from parse_bench.inference.providers.parse import anthropic
 from parse_bench.inference.providers.parse.anthropic import AnthropicProvider
+from parse_bench.schemas.pipeline import PipelineSpec
+from parse_bench.schemas.pipeline_io import InferenceRequest
+from parse_bench.schemas.product import ProductType
 
 
 def _provider_for_model(model: str) -> AnthropicProvider:
@@ -73,3 +79,58 @@ def test_cache_tokens_reach_evaluation_stats() -> None:
     stats = {stat.name: stat.value for stat in build_operational_stats(result)}  # type: ignore[arg-type]
     assert stats["cache_read_tokens"] == 300
     assert stats["cache_write_tokens"] == 50
+
+
+@pytest.mark.parametrize(
+    ("page_tokens", "expected_cost"),
+    [
+        ([(50_000, 10_000, 49_000, 1_000)], 0.010615),
+        ([(50_001, 10_000, 49_000, 1_000)], 0.0530755),
+        ([(60_000, 1, 0, 0), (60_000, 1, 0, 0)], 0.012001),
+    ],
+    ids=["100k_including_cache", "over_100k_including_cache", "separate_requests_under_100k"],
+)
+def test_haiku_5_5_cost_uses_each_requests_prompt_length_including_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    page_tokens: list[tuple[int, int, int, int]],
+    expected_cost: float,
+) -> None:
+    source = tmp_path / "document.pdf"
+    source.touch()
+    provider = _provider_for_model("claude-haiku-5-5")
+    provider._mode = "parse_with_layout_file"
+    provider._dpi = 150
+    provider._max_tokens = 32768
+    provider._bbox_scale = 1000
+    usages = iter(
+        dict(zip(("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"), tokens, strict=True))
+        for tokens in page_tokens
+    )
+    monkeypatch.setattr(anthropic, "split_pdf_to_pages", lambda _: [(b"pdf", 100, 100)] * len(page_tokens))
+    monkeypatch.setattr(provider, "_parse_pdf_page_with_layout", lambda _: ([], "", next(usages)))
+    pipeline = PipelineSpec(
+        pipeline_name="test_haiku_cost", provider_name="anthropic", product_type=ProductType.PARSE, config={}
+    )
+    request = InferenceRequest(example_id="document", source_file_path=str(source), product_type=ProductType.PARSE)
+
+    raw = provider.run_inference(pipeline, request)
+
+    assert raw.raw_output["cost_usd"] == pytest.approx(expected_cost)
+    assert raw.raw_output["cost_per_page_usd"] == pytest.approx(expected_cost / len(page_tokens))
+
+
+def test_haiku_5_5_omits_rejected_temperature_without_explicit_thinking(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict] = []
+
+    def create(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return SimpleNamespace(content=[], usage=None)
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    provider = AnthropicProvider("anthropic", {"model": "claude-haiku-5-5", "mode": "parse_with_layout_file"})
+    provider._client = SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(create=create)))
+
+    provider._parse_pdf_page_with_layout(b"%PDF-1.4")
+
+    assert "temperature" not in calls[0]

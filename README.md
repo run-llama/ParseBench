@@ -3,41 +3,104 @@
 [![Website](https://img.shields.io/badge/Website-parsebench.ai-blue)](https://parsebench.ai)
 [![arXiv](https://img.shields.io/badge/arXiv-2604.08538-b31b1b.svg)](https://arxiv.org/abs/2604.08538)
 [![Dataset](https://img.shields.io/badge/HuggingFace-Dataset-yellow)](https://huggingface.co/datasets/llamaindex/ParseBench)
+[![ParseBench 2](https://img.shields.io/badge/HuggingFace-ParseBench_2-orange)](https://huggingface.co/datasets/llamaindex/ParseBench-2)
+[![Papers with Code: SOTA on ParseBench](https://paperswithcode.co/api/v1/papers/2604.08538/leaderboard-badge.svg?eval=32432&live=1)](https://paperswithcode.co/api/v1/papers/2604.08538/leaderboard-badge-link?eval=32432)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
+
+> **New: [ParseBench 2](#parsebench-2)** — 4,317 test cases in six dimensions (now with forms), scored with
+> severity-aware metrics. Run it with `parse-bench run <pipeline> --dataset parsebench-2`.
 
 > **Related:** For schema-guided enterprise document extraction, see our companion benchmark [ExtractBench](https://github.com/run-llama/ExtractBench).
 
 **ParseBench** is a benchmark for evaluating how well document parsing tools convert PDFs into structured output that AI agents can reliably act on. It tests whether parsed output preserves the structure and meaning needed for autonomous decisions — not just whether it looks similar to a reference text.
 
-The benchmark covers ~2,000 human-verified pages from real enterprise documents (insurance, finance, government), organized around five capability dimensions, each targeting a failure mode that breaks production agent workflows.
+The original benchmark (ParseBench v1) covers ~2,000 human-verified pages from real enterprise documents (insurance, finance, government), organized around five capability dimensions, each targeting a failure mode that breaks production agent workflows. [ParseBench 2](#parsebench-2) extends it with more pages, a forms dimension and metrics that score each error using human-aligned severity classes.
 
 <p align="center">
-  <img src="docs/parsebench_teaser.png" alt="ParseBench overview: five capability dimensions" width="100%">
+  <img src="docs/severity_scoring.png" alt="ParseBench overview: five capability dimensions" width="100%">
 </p>
 
-## Leaderboard
+## ParseBench 2
+
+[ParseBench 2](https://huggingface.co/datasets/llamaindex/ParseBench-2) combines broad coverage of real-world documents with metrics calibrated to how much each error matters:
+
+- **Six dimensions.** Text, formatting, tables, charts, layout (visual grounding) and the new forms dimension, with 600 form pages.
+- **Severity-aware scoring.** A page score is the lower of a content-recovery score and a severity cap, so recovering most of a page cannot hide a serious error — a changed number, a flipped negation, swapped table headers or a misread form value. Changes between supported formats that keep the same information cost nothing.
+- **Calibrated against stated priorities.** The metrics are tuned against 330 controlled scenarios in six severity test suites, each with a target score drop (critical, major, minor or harmless), and check for over 140 error types.
+- **4,317 page-level test cases from 2,645 documents.** The revised ParseBench v1 pages, with more complete answer keys (every chart has its full data table), plus targeted datasets of hard cases: complex table headers, financial, insurance and dense tables, headings, strikeout, underline and government forms.
+
+One command downloads the dataset to `./data_parsebench-2`, runs a pipeline on every subset and writes the six dimension scores and the overall score to `output/parsebench-2/_score/<pipeline>/_next_score.json`:
+
+```bash
+uv run parse-bench run llamaparse_agentic --dataset parsebench-2
+
+# Only some subsets; every subset that already has results is still scored
+uv run parse-bench run llamaparse_agentic --dataset parsebench-2 --group charts,tables
+
+# Check the download and see the case count of each subset
+uv run parse-bench status --dataset parsebench-2
+```
+
+The overall score is the unweighted mean of the six dimensions. Within a dimension, page scores are averaged per dataset and the datasets are combined with fixed weights, so collecting more pages for one capability does not give it more influence:
+
+| Dimension | Datasets (`--group` name) | Cases | Metric |
+|---|---|---:|---|
+| Text | `text` | 508 | `text_next` |
+| Formatting | `text` (3/4), `headings` (1/8), `strikeout` (1/16), `underline` (1/16) | 508 + 353 | `formatting_v2` |
+| Tables | `tables` (1/2), `complex_table_headers`, `financial_tables`, `insurance_filing_tables`, `dense_tables` (1/8 each) | 1,753 | `table_next` |
+| Charts | `charts` | 568 | `chart_next` |
+| Layout | `layout` | 535 | `layout_grounding_pass_rate` |
+| Forms | `forms` (7/8), `fillable_forms` (1/8) | 600 | `forms_v2` |
+
+To score outputs from your own parser, write them in the ParseBench results layout and run `parse-bench evaluation run <dir> --next=SUBSET=RESULTS_DIR::TEST_CASES_DIR,... --next_only` (`--next_only` skips the ParseBench v1 metrics, which the ParseBench 2 score does not use). ParseBench 2 scores are not comparable with ParseBench v1 scores.
+
+### Leaderboard
+
+<!-- LEADERBOARD-V2:START -->
+_Top 10 by Overall score. For the full sortable, filterable leaderboard, see [parsebench.ai](https://parsebench.ai); for raw data, see [leaderboard-v2.csv](leaderboard-v2.csv)._
+
+| Rank | Provider | Category | Overall | Text | Formatting | Tables | Charts | Visual Ground. | Forms | ¢ / Page |
+|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | LlamaParse (Agentic Plus) | Document Parsers | 90.07 | 90.27 | 93.60 | 94.61 | 92.58 | 87.62 | 81.76 | 2.81¢ |
+| 2 | LlamaParse (Agentic) | Document Parsers | 86.05 | 87.01 | 92.75 | 89.86 | 77.39 | 88.35 | 80.94 | 1.25¢ |
+| 3 | Claude Opus 5.5 | Vision Models | 85.73 | 92.69 | 89.38 | 94.11 | 74.12 | 86.24 | 77.84 | 6.49¢ |
+| 4 | Reducto (r-1) | Document Parsers | 85.23 | 82.49 | 92.45 | 90.93 | 78.45 | 88.74 | 78.31 | 1.00¢ |
+| 5 | LlamaParse (Cost Effective) | Document Parsers | 84.59 | 85.50 | 91.94 | 87.19 | 73.07 | 88.66 | 81.21 | 0.38¢ |
+| 6 | Gemini 4 argon (low) | Vision Models | 84.20 | 89.68 | 89.22 | 92.78 | 68.20 | 88.10 | 77.19 | 2.68¢ |
+| 7 | Reducto | Document Parsers | 83.93 | 81.86 | 82.70 | 84.94 | 89.07 | 84.10 | 80.89 | 3.00¢ |
+| 8 | Extend (Parse 2) | Document Parsers | 83.20 | 80.18 | 83.39 | 84.22 | 85.08 | 84.82 | 81.51 | 2.50¢ |
+| 9 | Pulse (Ultra 2) | Document Parsers | 82.72 | 86.09 | 88.68 | 84.73 | 86.80 | 73.54 | 76.45 | 1.50¢ |
+| 10 | Extend (Parse Light) | Document Parsers | 81.59 | 78.29 | 78.65 | 81.42 | 85.35 | 84.66 | 81.16 | 0.62¢ |
+<!-- LEADERBOARD-V2:END -->
+
+Verified rows are re-scored from their published outputs in [ParseBench-2-results](https://huggingface.co/datasets/llamaindex/ParseBench-2-results) whenever the scorers change (see [leaderboard/README.md](leaderboard/README.md)); rows marked † carry the scores reported in the ParseBench 2 paper until their outputs are published. Systems that do not score all six dimensions are not ranked. To add an open-weight model to the [Hugging Face leaderboard](https://huggingface.co/datasets/llamaindex/ParseBench-2), see [Submit Results to the Leaderboard](https://huggingface.co/datasets/llamaindex/ParseBench-2#submit-results-to-the-leaderboard).
+
+## Leaderboard (ParseBench v1)
 
 <!-- LEADERBOARD:START -->
 _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [parsebench.ai](https://parsebench.ai); for raw data, see [leaderboard.csv](leaderboard.csv)._
 
 | Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
-| 1 | LlamaParse Agentic Plus | LlamaParse | 90.20 | 93.37 | 94.18 | 92.25 | 87.12 | 84.09 | 5.62¢ |
-| 2 | LlamaParse Agentic | LlamaParse | 87.01 | 88.88 | 88.68 | 91.78 | 81.44 | 84.25 | 1.25¢ |
-| 3 | Pulse Ultra 2 | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
-| 4 | LlamaParse Cost Effective | LlamaParse | 80.61 | 84.19 | 77.91 | 89.87 | 67.29 | 83.77 | 0.38¢ |
-| 5 | anyformat (Standard) | Commercial - Startup APIs | 80.30 | 86.46 | 85.56 | 87.35 | 79.04 | 63.07 | 4.30¢ |
-| 6 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 79.85 | 94.25 | 70.89 | 91.72 | 77.04 | 65.33 | 6.13¢ |
-| 7 | Anthropic Fable 5.1 | VLM - Proprietary | 78.92 | 91.52 | 67.06 | 91.19 | 76.52 | 68.3 | 16.05¢ |
-| 8 | oi-parser | Commercial - Startup APIs | 78.30 | 92.62 | 78.28 | 86.17 | 66.88 | 67.53 | — |
-| 9 | Anthropic Opus 5.5 | VLM - Proprietary | 78.01 | 93.86 | 64.12 | 91.81 | 77.04 | 63.2 | 5.79¢ |
-| 10 | rakedoc-nano | VLM - Open Weight | 77.23 | 86.44 | 64.89 | 88.84 | 71.68 | 74.28 | — |
+| 1 | LlamaParse Agentic Plus | LlamaParse | 86.69 | 93.27 | 92.19 | 89.74 | 82.84 | 75.43 | 5.62¢ |
+| 2 | LlamaParse Agentic | LlamaParse | 82.83 | 90.90 | 81.20 | 87.84 | 84.81 | 69.42 | 1.25¢ |
+| 3 | Pulse Ultra 2 † | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
+| 4 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.64 | 89.48 | 77.50 | 87.68 | 76.68 | 71.84 | 3.00¢ |
+| 5 | anyformat (Standard) | Commercial - Startup APIs | 80.05 | 86.84 | 85.01 | 86.39 | 79.25 | 62.74 | 4.30¢ |
+| 6 | KDL-Frontier-Parser-nano-v2 | VLM - Open Weight | 79.07 | 86.19 | 69.14 | 87.77 | 76.91 | 75.33 | — |
+| 7 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 78.80 | 94.26 | 70.89 | 91.25 | 77.06 | 60.56 | 6.13¢ |
+| 8 | oi-parser † | Commercial - Startup APIs | 78.30 | 92.62 | 78.28 | 86.17 | 66.88 | 67.53 | — |
+| 9 | Anthropic Fable 5.1 | VLM - Proprietary | 77.81 | 91.53 | 66.93 | 90.77 | 76.02 | 63.81 | 16.05¢ |
+| 10 | LlamaParse Cost Effective | LlamaParse | 77.68 | 86.72 | 73.98 | 87.32 | 78.14 | 62.22 | 0.38¢ |
+
+† Unverified: no published outputs in [ParseBench-results](https://huggingface.co/datasets/llamaindex/ParseBench-results); scores as submitted.
 <!-- LEADERBOARD:END -->
 
 **Inclusion criteria:**
 1. The model or API needs to be publicly accessible, either via open weights or a self-serve API that any user can sign up for.
 2. The benchmark run needs to finish within a reasonable time (roughly single-digit hours).
 3. We can adjust concurrency based on the provider's recommended settings, but providers should not require custom framework changes, so the evaluation stays fair across models.
+4. The row's per-document outputs are published to [ParseBench-results](https://huggingface.co/datasets/llamaindex/ParseBench-results). Published rows are re-scored automatically whenever the harness changes; see [leaderboard/README.md](leaderboard/README.md).
 
 ## Quick Start
 
@@ -61,6 +124,9 @@ uv run parse-bench run llamaparse_agentic --test
 
 # Full benchmark run (replace llamaparse_agentic with any pipeline name, see "Available Pipelines" below)
 uv run parse-bench run llamaparse_agentic
+
+# ParseBench 2: all 13 subsets, scored into six dimensions and an overall score
+uv run parse-bench run llamaparse_agentic --dataset parsebench-2
 
 # View interactive reports in your browser
 uv run parse-bench serve llamaparse_agentic
@@ -99,7 +165,7 @@ A **pipeline** is a document parsing tool or configuration that you want to eval
 
 </details>
 
-## Dataset
+## Dataset (ParseBench v1)
 
 Hosted on HuggingFace: [`llamaindex/ParseBench`](https://huggingface.co/datasets/llamaindex/ParseBench)
 
@@ -136,6 +202,23 @@ uv run parse-bench download --test
 # Check whether the dataset has been downloaded and show summary statistics
 uv run parse-bench status
 ```
+
+### Repetition tests
+
+`repetition_overshoot` is a built-in rule that fails an output repeating anything (a dot leader, a unit, a token, a
+line, a table row, a whole table) more than the page holds. Restyling, splitting, merging or dropping a repetition
+never fails; only overshoot does. An empty answer fails too.
+
+```bash
+# Write a repetition test next to each PDF, budgeted from its text layer, then run it
+uv run parse-bench repetition make ./my_docs
+uv run parse-bench run <pipeline_name> --input_dir ./my_docs
+
+# Run any HuggingFace dataset in the ParseBench layout (downloads to ./data/<name> on first run)
+uv run parse-bench run <pipeline_name> --dataset org/name
+```
+
+See [docs/repetition-overshoot.md](docs/repetition-overshoot.md) for the rule and its budgets.
 
 ## Usage
 
@@ -339,6 +422,7 @@ src/parse_bench/
 
 - **Paper**: [arXiv:2604.08538](https://arxiv.org/abs/2604.08538)
 - **HuggingFace Dataset**: [llamaindex/ParseBench](https://huggingface.co/datasets/llamaindex/ParseBench)
+- **ParseBench 2 Dataset**: [llamaindex/ParseBench-2](https://huggingface.co/datasets/llamaindex/ParseBench-2)
 - **Code**: [run-llama/ParseBench](https://github.com/run-llama/ParseBench)
 - **ExtractBench**: [run-llama/ExtractBench](https://github.com/run-llama/ExtractBench) - A Benchmark for Schema-Guided Enterprise Document Extraction
 

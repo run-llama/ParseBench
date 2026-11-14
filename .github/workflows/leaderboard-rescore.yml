@@ -1,0 +1,323 @@
+name: Leaderboard re-score
+
+# Daily: if the scoring harness (or the ground truth) changed since the verified
+# rows were last scored, re-score every verified row of both leaderboards
+# (leaderboard.csv and leaderboard-v2.csv) from its published outputs (one job per
+# pipeline) and open a pull request with the new numbers. Changes of
+# at least THRESHOLD points are flagged in the report and labelled
+# large-score-change. Quiet days cost nothing: the job exits after the change check.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Re-score even if nothing changed
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: leaderboard-rescore
+  cancel-in-progress: false
+
+env:
+  THRESHOLD: "2"
+
+jobs:
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      reason: ${{ steps.decide.outputs.reason }}
+      sha: ${{ steps.decide.outputs.sha }}
+      data_revision: ${{ steps.decide.outputs.data_revision }}
+      pipelines: ${{ steps.decide.outputs.pipelines }}
+      data_revision_v2: ${{ steps.decide.outputs.data_revision_v2 }}
+      pipelines_v2: ${{ steps.decide.outputs.pipelines_v2 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - run: uv sync
+
+      - name: Decide whether anything changed
+        id: decide
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          read -r last data_repo data_rev < <(uv run python - <<'EOF'
+          import sys
+          sys.path.insert(0, "scripts/leaderboard")
+          from common import load_map
+          m = load_map()
+          print(m.scored_with or "-", m.data_repo, m.data_revision)
+          EOF
+          )
+          latest_rev=$(uv run python -c "from huggingface_hub import HfApi; print(HfApi().dataset_info('$data_repo').sha)")
+          echo "data_revision=$latest_rev" >> "$GITHUB_OUTPUT"
+          read -r last_v2 data_repo_v2 data_rev_v2 < <(uv run python - <<'EOF'
+          import sys
+          sys.path.insert(0, "scripts/leaderboard")
+          from common import V2, load_map
+          m = load_map(V2.map_path)
+          print(m.scored_with or "-", m.data_repo, m.data_revision)
+          EOF
+          )
+          latest_rev_v2=$(uv run python -c "from huggingface_hub import HfApi; print(HfApi().dataset_info('$data_repo_v2').sha)")
+          echo "data_revision_v2=$latest_rev_v2" >> "$GITHUB_OUTPUT"
+          uv run python - >> "$GITHUB_OUTPUT" <<'EOF'
+          import json, sys
+          sys.path.insert(0, "scripts/leaderboard")
+          from common import V2, load_map
+          print("pipelines=" + json.dumps([e.pipeline for e in load_map().verified() if e.pipeline]))
+          print("pipelines_v2=" + json.dumps([e.pipeline for e in load_map(V2.map_path).verified() if e.pipeline]))
+          EOF
+          reason=""
+          if [ "$FORCE" = "true" ]; then reason="manual run"
+          elif [ "$last" = "-" ] || ! git cat-file -e "$last^{commit}" 2>/dev/null; then reason="no recorded re-score"
+          elif ! git diff --quiet "$last" HEAD -- src/parse_bench scripts/leaderboard pyproject.toml uv.lock; then reason="harness changed since ${last:0:12}"
+          elif [ "$last_v2" = "-" ] && [ "$(uv run python -c "import sys; sys.path.insert(0, 'scripts/leaderboard'); from common import V2, load_map; print(len(load_map(V2.map_path).verified()))")" != "0" ]; then reason="no recorded ParseBench 2 re-score"
+          elif [ "$last_v2" != "-" ] && ! git diff --quiet "$last_v2" HEAD -- src/parse_bench scripts/leaderboard pyproject.toml uv.lock; then reason="harness changed since ${last_v2:0:12} (ParseBench 2)"
+          elif [ "$latest_rev" != "$data_rev" ]; then reason="ground truth moved to ${latest_rev:0:12}"
+          elif [ "$latest_rev_v2" != "$data_rev_v2" ]; then reason="ParseBench 2 ground truth moved to ${latest_rev_v2:0:12}"
+          fi
+          if [ -n "$reason" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "reason=$reason" >> "$GITHUB_OUTPUT"; echo "Re-scoring: $reason"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "Nothing changed since ${last:0:12}; skipping."
+          fi
+
+  # Fetch the ground truth once. actions/cache only saves when a job ends, so if
+  # every matrix job fetched it they would all download ~2,100 files at once and
+  # the Hub would drop connections (HTTP 499).
+  prepare:
+    needs: decide
+    if: needs.decide.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.decide.outputs.sha }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - run: uv sync
+
+      - name: Cache the ground truth
+        id: gt
+        uses: actions/cache@v4
+        with:
+          path: .cache/leaderboard-gt
+          key: leaderboard-gt-${{ needs.decide.outputs.data_revision }}
+
+      - name: Download the ground truth
+        if: steps.gt.outputs.cache-hit != 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          DATA_REVISION: ${{ needs.decide.outputs.data_revision }}
+        run: uv run python scripts/leaderboard/rescore.py ground-truth --data-revision "$DATA_REVISION"
+
+      - name: Cache the ParseBench 2 ground truth
+        id: gt_v2
+        if: needs.decide.outputs.pipelines_v2 != '[]'
+        uses: actions/cache@v4
+        with:
+          path: .cache/leaderboard-gt-v2
+          key: leaderboard-gt-v2-${{ needs.decide.outputs.data_revision_v2 }}
+
+      - name: Download the ParseBench 2 ground truth
+        if: needs.decide.outputs.pipelines_v2 != '[]' && steps.gt_v2.outputs.cache-hit != 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          DATA_REVISION: ${{ needs.decide.outputs.data_revision_v2 }}
+        run: |
+          uv run python scripts/leaderboard/rescore.py ground-truth --board v2 --data-revision "$DATA_REVISION" \
+            --gt-cache .cache/leaderboard-gt-v2
+
+  rescore:
+    needs: [decide, prepare]
+    if: needs.decide.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        pipeline: ${{ fromJSON(needs.decide.outputs.pipelines) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.decide.outputs.sha }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      # Layout adapters import provider SDKs, so the evaluator needs the runners extra.
+      - run: uv sync --extra runners --extra fast
+
+      - name: Restore the ground truth
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/leaderboard-gt
+          key: leaderboard-gt-${{ needs.decide.outputs.data_revision }}
+          fail-on-cache-miss: true
+
+      - name: Re-score ${{ matrix.pipeline }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          PIPELINE: ${{ matrix.pipeline }}
+          DATA_REVISION: ${{ needs.decide.outputs.data_revision }}
+        run: |
+          uv run python scripts/leaderboard/rescore.py run --pipelines "$PIPELINE" \
+            --data-revision "$DATA_REVISION" --out "shard-$PIPELINE.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.pipeline }}
+          path: shard-${{ matrix.pipeline }}.json
+          retention-days: 7
+
+  rescore_v2:
+    needs: [decide, prepare]
+    if: needs.decide.outputs.run == 'true' && needs.decide.outputs.pipelines_v2 != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        pipeline: ${{ fromJSON(needs.decide.outputs.pipelines_v2) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.decide.outputs.sha }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - run: uv sync --extra runners --extra fast
+
+      - name: Restore the ParseBench 2 ground truth
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/leaderboard-gt-v2
+          key: leaderboard-gt-v2-${{ needs.decide.outputs.data_revision_v2 }}
+          fail-on-cache-miss: true
+
+      - name: Re-score ${{ matrix.pipeline }} (ParseBench 2)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          PIPELINE: ${{ matrix.pipeline }}
+          DATA_REVISION: ${{ needs.decide.outputs.data_revision_v2 }}
+        run: |
+          uv run python scripts/leaderboard/rescore.py run --board v2 --pipelines "$PIPELINE" \
+            --data-revision "$DATA_REVISION" --gt-cache .cache/leaderboard-gt-v2 --out "v2shard-$PIPELINE.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v2shard-${{ matrix.pipeline }}
+          path: v2shard-${{ matrix.pipeline }}.json
+          retention-days: 7
+
+  apply:
+    needs: [decide, prepare, rescore, rescore_v2]
+    if: always() && needs.decide.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.decide.outputs.sha }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - run: uv sync
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shard-*
+          path: shards
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        if: needs.decide.outputs.pipelines_v2 != '[]'
+        with:
+          pattern: v2shard-*
+          path: v2shards
+          merge-multiple: true
+
+      - name: Apply the new scores
+        id: apply
+        env:
+          REASON: ${{ needs.decide.outputs.reason }}
+          PIPELINES: ${{ needs.decide.outputs.pipelines }}
+          PIPELINES_V2: ${{ needs.decide.outputs.pipelines_v2 }}
+        run: |
+          uv run python scripts/leaderboard/rescore.py merge shards/*.json --out rescore.json
+          uv run python scripts/leaderboard/apply.py apply rescore.json --threshold "$THRESHOLD" --report report.md
+          changed=$(grep -m1 '^changed=' "$GITHUB_OUTPUT" | cut -d= -f2); large=$(grep -m1 '^large_changes=' "$GITHUB_OUTPUT" | cut -d= -f2)
+          missing=$(uv run python -c "import json,os; done=set(json.load(open('rescore.json'))['results']); print(', '.join(p for p in json.loads(os.environ['PIPELINES']) if p not in done))")
+          if ls v2shards/*.json >/dev/null 2>&1; then
+            uv run python scripts/leaderboard/rescore.py merge v2shards/*.json --out rescore-v2.json
+            # apply.py writes its counts to GITHUB_OUTPUT; keep the totals of both boards in the step outputs
+            GITHUB_OUTPUT="$RUNNER_TEMP/v2_output" uv run python scripts/leaderboard/apply.py apply rescore-v2.json \
+              --board v2 --threshold "$THRESHOLD" --report report-v2.md
+            changed=$((changed + $(grep -m1 '^changed=' "$RUNNER_TEMP/v2_output" | cut -d= -f2)))
+            large=$((large + $(grep -m1 '^large_changes=' "$RUNNER_TEMP/v2_output" | cut -d= -f2)))
+            missing_v2=$(uv run python -c "import json,os; done=set(json.load(open('rescore-v2.json'))['results']); print(', '.join(p for p in json.loads(os.environ['PIPELINES_V2']) if p not in done))")
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"; echo "large_changes=$large" >> "$GITHUB_OUTPUT"
+          uv run python scripts/update_readme.py
+          {
+            echo "Triggered by: $REASON."
+            echo
+            if [ -n "$missing" ]; then echo "⚠️ No result from these jobs (values left unchanged): $missing"; echo; fi
+            if [ -n "${missing_v2:-}" ]; then echo "⚠️ No ParseBench 2 result from these jobs (values left unchanged): $missing_v2"; echo; fi
+            cat report.md
+            if [ -f report-v2.md ]; then echo; cat report-v2.md; fi
+          } > pr_body.md
+          cat pr_body.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update the re-score pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          # The job checks out the decided commit, not a branch, so the base must be named.
+          base: main
+          branch: leaderboard/rescore
+          commit-message: Re-score leaderboard from published results
+          title: >-
+            ${{ steps.apply.outputs.large_changes != '0' && '⚠️ ' || '' }}Re-score leaderboard
+            (${{ steps.apply.outputs.changed }} changed, ${{ steps.apply.outputs.large_changes }} ≥ ${{ env.THRESHOLD }} pt)
+          body-path: pr_body.md
+          add-paths: |
+            leaderboard.csv
+            leaderboard/results.yaml
+            leaderboard-v2.csv
+            leaderboard/results-v2.yaml
+            README.md
+          labels: >-
+            leaderboard-rescore${{ steps.apply.outputs.large_changes != '0' && ',large-score-change' || '' }}
+          delete-branch: true

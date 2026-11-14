@@ -3,6 +3,7 @@
 import logging
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from html import unescape
 from pathlib import Path
 from typing import Any
@@ -494,26 +495,38 @@ class ParseTestRule:
         }
 
 
-_RULE_CLASS_REGISTRY: dict[str, type["ParseTestRule"]] = {}
+@dataclass(frozen=True)
+class _RuleClassRegistration:
+    rule_class: type[ParseTestRule]
+    overrides_normalization: bool
 
 
-def register_rule_class(rule_type: str, rule_class: type["ParseTestRule"]) -> None:
+_RULE_CLASS_REGISTRY: dict[str, _RuleClassRegistration] = {}
+
+
+def register_rule_class(
+    rule_type: str, rule_class: type["ParseTestRule"], *, _DANGEROUSLY_OVERRIDE: bool = False
+) -> None:
     """Register the scoring class for an additional rule ``type``.
 
     Consulted by :func:`create_test_rule` before the built-in dispatch, so an
     extension can add rule types without editing this module. Pair with
     ``parse_rule_schemas.register_parse_rule_model`` so the payload validates.
     """
-    if not isinstance(rule_type, str) or not rule_type:
+    _validate_rule_class(rule_type, rule_class)
+    _RULE_CLASS_REGISTRY[rule_type] = _RuleClassRegistration(rule_class, _DANGEROUSLY_OVERRIDE)
+
+
+def _validate_rule_class(rule_type: str, rule_class: type["ParseTestRule"]) -> None:
+    if not isinstance(rule_type, str) or len(rule_type) == 0:
         raise ValueError("rule_type must be a non-empty string")
-    if not (isinstance(rule_type, str) and isinstance(rule_class, type) and issubclass(rule_class, ParseTestRule)):
+    if not (isinstance(rule_class, type) and issubclass(rule_class, ParseTestRule)):
         raise TypeError("rule_class must subclass ParseTestRule")
-    _RULE_CLASS_REGISTRY[rule_type] = rule_class
 
 
 def registered_rule_classes() -> dict[str, type["ParseTestRule"]]:
     """Snapshot of extension rule classes keyed by rule ``type``."""
-    return dict(_RULE_CLASS_REGISTRY)
+    return {rule_type: entry.rule_class for rule_type, entry in _RULE_CLASS_REGISTRY.items()}
 
 
 _REFERENCE_THUMBNAILER: Callable[[Path], str | None] | None = None
@@ -611,6 +624,7 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
         ListLevelRule,
     )
     from parse_bench.evaluation.metrics.parse.rules_page_decoration import PageDecorationRule
+    from parse_bench.evaluation.metrics.parse.rules_repetition import RepetitionOvershootRule
     from parse_bench.evaluation.metrics.parse.rules_table import (
         TableAdjacentDownRule,
         TableAdjacentLeftRule,
@@ -642,6 +656,10 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
 
     typed_rule: Any = coerce_parse_rule(rule_data)
     rule_type = get_rule_type(typed_rule)
+    registered = _RULE_CLASS_REGISTRY.get(rule_type)
+    if registered is not None and registered.overrides_normalization:
+        return registered.rule_class(typed_rule)
+
     if typed_rule.get("text_normalization") == "text-v2.1":
         from parse_bench.evaluation.metrics.parse.text_v21 import RULE_TYPES, VisibleTextBagRule
 
@@ -651,9 +669,8 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
     if not rule_type:
         raise ValueError("Rule must have a 'type' field")
 
-    registered = _RULE_CLASS_REGISTRY.get(rule_type)
     if registered is not None:
-        return registered(typed_rule)
+        return registered.rule_class(typed_rule)
 
     if rule_type in {TestType.PRESENT.value, TestType.ABSENT.value}:
         return TextPresenceRule(typed_rule)
@@ -746,6 +763,8 @@ def create_test_rule(rule_data: ParseRuleInput) -> "ParseTestRule":
         return FormFieldRule(typed_rule)
     elif rule_type == TestType.WATERMARK_REMOVAL.value:
         return WatermarkRemovalRule(typed_rule)
+    elif rule_type == TestType.REPETITION_OVERSHOOT.value:
+        return RepetitionOvershootRule(typed_rule)
     # Diagram (mermaid) rules
     elif rule_type == TestType.DIAGRAM_GRAPH.value:
         return DiagramGraphRule(typed_rule)

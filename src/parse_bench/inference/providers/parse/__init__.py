@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 _PROVIDER_MODULES = [
+    "aeddix_alpine_ocr_kdl",
     "amazon_nova",
     "anthropic",
     "anyformat",
@@ -17,6 +18,7 @@ _PROVIDER_MODULES = [
     "datalab",
     "deepseek",
     "deepseekocr2",
+    "docai",
     "docling",
     "docling_serve",
     "dots_ocr",
@@ -34,22 +36,27 @@ _PROVIDER_MODULES = [
     "jinaocr",
     "kdl_frontier_nano",
     "landingai",
+    "lightonocr-3",
     "liteparse",
     "markitdown",
+    "meta",
     "opendataloader",
     "pdf_inspector",
     "pymupdf4llm",
     "rakedoc_nano",
     "llamaparse",
     "llamaparse_v2_normalization",
+    "minicpm_ocr",
     "mineru25",
     "mineru2605pro",
     "mineru_diffusion",
     "mistral_ocr",
     "nemotron_omni",
+    "nemotron_parse_3_5",
     "nutrient_dws",
     "openai",
     "ovisocr2",
+    "ovisocr3",
     "paddleocr",
     "pulse",
     "pymupdf",
@@ -58,17 +65,27 @@ _PROVIDER_MODULES = [
     "reducto",
     "surya2",
     "teleocr",
+    "tencent_hy",
     "tesseract",
     "textract",
     "unlimitedocr",
+    "unlimitedocr2",
     "unstructured",
+    "upstage",
     "warp_ingest",
     "wevisdoc",
     "oi_parser",
 ]
 
-for _mod in _PROVIDER_MODULES:
-    try:
-        importlib.import_module(f"parse_bench.inference.providers.parse.{_mod}")
-    except ImportError:
-        logger.debug("Skipping parse provider %s (missing dependency)", _mod)
+
+def load_providers() -> None:
+    """Import each provider module so it registers itself; skip ones whose SDK is missing.
+
+    Called by ``registry.load_builtin_providers`` on first use rather than on package
+    import, so helpers under this package (such as label adapters) stay cheap to import.
+    """
+    for module in _PROVIDER_MODULES:
+        try:
+            importlib.import_module(f"parse_bench.inference.providers.parse.{module}")
+        except ImportError:
+            logger.debug("Skipping parse provider %s (missing dependency)", module)

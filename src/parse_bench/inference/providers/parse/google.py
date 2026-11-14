@@ -83,8 +83,11 @@ USER_PROMPT = (
 # (1.50, 7.50) on 2027-01-01.
 # gemini-3.8-flash (preview id "skimaki") launches 2026-09-02 with the same
 # discounted structure as 3.7-flash (Google DeepMind partner note, 2026-08-31).
+# gemini-4-argon is introductory pricing through 2026-11-30; it rises to
+# (4.00, 20.00) on 2026-12-01.
 _GEMINI_PRICING_PER_M: dict[str, tuple[float, float]] = {
     # model-prefix: (input_per_M, output_per_M)
+    "gemini-4-argon": (2.00, 10.00),
     "gemini-3.7-flash": (0.75, 3.75),
     "gemini-3.8-flash": (0.75, 3.75),
     "gemini-3.6-flash": (1.50, 7.50),
@@ -108,6 +111,8 @@ _GEMINI_PRICING_PER_M: dict[str, tuple[float, float]] = {
 # Source: https://ai.google.dev/gemini-api/docs/pricing (2026-04-05)
 _GEMINI_CONTEXT_CACHE_PRICING_PER_M: dict[str, tuple[float, float]] = {
     # model-prefix: (cache_hit_per_M, storage_per_M_token_hour)
+    # gemini-4-argon has implicit caching only (no explicit cache storage).
+    "gemini-4-argon": (0.10, 0.0),
     "gemini-3-flash": (0.05, 1.00),
     "gemini-3.1-flash-lite": (0.025, 1.00),
     "gemini-3.5-flash": (0.15, 1.00),

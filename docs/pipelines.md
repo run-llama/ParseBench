@@ -28,6 +28,26 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 
 **Bold** pipelines are baselines evaluated in the [ParseBench paper](https://arxiv.org/abs/2604.08538). The name used in the paper is shown in parentheses.
 
+### Upstage
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `upstage_dpe_v2` | Document Parse 2 (Enhanced), snapshot 260930 | `UPSTAGE_API_KEY` |
+
+Install with `uv sync --extra upstage`. PDFs are uploaded unchanged.
+Native images smaller than a 2000px short edge
+are proportionally upscaled; larger images retain their dimensions. The pipeline
+requests HTML, Markdown, text and coordinates. PDF rendering uses API defaults.
+The provider uses API Markdown for body text, retaining HTML for tables,
+charts, figures and lists. It preserves OCR text and authored table captions,
+removes generated image narration and transport attributes from evaluable
+markup, and converts closed HTML code blocks to fences. Literal code, table
+spans and layout coordinates are preserved.
+
+```bash
+uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
+```
+
 ### LlamaParse
 
 | Pipeline | Description | Env Var |
@@ -40,6 +60,12 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 
 | Pipeline | Description | Env Var |
 |---|---|---|
+| `openai_gpt_6_1_sol_reasoning_low_parse_with_layout_file` | GPT-6.1 Sol, low reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
+| `openai_gpt_6_1_terra_reasoning_low_parse_with_layout_file` | GPT-6.1 Terra, low reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
+| `openai_gpt_6_1_terra_reasoning_med_parse_with_layout_file` | GPT-6.1 Terra, medium reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
+| `openai_gpt_5_6_terra_reasoning_low_parse_with_layout` | GPT-5.6 Terra, low reasoning + layout, image mode (ParseBench 2 leaderboard) | `OPENAI_API_KEY` |
+| `openai_gpt_5_6_luna_reasoning_low_parse_with_layout` | GPT-5.6 Luna, low reasoning + layout, image mode (ParseBench 2 leaderboard) | `OPENAI_API_KEY` |
+| `openai_gpt_6_luna_reasoning_low_parse_with_layout` | GPT-6 Luna, low reasoning + layout, image mode (ParseBench 2 leaderboard) | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_medium_parse` | GPT-5 Mini, medium reasoning, image mode | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_medium_parse_file` | GPT-5 Mini, medium reasoning, PDF file mode | `OPENAI_API_KEY` |
 | `openai_gpt5_mini_reasoning_minimal_parse` | GPT-5 Mini, minimal reasoning | `OPENAI_API_KEY` |
@@ -58,6 +84,7 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 
 | Pipeline | Description | Env Var |
 |---|---|---|
+| `anthropic_haiku_5_5_parse_with_layout_file` | Claude Haiku 5.5, adaptive thinking + layout, PDF file mode | `ANTHROPIC_API_KEY` |
 | `anthropic_haiku_parse` | Claude Haiku 4.5, image mode | `ANTHROPIC_API_KEY` |
 | `anthropic_haiku_parse_file` | Claude Haiku 4.5, PDF file mode | `ANTHROPIC_API_KEY` |
 | `anthropic_haiku_parse_with_layout` | Claude Haiku 4.5, parse + layout | `ANTHROPIC_API_KEY` |
@@ -71,6 +98,8 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | `anthropic_sonnet_5_parse_with_layout_file` | Claude Sonnet 5, adaptive thinking + layout, file mode | `ANTHROPIC_API_KEY` |
 | `anthropic_fable_5_parse_with_layout_file` | Claude Fable 5, parse + layout, file mode | `ANTHROPIC_API_KEY` |
 | `anthropic_fable_5_1_parse_with_layout_file` | Claude Fable 5.1, parse + layout, file mode | `ANTHROPIC_API_KEY` |
+| `anthropic_opus_5_5_parse_with_layout` | Claude Opus 5.5, parse + layout, image mode, pixel bboxes at high resolution (ParseBench 2 leaderboard) | `ANTHROPIC_API_KEY` |
+| `anthropic_haiku_5_5_parse_with_layout` | Claude Haiku 5.5, parse + layout, image mode, pixel bboxes at high resolution (ParseBench 2 leaderboard) | `ANTHROPIC_API_KEY` |
 
 ### Google Gemini
 
@@ -104,6 +133,13 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | `google_gemini_3_6_flash_parse_with_layout` | Gemini 3.6 Flash, default thinking + layout, image mode | `GOOGLE_GEMINI_API_KEY` |
 | `google_gemini_3_6_flash_no_thinking_parse_with_layout` | Gemini 3.6 Flash, minimal thinking + layout, image mode | `GOOGLE_GEMINI_API_KEY` |
 | `google_gemini_3_7_flash_thinking_high_parse_with_layout_file` | Gemini 3.7 Flash, high thinking + layout, file mode | `GOOGLE_GEMINI_API_KEY` |
+| `gemini_4_argon_thinking_low_parse_with_layout_file` | Gemini 4 Argon, low thinking + layout, file mode (ParseBench 2 leaderboard) | `GOOGLE_GEMINI_API_KEY` |
+
+### Meta Muse
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `muse_ember_1_0_reasoning_low_parse_with_layout_file` | Muse Ember 1.0, low reasoning + layout, file mode via the Responses API (ParseBench 2 leaderboard) | `META_API_KEY` |
 
 ### GLM (z.ai)
 
@@ -112,6 +148,12 @@ These pipelines use hosted APIs. You only need an API key in your `.env` file.
 | `glm_5_3_flash_parse_with_layout_file` | GLM-5.3 Flash, parse + layout, file mode | `GLM_ZAI_API_KEY` |
 | `deepseek_v4_1_flash_parse_with_layout` | DeepSeek-V4.1-Flash, parse + layout, thinking high | `DEEPSEEK_API_KEY` |
 | `deepseek_v4_1_flash_no_thinking_parse_with_layout` | DeepSeek-V4.1-Flash, parse + layout, thinking disabled | `DEEPSEEK_API_KEY` |
+
+### Tencent Hy (TokenHub)
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `hy4_parse_with_layout` | Tencent Hy4, parse + layout, thinking high | `TENCENT_TOKENHUB_API_KEY` |
 
 ### Azure Document Intelligence
 
@@ -208,6 +250,19 @@ Hosted document-parsing API. Sign up at [oi-parser.ai](https://oi-parser.ai/) to
 |---|---|---|
 | **`oi_parser`** | oi-parser hosted `/v1/extract` API | `OI_PARSER_API_KEY`, `OI_PARSER_BASE_URL` (optional) |
 
+### DocAI (ProvidusAI)
+
+Hosted parse API. Documents are uploaded into a knowledge base named `ParseBench` (created on first
+use) with auto-parse on; the job is polled and `result.md` plus `grounding.json` are fetched. Tables
+come back as HTML with row and column spans; grounding boxes feed the layout vertical through the
+`docai` layout adapter. Cost is one credit per parsed page at the pay-as-you-go rate of USD 0.01
+(1¢ per page); override with `credit_rate_usd` or `DOCAI_CREDIT_RATE_USD`. Sign up at
+https://platform.providus.ai. Recommended `--max_concurrent 30`.
+
+| Pipeline | Description | Env Vars |
+|---|---|---|
+| **`docai_default`** | DocAI parsing pipeline by ProvidusAI (In paper: *DocAI*) | `DOCAI_API_KEY`, `DOCAI_BASE_URL` (optional) |
+
 ### anyformat
 
 Hosted parse API. Each pipeline creates a one-node parse workflow for its tier (cache off) on first
@@ -261,6 +316,15 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 | `qwen3_8_27b_thinking_parse_with_layout` | Qwen3.8-27B-FP8, parse + layout with thinking | `QWEN3_8_27B_SERVER_URL` |
 | `qwen3_8_flash_next_parse_with_layout` | Qwen3.8-Flash-Next-FP8, parse + layout | `QWEN3_8_FLASH_NEXT_SERVER_URL` |
 | `qwen3_8_flash_next_thinking_parse_with_layout` | Qwen3.8-Flash-Next-FP8, parse + layout with thinking | `QWEN3_8_FLASH_NEXT_SERVER_URL` |
+
+### LightOnOCR-3
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `lightonocr_3_vllm_parse` | LightOnOCR-3 grounding prompt, parse + layout from one pass (400 DPI, 5M pixel cap) | `LIGHTONOCR_3_SERVER_URL` |
+| `lightonocr3_4b_vllm` | LightOnOCR-3 4B, same request, labels through the shared layout label map (ParseBench 2 leaderboard) | `LIGHTONOCR_3_4B_SERVER_URL` |
+| `lightonocr3_1b_vllm` | LightOnOCR-3 1B, same request, labels through the shared layout label map (ParseBench leaderboard) | `LIGHTONOCR_3_1B_SERVER_URL` |
+| `lightonocr3_0_8b_vllm` | LightOnOCR-3 0.8B, same request, labels through the shared layout label map (ParseBench 2 leaderboard) | `LIGHTONOCR_3_0_8B_SERVER_URL` |
 
 ### Chandra OCR 2
 
@@ -327,6 +391,30 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 | `nemotron_omni_30b_vllm` | Nemotron-3-Nano-Omni 30B-A3B Reasoning, thinking disabled | `NEMOTRON_OMNI_SERVER_URL` |
 | `nemotron_omni_30b_vllm_thinking` | Nemotron-3-Nano-Omni 30B-A3B Reasoning, thinking enabled | `NEMOTRON_OMNI_SERVER_URL` |
 
+### Nemotron 3.5 Parse
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `nemotron_parse_3_5_sdk` | Nemotron 3.5 Parse SDK server (triple pass: full page + detection + Table/Chart crops; layout) | `NEMOTRON_PARSE_3_5_SERVER_URL` |
+
+### MiniCPM-OCR 1.0
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `minicpm_ocr_sdk` | MiniCPM-OCR 1.0 `minicpmvocr` SDK server (PP-DocLayoutV3 regions recognized per label; layout) | `MINICPM_OCR_SERVER_URL` |
+
+### Unlimited-OCR 2
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `unlimitedocr2` | Unlimited-OCR 2 on its official SGLang server (whole document per request; layout) | `UNLIMITEDOCR2_SERVER_URL` |
+
+### OvisOCR3
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `ovisocr3_vllm` | OvisOCR3 on vLLM with the model card settings (official structured parse plus a chart-parsing pass per chart region; layout) | `OVISOCR3_SERVER_URL` |
+
 ### Surya OCR 2
 
 | Pipeline | Description | Env Var |
@@ -349,6 +437,14 @@ Fine-tune of florin-parser-nano ([cloudraker/rakedoc-nano](https://huggingface.c
 |---|---|---|
 | `rakedoc_nano` | vLLM OpenAI-compatible endpoint (layout + per-region recognition) | `RAKEDOC_NANO_ENDPOINT_URL` |
 
+### aeddix-alpine-ocr (KDL pipeline)
+
+Fine-tune of MinerU2.5-Pro-2605-1.2B ([aeddix-labs/aeddix-alpine-ocr](https://huggingface.co/aeddix-labs/aeddix-alpine-ocr), tag `v0.1`); served identically to KDL-Frontier-Parser-nano and driven by the unchanged `kdl_frontier_nano` two-stage pipeline and markdown emission (see the provider module docstring for the exact `vllm serve` command).
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `aeddix_alpine_ocr_kdl` | vLLM OpenAI-compatible endpoint (layout + per-region recognition) | `AEDDIX_ALPINE_OCR_KDL_ENDPOINT_URL` |
+
 ---
 
 ## Local Pipelines (No API key needed)
@@ -367,8 +463,10 @@ These run entirely locally and do not require API keys.
 | `tesseract_eng` | Tesseract OCR (English) | `tesseract` installed |
 | `tesseract_fast` | Tesseract OCR (fast) | `tesseract` installed |
 | `tesseract_high_quality` | Tesseract OCR (high quality) | `tesseract` installed |
-| `infinity_parser2_flash` | Infinity-Parser2-Flash (vLLM server, JSON layout) | `infinity_parser2`, running vLLM server |
-| `infinity_parser2_pro` | Infinity-Parser2-Pro (vLLM server, JSON layout) | `infinity_parser2`, running vLLM server |
+| `infinity_parser2_flash` | Infinity-Parser2-Flash (vLLM server, JSON layout) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
+| `infinity_parser2_pro` | Infinity-Parser2-Pro (vLLM server, JSON layout) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
+| `infinity_parser2_flash_deep` | Infinity-Parser2-Flash with figure deep parsing pinned on (ParseBench 2 leaderboard) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
+| `infinity_parser2_pro_deep` | Infinity-Parser2-Pro with figure deep parsing pinned on (ParseBench 2 leaderboard) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
 
 Create the isolated Python environment for `pymupdf4llm_markdown` with
 `uv sync --python 3.12 --extra pymupdf4llm`, then run it with

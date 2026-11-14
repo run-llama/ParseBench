@@ -1,0 +1,237 @@
+# Maps every leaderboard-v2.csv row to the published outputs it was scored from.
+#
+#   provider          exact `Provider` value of the leaderboard-v2.csv row
+#   status            verified   -> outputs are in `results_repo` and the row is re-scored from them
+#                     unverified -> no published outputs; scores are kept as submitted
+#   pipeline          folder under results/ in `results_repo` (verified rows only)
+#   results_revision  `results_repo` commit (or refs/pr/N for a pending submission)
+#   run_dates         when the published outputs were produced (first to last record `started_at`/`completed_at`)
+#
+# `scored_with` is the ParseBench commit the verified rows were last re-scored at.
+# Maintained by scripts/leaderboard/; see leaderboard/README.md.
+
+results_repo: llamaindex/ParseBench-2-results
+data_repo: llamaindex/ParseBench-2
+data_revision: a12c9785cd8cd015b5284e0ad0d74722091762f2
+scored_with: c8b7db7568d2ce456f20e4ef33f74f758cc3782f
+rows:
+- provider: LlamaParse (Agentic Plus)
+  status: verified
+  pipeline: llamaparse_agentic_plus
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-11-02 to 2026-11-11
+- provider: LlamaParse (Agentic)
+  status: verified
+  pipeline: llamaparse_agentic
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-11-02 to 2026-11-10
+- provider: Claude Opus 5.5
+  status: verified
+  pipeline: anthropic_opus_5_5_parse_with_layout
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-29 to 2026-11-06
+- provider: LlamaParse (Cost Effective)
+  status: verified
+  pipeline: llamaparse_cost_effective
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: '2026-11-10'
+- provider: Gemini 4 argon (low)
+  status: verified
+  pipeline: gemini_4_argon_thinking_low_parse_with_layout_file
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-29 to 2026-11-06
+- provider: Reducto
+  status: verified
+  pipeline: reducto_agentic
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-06
+- provider: Extend (Parse 2)
+  status: verified
+  pipeline: extend_parse_2
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-06
+- provider: Pulse (Ultra 2)
+  status: verified
+  pipeline: pulse_ultra_2
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-10
+- provider: Extend (Parse Light)
+  status: verified
+  pipeline: extend_parse_light
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-06
+- provider: Datalab (Accurate)
+  status: verified
+  pipeline: datalab_accurate
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-11
+- provider: Datalab (Balanced)
+  status: verified
+  pipeline: datalab_balanced
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-06
+- provider: Datalab (Fast)
+  status: verified
+  pipeline: datalab_fast
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-10
+- provider: Infinity-Parser2 Pro
+  status: verified
+  pipeline: infinity_parser2_pro_deep
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-11-01 to 2026-11-06
+- provider: GPT-5.6 terra (low)
+  status: verified
+  pipeline: openai_gpt_5_6_terra_reasoning_low_parse_with_layout
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-29 to 2026-11-06
+- provider: LightOnOCR-3 4B
+  status: verified
+  pipeline: lightonocr3_4b_vllm
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-31 to 2026-11-10
+- provider: Databricks AI Parse
+  status: verified
+  pipeline: databricks_ai_parse
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-06
+- provider: Reducto (r-1)
+  status: verified
+  pipeline: reducto_r1
+  results_revision: 80df59e43b88c4474a1c9b90d0315edc70b2b1f8
+  run_dates: '2026-11-12'
+- provider: Gemini 3 Flash (minimal)
+  status: verified
+  pipeline: google_gemini_3_flash_thinking_minimal_parse_with_layout_file
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-29 to 2026-11-06
+- provider: Chandra 2
+  status: verified
+  pipeline: chandra2_vllm
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-31 to 2026-11-06
+- provider: LightOnOCR-3 0.8B
+  status: verified
+  pipeline: lightonocr3_0_8b_vllm
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-31 to 2026-11-10
+- provider: Gemini 3.7 Flash (low)
+  status: verified
+  pipeline: google_gemini_3_7_flash_thinking_low_parse_with_layout_file
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-29 to 2026-11-10
+- provider: MinerU2.5-Pro
+  status: verified
+  pipeline: mineru2605pro_vllm
+  results_revision: a0dce5fa277c6862a252b82131755bd99133a6be
+  run_dates: 2026-10-31 to 2026-11-06
+- provider: Gemini 3.8 Flash (low)
+  status: verified
+  pipeline: google_gemini_3_8_flash_thinking_low_parse_with_layout_file
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-29 to 2026-11-10
+- provider: Gemini 3.5 Flash
+  status: verified
+  pipeline: google_gemini_3_5_flash_parse_with_layout_file
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-29 to 2026-11-06
+- provider: Gemini 3.6 Flash
+  status: verified
+  pipeline: google_gemini_3_6_flash_parse_with_layout_file
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-29 to 2026-11-06
+- provider: Muse Ember 1.0 (low)
+  status: verified
+  pipeline: muse_ember_1_0_reasoning_low_parse_with_layout_file
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: '2026-11-09'
+- provider: Infinity-Parser2 Flash
+  status: verified
+  pipeline: infinity_parser2_flash_deep
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-11-01 to 2026-11-06
+- provider: GPT-6.1 terra (low)
+  status: verified
+  pipeline: openai_gpt_6_1_terra_reasoning_low_parse_with_layout_file
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-11-04 to 2026-11-06
+- provider: Claude Sonnet 5.5
+  status: verified
+  pipeline: anthropic_sonnet_5_5_parse_with_layout_file
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-29 to 2026-11-06
+- provider: GPT-6 luna (low)
+  status: verified
+  pipeline: openai_gpt_6_luna_reasoning_low_parse_with_layout
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-11-04 to 2026-11-06
+- provider: Nemotron Parse 3.5
+  status: verified
+  pipeline: nemotron_parse_3_5_sdk
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-30 to 2026-11-06
+- provider: Mistral OCR 4.1 (annotation)
+  status: verified
+  pipeline: mistral_ocr_4_1_annotation
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-06
+- provider: Reducto (r-1-mini)
+  status: verified
+  pipeline: reducto_r1_mini
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-11-04 to 2026-11-06
+- provider: LandingAI
+  status: verified
+  pipeline: landingai_parse
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-10
+- provider: PaddleOCR-VL 1.6
+  status: verified
+  pipeline: paddleocr_vl_1_6_pipeline
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-11-01 to 2026-11-06
+- provider: Claude Haiku 5.5
+  status: verified
+  pipeline: anthropic_haiku_5_5_parse_with_layout
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: '2026-11-11'
+- provider: Extend (Parse)
+  status: verified
+  pipeline: extend_parse
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-06
+- provider: GPT-5.6 luna (low)
+  status: verified
+  pipeline: openai_gpt_5_6_luna_reasoning_low_parse_with_layout
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-11-04 to 2026-11-06
+- provider: Mistral OCR 4.1
+  status: verified
+  pipeline: mistral_ocr_4_1
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-06
+- provider: Reducto (non-agentic)
+  status: verified
+  pipeline: reducto
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-06
+- provider: Azure Document Intelligence (layout)
+  status: verified
+  pipeline: azure_di_layout
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-27 to 2026-11-06
+- provider: Gemini 3.1 Flash-Lite
+  status: verified
+  pipeline: google_gemini_3_1_flash_lite_parse_with_layout_file
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-29 to 2026-11-06
+- provider: Qwen3.8 27B
+  status: verified
+  pipeline: qwen3_8_27b_parse_with_layout
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-31 to 2026-11-06
+- provider: Gemini 3.5 Flash-Lite
+  status: verified
+  pipeline: google_gemini_3_5_flash_lite_parse_with_layout_file
+  results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
+  run_dates: 2026-10-29 to 2026-11-06
