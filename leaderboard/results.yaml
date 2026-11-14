@@ -5,6 +5,7 @@
 #                     unverified -> no published outputs; scores are kept as submitted
 #   pipeline          folder under results/ in `results_repo` (verified rows only)
 #   results_revision  `results_repo` commit (or refs/pr/N for a pending submission)
+#   run_dates         when the published outputs were produced (first to last record `started_at`/`completed_at`)
 #
 # `scored_with` is the ParseBench commit the verified rows were last re-scored at.
 # Maintained by scripts/leaderboard/; see leaderboard/README.md.
@@ -12,7 +13,7 @@
 results_repo: llamaindex/ParseBench-results
 data_repo: llamaindex/ParseBench
 data_revision: 2805a1d940f95a203e0ae4b88be9934f7765b3fc
-scored_with: c38085d2ccd7f717900037e361806d22c51bc33b
+scored_with: 61d67a0d029a50ea2435a68fd729d46a7c83c082
 rows:
 - provider: LlamaParse Cost Effective
   status: verified
