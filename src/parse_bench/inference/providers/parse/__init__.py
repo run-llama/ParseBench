@@ -46,6 +46,7 @@ _PROVIDER_MODULES = [
     "rakedoc_nano",
     "llamaparse",
     "llamaparse_v2_normalization",
+    "lmkit",
     "minicpm_ocr",
     "mineru25",
     "mineru2605pro",
