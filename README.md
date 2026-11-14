@@ -64,13 +64,13 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | 1 | LlamaParse (Agentic Plus) | Document Parsers | 90.07 | 90.27 | 93.60 | 94.61 | 92.58 | 87.62 | 81.76 | 2.81¢ |
 | 2 | LlamaParse (Agentic) | Document Parsers | 86.05 | 87.01 | 92.75 | 89.86 | 77.39 | 88.35 | 80.94 | 1.25¢ |
 | 3 | Claude Opus 5.5 | Vision Models | 85.73 | 92.69 | 89.38 | 94.11 | 74.12 | 86.24 | 77.84 | 6.49¢ |
-| 4 | LlamaParse (Cost Effective) | Document Parsers | 84.59 | 85.50 | 91.94 | 87.19 | 73.07 | 88.66 | 81.21 | 0.38¢ |
-| 5 | Gemini 4 argon (low) | Vision Models | 84.20 | 89.68 | 89.22 | 92.78 | 68.20 | 88.10 | 77.19 | 2.68¢ |
-| 6 | Reducto | Document Parsers | 83.93 | 81.86 | 82.70 | 84.94 | 89.07 | 84.10 | 80.89 | 3.00¢ |
-| 7 | Extend (Parse 2) | Document Parsers | 83.20 | 80.18 | 83.39 | 84.22 | 85.08 | 84.82 | 81.51 | 2.50¢ |
-| 8 | Pulse (Ultra 2) | Document Parsers | 82.72 | 86.09 | 88.68 | 84.73 | 86.80 | 73.54 | 76.45 | 1.50¢ |
-| 9 | Extend (Parse Light) | Document Parsers | 81.59 | 78.29 | 78.65 | 81.42 | 85.35 | 84.66 | 81.16 | 0.62¢ |
-| 10 | Datalab (Accurate) | Document Parsers | 81.29 | 91.14 | 92.54 | 90.29 | 67.83 | 70.14 | 75.79 | 1.00¢ |
+| 4 | Reducto (r-1) | Document Parsers | 85.23 | 82.49 | 92.45 | 90.93 | 78.45 | 88.74 | 78.31 | 1.00¢ |
+| 5 | LlamaParse (Cost Effective) | Document Parsers | 84.59 | 85.50 | 91.94 | 87.19 | 73.07 | 88.66 | 81.21 | 0.38¢ |
+| 6 | Gemini 4 argon (low) | Vision Models | 84.20 | 89.68 | 89.22 | 92.78 | 68.20 | 88.10 | 77.19 | 2.68¢ |
+| 7 | Reducto | Document Parsers | 83.93 | 81.86 | 82.70 | 84.94 | 89.07 | 84.10 | 80.89 | 3.00¢ |
+| 8 | Extend (Parse 2) | Document Parsers | 83.20 | 80.18 | 83.39 | 84.22 | 85.08 | 84.82 | 81.51 | 2.50¢ |
+| 9 | Pulse (Ultra 2) | Document Parsers | 82.72 | 86.09 | 88.68 | 84.73 | 86.80 | 73.54 | 76.45 | 1.50¢ |
+| 10 | Extend (Parse Light) | Document Parsers | 81.59 | 78.29 | 78.65 | 81.42 | 85.35 | 84.66 | 81.16 | 0.62¢ |
 <!-- LEADERBOARD-V2:END -->
 
 Verified rows are re-scored from their published outputs in [ParseBench-2-results](https://huggingface.co/datasets/llamaindex/ParseBench-2-results) whenever the scorers change (see [leaderboard/README.md](leaderboard/README.md)); rows marked † carry the scores reported in the ParseBench 2 paper until their outputs are published. Systems that do not score all six dimensions are not ranked. To add an open-weight model to the [Hugging Face leaderboard](https://huggingface.co/datasets/llamaindex/ParseBench-2), see [Submit Results to the Leaderboard](https://huggingface.co/datasets/llamaindex/ParseBench-2#submit-results-to-the-leaderboard).
