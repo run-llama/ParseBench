@@ -364,7 +364,7 @@ _TRANSCRIBED = _rx(
     rf"{_S}*(?::([^\]]*))?\](?:{_DEST})?",
     _I,
 )
-_DOLLAR_SUP = _rx(rf"\$\^\{{?{_S}*([\p{{L}}\p{{N}}*†‡,]{{1,6}}){_S}*\}}?\$")
+_DOLLAR_SUP = _rx(rf"(?<![\\$])\$\^\{{?{_S}*([\p{{L}}\p{{N}}*†‡,]{{1,6}}){_S}*\}}?(?<![\\$])\$")
 # Glued to the previous word only when written glued: ``mc<sup>2</sup>`` is one token, while
 # ``2\n<sup>2024 AB</sup>`` or ``1990 <sup>25</sup>`` keep their space.
 _SUP_SUB_TAG = _rx(rf"({_S}*)<(sup|sub)>{_S}*([^<]{{1,8}}?){_S}*</\2>", _I)
@@ -383,7 +383,7 @@ _UNIT_GLUE = _rx(r"([0-9])(mm|cm|km|kg|mg|ml|µm|μm|nm|kwh|kw|mw|gb|mb|kb|hz|gh
 _NUMERO = _rx(rf"(?<![A-Za-z0-9_])([Nn]){_S}*\.?{_S}*[º°]")
 # A ``$$$ … $$$`` fence is display math (``$$ … $$``); an HTML ``<math>`` element holding LaTeX (no child tags)
 # is math too, read like ``$$ … $$``. A MathML body (``<mi>``, ``<mo>``) is left to the markup stripping.
-_TRIPLE_DOLLAR = _rx(r"\${3}([^$]+?)\${3}")
+_TRIPLE_DOLLAR = _rx(r"(?<![\\$])\${3}([^$]+?)(?<![\\$])\${3}")
 _MATH_ELEMENT = _rx(r"<math(?:[ \t\n][^<>]*)?>([^$]*?)</math[ \t\n]*>", _I)
 _TAG_START = _rx(r"<[A-Za-z/]")
 # A decimal digit of another script (Thai ๕, Devanagari ४, Arabic-Indic ٥) reads as its ASCII digit on both sides
@@ -391,7 +391,9 @@ _NATIVE_DIGIT = _rx(r"(?![0-9])\p{Nd}")
 # The Arabic decimal and thousands separators between two digits read as "." and "," (١٢٬٣٤٥٫٦ = 12,345.6)
 _ARABIC_DECIMAL = _rx(r"(?<=[0-9])\u066b(?=[0-9])")
 _ARABIC_THOUSANDS = _rx(r"(?<=[0-9])\u066c(?=[0-9])")
-_LATEX = _rx(r"\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$([^$\n]+?)\$")
+_LATEX = _rx(
+    r"(?<![\\$])\$\$([\s\S]+?)(?<![\\$])\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|(?<![\\$])\$([^$\n]+?)(?<![\\$])\$"
+)
 _LATEX_KEEP = _rx(r"[\\^_{}=]")
 _LATEX_LETTER = _rx(rf"\A{_S}*[A-Za-z]{_S}*\Z")
 _LATEX_WRAP = _rx(rf"\\(?:mathrm|text|mathbf|mathit|operatorname|left|right|big|Big){_NW}")
@@ -585,6 +587,7 @@ def preprocess(md: str) -> str:
     )
     md = _TRIPLE_DOLLAR.sub(r"$$\1$$", md)
     md = _LATEX.sub(_latex_sub, md)
+    md = md.replace(r"\$", "$")
     md = _WORD_NUM.sub(r"\1 \2", md)
     md = _UNIT_GLUE.sub(r"\1 \2", md)
     md = _NUMERO.sub(r"\1o.", md)

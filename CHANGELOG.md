@@ -37,6 +37,10 @@ All notable changes to `parse-bench` are recorded here. The format follows
 - The ParseBench leaderboard's LightOnOCR-3 rows (`lightonocr3_{4b,1b,0_8b}_vllm`) are scored with the new
   `lightonocr3` layout adapter instead of the LlamaParse fallback. The adapter collapses labels outside the 11 core
   classes (`Code`, `Document Index`, `Key-Value Region`) to their core class instead of failing the page.
+- `text_next` and `formatting_v2` read an escaped dollar sign (`\$`) as a literal `$`, never as a math delimiter, so
+  escaping currency in Markdown no longer costs points. Real maths (`$x^2$`, `$$…$$`, `\(…\)`, `\[…\]`) reads as
+  before. ParseBench 2 Text: MinerU2.5-Pro +0.29, LightOnOCR-3 0.8B +0.28, LightOnOCR-3 4B +0.26, Claude Opus 5.5
+  +0.02, Qwen3.8 27B -0.01; no Formatting change on the 11 systems most affected.
 - `table_next` reads Markdown pipe-table cells like HTML cells: escaped pipes (`\|`) stay inside the cell, backslash
   escapes and entities are decoded, and inline tags are stripped. A Markdown table now scores the same as the equivalent
   HTML table. ParseBench 2 Tables: Nemotron Parse 3.5 +0.10, Qwen3.8 27B +0.02; no other change on the 11 systems

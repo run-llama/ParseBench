@@ -180,7 +180,7 @@ def _rx(p: str, flags: int = 0) -> re.Pattern[str]:
 
 _CODE_SPAN = _rx(r"(`+)([^`][\s\S]*?)\1(?!`)")
 _ESCAPE = _rx(r"\\([!-/:-@\[-`{-~])")
-_INLINE_MATH = _rx(r"\\\(([\s\S]+?)\\\)|\$([^$\n]+?)\$")
+_INLINE_MATH = _rx(r"\\\(([\s\S]+?)\\\)|(?<![\\$])\$([^$\n]+?)(?<![\\$])\$")
 _MATH_TEXTCMD = _rx(r"\\(?:mathrm|text|textbf|textit|mathbf|mathit|operatorname|rm|bf|it)\{([^{}]*)\}")
 # Inline math that only decorates text, as in $\underline{\text{word}}$: group 1 is the command, group 2 the text.
 _MATH_DECORATED_TEXT = _rx(r"[ \t]*\\(underline|uline|sout|st)\{((?:\\(?:text|mathrm)\{[^{}]*\}|[^{}\\])*)\}[ \t]*")
@@ -259,8 +259,9 @@ def _inline_math(m: re.Match[str]) -> str:
 def _markdown_inline(text: str) -> str:
     """Markdown emphasis and script syntaxes -> sentinels (HTML tags stay for the walker)."""
     text = _CODE_SPAN.sub(lambda m: _wrap(C, _neutralize(m.group(2))), text)
-    text = _ESCAPE.sub(NEUTRAL, text)
+    text = _ESCAPE.sub(lambda m: m.group(0) if m.group(1) == "$" else NEUTRAL, text)
     text = _INLINE_MATH.sub(_inline_math, text)
+    text = text.replace(r"\$", "$")
     text = _TRIPLE.sub(lambda m: _OPEN[B] + _OPEN[I] + m.group(2) + _CLOSE[I] + _CLOSE[B], text)
     text = _BOLD_STAR.sub(lambda m: _wrap(B, m.group(1)), text)
     text = _BOLD_UND.sub(lambda m: _wrap(B, m.group(1)), text)
@@ -414,7 +415,7 @@ def tokens_of(chars: Sequence[tuple[str, int]], unit: int) -> list[Tok]:
 # ---------------------------------------------------------------------------
 
 _HTML_COMMENT = _rx(r"<!--[\s\S]*?-->")
-_DISPLAY_MATH = _rx(r"\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]")
+_DISPLAY_MATH = _rx(r"(?<![\\$])\$\$[\s\S]+?(?<![\\$])\$\$|\\\[[\s\S]+?\\\]")
 _IMAGE = _rx(r"!\[[^\]\n]*\]\([^)\n]*\)")
 _LINK = _rx(r"\[([^\]\n]*)\]\((?:[^()\n]|\([^()\n]*\))*\)")
 _HTML_HEADING = _rx(r"<h([1-6])(?![A-Za-z0-9_])[^>]*>([\s\S]*?)</h\1[ \t]*>", re.IGNORECASE)
