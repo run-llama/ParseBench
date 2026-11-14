@@ -286,6 +286,7 @@ class PyMuPDF4LLMLabelMapper(LayoutLabelMapper):
     "model:openai_layout",
     "model:anthropic_layout",
     "model:gemma4_layout",
+    "model:loamist_parse_layout",
     "model:openai_compatible_vlm_layout",
     "model:surya_layout",
     "model:chandra",
@@ -306,6 +307,7 @@ class IndexedLayoutModelMapper(LayoutLabelMapper):
         LayoutDetectionModel.OPENAI_LAYOUT: Qwen3VLLayoutDetLabelAdapter(),
         LayoutDetectionModel.ANTHROPIC_LAYOUT: Qwen3VLLayoutDetLabelAdapter(),
         LayoutDetectionModel.GEMMA4_LAYOUT: Qwen3VLLayoutDetLabelAdapter(),
+        LayoutDetectionModel.LOAMIST_PARSE_LAYOUT: Qwen3VLLayoutDetLabelAdapter(),
         # DeepSeek and other OpenAI-compatible VLM parse providers emit the same
         # div-wrapped labels, projected to Qwen3-VL indices by the shared adapter.
         LayoutDetectionModel.OPENAI_COMPATIBLE_VLM_LAYOUT: Qwen3VLLayoutDetLabelAdapter(),

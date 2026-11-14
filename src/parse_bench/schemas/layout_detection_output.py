@@ -315,6 +315,7 @@ class LayoutDetectionModel(StrEnum):
     OPENAI_LAYOUT = "openai_layout"
     ANTHROPIC_LAYOUT = "anthropic_layout"
     GEMMA4_LAYOUT = "gemma4_layout"
+    LOAMIST_PARSE_LAYOUT = "loamist_parse_layout"
     HUNYUANOCR_LAYOUT = "hunyuanocr_layout"
     NEMOTRON_PARSE_LAYOUT = "nemotron_parse_layout"
     UNLIMITED_OCR_2_LAYOUT = "unlimited_ocr_2_layout"
@@ -464,6 +465,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.ANTHROPIC_LAYOUT: {
         "name": "Anthropic Layout (parse_with_layout)",
         "hf_url": "https://docs.anthropic.com/",
+    },
+    LayoutDetectionModel.LOAMIST_PARSE_LAYOUT: {
+        "name": "Loamist Parse Layout",
+        "hf_url": "https://parse.loamist.com/docs/",
     },
     LayoutDetectionModel.GEMMA4_LAYOUT: {
         "name": "Gemma 4 Layout (parse_with_layout)",

@@ -38,6 +38,7 @@ _PROVIDER_MODULES = [
     "landingai",
     "lightonocr-3",
     "liteparse",
+    "loamist_parse",
     "markitdown",
     "meta",
     "opendataloader",

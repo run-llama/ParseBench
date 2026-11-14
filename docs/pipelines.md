@@ -293,6 +293,14 @@ parse workflow), `effort`, `prompt_hint`, `figure_enhancement`, `credit_rate_usd
 | `nutrient_dws_understand` | `understand` mode, adds semantic enrichment | `NUTRIENT_DWS_API_KEY` |
 | **`nutrient_dws_agentic`** | `agentic` mode, visual reasoning (In paper: *Nutrient DWS (Agentic)*) | `NUTRIENT_DWS_API_KEY` |
 
+### Loamist Parse
+
+Hosted API, one page per request; returns layout blocks with boxes and labels. Sign up for a key at [parse.loamist.com](https://parse.loamist.com/signup). Recommended `--max_concurrent`: up to 32.
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `loamist_parse` | Layout blocks (`format=layout`), tables as HTML, charts as data tables | `LOAMIST_PARSE_API_KEY` |
+
 ## Self-hosted Model Pipelines
 
 These pipelines require you to deploy the model on your own infrastructure (e.g., via vLLM, Modal, etc.) and set the endpoint URL in `.env`.
