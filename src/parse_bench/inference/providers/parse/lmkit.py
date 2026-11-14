@@ -193,6 +193,14 @@ def _outermost(items: list[LayoutItemIR]) -> list[LayoutItemIR]:
     ]
 
 
+def _content_box(element: dict[str, Any]) -> list[float]:
+    """The element's content box (the tight extent of the ink it prints) when the server measured
+    one, else its box."""
+    content = element.get("content_bbox")
+    box = content if isinstance(content, list) and len(content) == 4 else element["bbox"]
+    return [float(v) for v in box]
+
+
 def _is_unit_element(element: dict[str, Any]) -> bool:
     """A grounding unit sent the older way, as a layout-only element (servers up to 2026.10.5)."""
     return (element.get("content") or {}).get("type") == "repeated_text"
@@ -206,8 +214,9 @@ def project_page(
     text), in reading order with running heads first and running feet last, its box (the region's
     own when the parser gives one, else its elements' bounds) normalized by the page frame. The
     ``flat`` grounding is a partition of the page: the element regions alone, each boxed by its
-    elements' own bounds (the region's box adds the leading around its lines), and a box lying
-    inside a larger one left to it, so no two boxes hold the same words."""
+    elements' content boxes (the tight extent of the ink they print, else their own bounds; the
+    region's box adds the leading around its lines), and a box lying inside a larger one left to
+    it, so no two boxes hold the same words."""
     if grounding not in _GROUNDINGS:
         raise ValueError(f"grounding must be one of {', '.join(_GROUNDINGS)}, got {grounding!r}")
     flat = grounding == "flat"
@@ -243,7 +252,7 @@ def project_page(
 
     items: list[LayoutItemIR] = []
     for _, members, bbox, unit in entries:
-        own = [[float(v) for v in elements[m]["bbox"]] for m in members]
+        own = [_content_box(elements[m]) for m in members]
         boxes = own if (flat and members) or not bbox else [bbox]
         left, top = min(b[0] for b in boxes), min(b[1] for b in boxes)
         right, bottom = max(b[2] for b in boxes), max(b[3] for b in boxes)

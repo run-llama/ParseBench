@@ -301,6 +301,18 @@ def test_flat_grounding_boxes_a_region_by_its_elements_own_bounds():
     assert hierarchical[0].bbox.y == pytest.approx(98 / 800), "the hierarchical grounding keeps the region's box"
 
 
+def test_flat_grounding_takes_the_content_box_the_server_measured():
+    page = _row_page()
+    page["elements"][2]["content_bbox"] = [62, 143, 300, 166]
+
+    paragraph = project_page(page, "md", ["Net sales:", "EUR 4.3 billion", "A paragraph."], "flat").items[1]
+
+    assert (paragraph.bbox.x, paragraph.bbox.y) == (pytest.approx(62 / 600), pytest.approx(143 / 800))
+    assert (paragraph.bbox.w, paragraph.bbox.h) == (pytest.approx(238 / 600), pytest.approx(23 / 800))
+    hierarchical = project_page(page, "md", ["Net sales:", "EUR 4.3 billion", "A paragraph."]).items
+    assert hierarchical[1].bbox.y == pytest.approx(138 / 800), "the hierarchical grounding keeps the region's box"
+
+
 def test_flat_grounding_leaves_a_nested_box_to_the_box_holding_it():
     page = _row_page()
     page["elements"].append(
