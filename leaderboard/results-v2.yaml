@@ -238,4 +238,4 @@ rows:
 - provider: surya-ocr-2
   status: verified
   pipeline: surya2_sdk
-  results_revision: 8131517bd5a1f8a4945a27323cc4a99254f9980a
+  results_revision: a0bf745782c9966dce84db96e9c40f965aa59f66
