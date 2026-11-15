@@ -238,4 +238,4 @@ rows:
 - provider: HunyuanOCR
   status: verified
   pipeline: hunyuanocr_1_5
-  results_revision: 21ee11758ce984b66578893e51c3b613282c9ab1
+  results_revision: dd06a9082aa7486f94c81ec175804d86ce39f42a
