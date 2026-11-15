@@ -239,3 +239,7 @@ rows:
   status: verified
   pipeline: qwen3_5_4b_vllm_layout
   results_revision: 9af7b470d9474dc02cec522d253ace88cb8c20c0
+- provider: dots.mocr
+  status: verified
+  pipeline: dots_ocr_1_5_parse
+  results_revision: dd3cd89ad0b318c286604fec7dd63e62a0701baa
