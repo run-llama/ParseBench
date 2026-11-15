@@ -235,3 +235,7 @@ rows:
   pipeline: google_gemini_3_5_flash_lite_parse_with_layout_file
   results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
   run_dates: 2026-10-29 to 2026-11-06
+- provider: dots.mocr
+  status: verified
+  pipeline: dots_ocr_1_5_parse
+  results_revision: dd3cd89ad0b318c286604fec7dd63e62a0701baa
