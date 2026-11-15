@@ -238,4 +238,4 @@ rows:
 - provider: jina-ocr-v1
   status: verified
   pipeline: jinaocr_vllm
-  results_revision: dd7953cba049fa03a1cfd6dc4af4bad388079c80
+  results_revision: 1e823f0fa70fe846565b16504a759833ef8e1bd2
