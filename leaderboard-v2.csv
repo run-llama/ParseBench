@@ -41,6 +41,7 @@ Mistral OCR 4.1,Document Parsers,67.84,85.06,81.91,81.84,1.22,81.82,75.22,0.400,
 HunyuanOCR,Open Weight,67.11,62.88,80.44,60.61,58.69,70.30,69.73,,yes
 Reducto (non-agentic),Document Parsers,66.28,79.06,79.80,73.48,1.54,83.81,79.99,2.248,yes
 Azure Document Intelligence (layout),Document Parsers,66.13,79.84,77.81,77.58,1.49,83.80,76.27,1.000,yes
+dots.mocr,Open Weight,63.16,86.32,80.63,83.40,0.78,65.19,62.63,,yes
 Gemini 3.1 Flash-Lite,Vision Models,62.73,83.96,79.28,79.77,12.22,48.14,73.02,0.389,yes
 Qwen3.8 27B,Open Weight,61.58,81.59,77.24,36.73,41.33,63.53,69.05,,yes
 Gemini 3.5 Flash-Lite,Vision Models,61.43,79.15,78.68,72.24,5.05,62.18,71.25,0.717,yes

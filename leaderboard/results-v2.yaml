@@ -239,3 +239,7 @@ rows:
   status: verified
   pipeline: hunyuanocr_1_5
   results_revision: dd06a9082aa7486f94c81ec175804d86ce39f42a
+- provider: dots.mocr
+  status: verified
+  pipeline: dots_ocr_1_5_parse
+  results_revision: dd3cd89ad0b318c286604fec7dd63e62a0701baa
