@@ -247,3 +247,7 @@ rows:
   status: verified
   pipeline: minicpm_ocr_sdk
   results_revision: 4fbda85f81c50543334193d4c91ca2647214b800
+- provider: Unlimited-OCR-2
+  status: verified
+  pipeline: unlimitedocr2
+  results_revision: beef41a63bf68f2ed3989ff521aa478d79edd0ac
