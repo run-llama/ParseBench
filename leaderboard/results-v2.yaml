@@ -235,3 +235,7 @@ rows:
   pipeline: google_gemini_3_5_flash_lite_parse_with_layout_file
   results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
   run_dates: 2026-10-29 to 2026-11-06
+- provider: MiniCPM-OCR-1.0
+  status: verified
+  pipeline: minicpm_ocr_sdk
+  results_revision: 589841219126729684e5068e9574de34af1015cc

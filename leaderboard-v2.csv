@@ -35,6 +35,7 @@ Reducto (r-1-mini),Document Parsers,71.62,85.10,91.55,86.11,1.35,87.92,77.67,0.1
 LandingAI,Document Parsers,70.83,86.16,80.04,84.70,38.77,58.39,76.92,3.001,yes
 PaddleOCR-VL 1.6,Open Weight,70.25,73.38,79.40,73.03,57.45,70.11,68.13,,yes
 Claude Haiku 5.5,Vision Models,70.12,89.21,87.45,83.51,12.13,73.02,75.42,0.155,yes
+MiniCPM-OCR-1.0,Open Weight,69.95,74.38,77.86,80.55,40.24,77.96,68.69,,yes
 Extend (Parse),Document Parsers,69.39,79.98,78.78,88.55,2.61,84.71,81.73,2.501,yes
 GPT-5.6 luna (low),Vision Models,69.11,80.68,88.46,76.81,40.68,53.97,74.05,0.296,yes
 Mistral OCR 4.1,Document Parsers,67.84,85.06,81.91,81.84,1.22,81.82,75.22,0.400,yes
