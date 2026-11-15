@@ -247,6 +247,10 @@ rows:
   status: verified
   pipeline: unlimitedocr2
   results_revision: beef41a63bf68f2ed3989ff521aa478d79edd0ac
+- provider: surya-ocr-2
+  status: verified
+  pipeline: surya2_sdk
+  results_revision: a0bf745782c9966dce84db96e9c40f965aa59f66
 - provider: dots.mocr
   status: verified
   pipeline: dots_ocr_1_5_parse
