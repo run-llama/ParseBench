@@ -361,26 +361,41 @@ _BARE_CAPTION_RE = re.compile(r"^- (?:\\\[[^\]]+\\\] )?\*\*(?:\\\*|[^*])+\*\*$")
 _CELL_GAP_RE = re.compile(r"(?<=\*\*)\s+(?=\*\*)|\s{3,}")
 
 
+def _wrap_inline(name: str, inner: str) -> str:
+    """An element's markdown from its children's markdown."""
+    if name in ("strong", "b") and inner.strip():
+        return f"**{inner.strip()}**"
+    if name in ("em", "i") and inner.strip():
+        return f"*{inner.strip()}*"
+    if name in ("p", "div", "li") and inner.strip():
+        return inner + "\n"
+    return inner
+
+
 def _cell_markdown(cell: Tag) -> str:
-    """A table cell's contents as markdown: bold and italics kept as markers, `<br>` as a line break."""
+    """A table cell's contents as markdown: bold and italics kept as markers, `<br>` as a line break.
 
-    def walk(node: Any) -> str:
-        if isinstance(node, NavigableString):
-            return str(node)
-        if not isinstance(node, Tag):
-            return ""
-        if node.name == "br":
-            return "\n"
-        inner = "".join(walk(c) for c in node.children)
-        if node.name in ("strong", "b") and inner.strip():
-            return f"**{inner.strip()}**"
-        if node.name in ("em", "i") and inner.strip():
-            return f"*{inner.strip()}*"
-        if node.name in ("p", "div", "li") and inner.strip():
-            return inner + "\n"
-        return inner
-
-    text = html.unescape("".join(walk(c) for c in cell.children))
+    The tree is walked with an explicit stack, not recursion: model output with unclosed tags can
+    nest thousands of elements deep, past the interpreter's recursion limit."""
+    # one frame per open element: its name, its remaining children and the markdown of those done
+    stack: list[tuple[str, Any, list[str]]] = [("", iter(cell.children), [])]
+    while True:
+        name, children, parts = stack[-1]
+        node = next(children, None)
+        if node is None:
+            stack.pop()
+            if not stack:
+                break
+            stack[-1][2].append(_wrap_inline(name, "".join(parts)))
+        elif isinstance(node, NavigableString):
+            parts.append(str(node))
+        elif not isinstance(node, Tag):
+            continue
+        elif node.name == "br":
+            parts.append("\n")
+        else:
+            stack.append((node.name, iter(node.children), []))
+    text = html.unescape("".join(parts))
     return text.replace("****", "").replace("\xa0", " ")
 
 
