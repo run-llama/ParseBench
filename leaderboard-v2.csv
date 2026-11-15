@@ -11,6 +11,7 @@ Pulse (Ultra 2),Document Parsers,82.73,86.09,88.68,84.80,86.80,73.54,76.50,1.500
 Extend (Parse Light),Document Parsers,81.58,78.29,78.65,81.39,85.35,84.66,81.16,0.625,yes
 Datalab (Accurate),Document Parsers,81.30,91.14,92.54,90.38,67.83,70.14,75.79,1.000,yes
 Datalab (Balanced),Document Parsers,81.06,90.26,92.57,89.62,67.60,70.33,76.01,0.400,yes
+KDL-Frontier-Parser-nano-v2,Open Weight,78.89,80.25,84.58,80.54,73.55,84.12,70.32,,yes
 Datalab (Fast),Document Parsers,78.32,87.17,92.07,84.15,61.47,69.43,75.61,0.400,yes
 Infinity-Parser2 Pro,Open Weight,77.09,85.60,78.70,86.27,55.64,82.36,73.97,,yes
 GPT-5.6 terra (low),Vision Models,77.06,81.00,87.86,79.64,76.30,62.48,75.09,3.116,yes
@@ -35,14 +36,21 @@ Reducto (r-1-mini),Document Parsers,71.62,85.10,91.55,86.11,1.35,87.92,77.67,0.1
 LandingAI,Document Parsers,70.83,86.16,80.04,84.70,38.77,58.39,76.92,3.001,yes
 PaddleOCR-VL 1.6,Open Weight,70.25,73.38,79.40,73.03,57.45,70.11,68.13,,yes
 Claude Haiku 5.5,Vision Models,70.12,89.21,87.45,83.51,12.13,73.02,75.42,0.155,yes
+MiniCPM-OCR-1.0,Open Weight,69.95,74.38,77.86,80.60,40.24,77.96,68.68,,yes
 Extend (Parse),Document Parsers,69.39,79.98,78.78,88.55,2.61,84.71,81.73,2.501,yes
 GPT-5.6 luna (low),Vision Models,69.11,80.68,88.46,76.81,40.68,53.97,74.05,0.296,yes
 Mistral OCR 4.1,Document Parsers,67.84,85.06,81.91,81.84,1.22,81.82,75.22,0.400,yes
+surya-ocr-2,Open Weight,67.80,84.93,86.32,72.40,20.68,68.71,73.74,,yes
+HunyuanOCR,Open Weight,67.11,62.88,80.44,60.61,58.69,70.30,69.73,,yes
 Reducto (non-agentic),Document Parsers,66.28,79.06,79.80,73.48,1.54,83.81,79.99,2.248,yes
 Azure Document Intelligence (layout),Document Parsers,66.13,79.84,77.81,77.58,1.49,83.80,76.27,1.000,yes
 TeleOCR,Open Weight,64.73,65.59,76.76,78.81,14.50,83.01,69.69,,yes
+Unlimited-OCR-2,Open Weight,64.39,78.81,79.28,75.13,1.24,81.34,70.54,,yes
 dots.mocr,Open Weight,63.16,86.32,80.63,83.40,0.78,65.19,62.63,,yes
 Gemini 3.1 Flash-Lite,Vision Models,62.73,83.96,79.28,79.77,12.22,48.14,73.02,0.389,yes
 Qwen3.8 27B,Open Weight,61.58,81.59,77.24,36.73,41.33,63.53,69.05,,yes
 Gemini 3.5 Flash-Lite,Vision Models,61.43,79.15,78.68,72.24,5.05,62.18,71.25,0.717,yes
 Falcon-OCR,Open Weight,56.68,64.66,75.93,72.57,0.69,60.27,65.97,,yes
+jina-ocr-v1,Open Weight,48.20,75.19,79.87,55.00,8.74,0.00,70.41,,yes
+Qwen3.5-4B,Open Weight,42.34,77.34,74.77,12.86,6.88,15.03,67.19,,yes
+gemma-4-E4B-it,Open Weight,42.32,65.07,70.57,30.82,5.39,21.57,60.48,,yes
