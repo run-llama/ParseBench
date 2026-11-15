@@ -259,3 +259,7 @@ rows:
   status: verified
   pipeline: hunyuanocr_1_5
   results_revision: dd06a9082aa7486f94c81ec175804d86ce39f42a
+- provider: Qwen3.5-4B
+  status: verified
+  pipeline: qwen3_5_4b_vllm_layout
+  results_revision: 9af7b470d9474dc02cec522d253ace88cb8c20c0
