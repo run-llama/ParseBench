@@ -238,4 +238,4 @@ rows:
 - provider: gemma-4-E4B-it
   status: verified
   pipeline: gemma4_e4b_vllm_with_layout
-  results_revision: 6a268625486305725e0feebe395087e8f02d15dc
+  results_revision: 878281b3d4eccb338203fd9f6d5bbf34e3763665
