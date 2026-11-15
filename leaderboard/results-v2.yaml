@@ -235,3 +235,7 @@ rows:
   pipeline: google_gemini_3_5_flash_lite_parse_with_layout_file
   results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
   run_dates: 2026-10-29 to 2026-11-06
+- provider: Qwen3.5-4B
+  status: verified
+  pipeline: qwen3_5_4b_vllm_layout
+  results_revision: 38e1c6bf15ac7012871db23919953a05f3d9b5d2
