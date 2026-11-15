@@ -239,6 +239,38 @@ rows:
   status: verified
   pipeline: dots_ocr_1_5_parse
   results_revision: dd3cd89ad0b318c286604fec7dd63e62a0701baa
+- provider: KDL-Frontier-Parser-nano-v2
+  status: verified
+  pipeline: kdl_frontier_nano_v2
+  results_revision: 51019a731db013cae959b71d64413964ddf7aae9
+- provider: MiniCPM-OCR-1.0
+  status: verified
+  pipeline: minicpm_ocr_sdk
+  results_revision: 4fbda85f81c50543334193d4c91ca2647214b800
+- provider: Unlimited-OCR-2
+  status: verified
+  pipeline: unlimitedocr2
+  results_revision: beef41a63bf68f2ed3989ff521aa478d79edd0ac
+- provider: surya-ocr-2
+  status: verified
+  pipeline: surya2_sdk
+  results_revision: a0bf745782c9966dce84db96e9c40f965aa59f66
+- provider: HunyuanOCR
+  status: verified
+  pipeline: hunyuanocr_1_5
+  results_revision: dd06a9082aa7486f94c81ec175804d86ce39f42a
+- provider: Qwen3.5-4B
+  status: verified
+  pipeline: qwen3_5_4b_vllm_layout
+  results_revision: 9af7b470d9474dc02cec522d253ace88cb8c20c0
+- provider: gemma-4-E4B-it
+  status: verified
+  pipeline: gemma4_e4b_vllm_with_layout
+  results_revision: 878281b3d4eccb338203fd9f6d5bbf34e3763665
+- provider: jina-ocr-v1
+  status: verified
+  pipeline: jinaocr_vllm
+  results_revision: 1e823f0fa70fe846565b16504a759833ef8e1bd2
 - provider: Falcon-OCR
   status: verified
   pipeline: falconocr_pipeline
