@@ -238,4 +238,4 @@ rows:
 - provider: Unlimited-OCR-2
   status: verified
   pipeline: unlimitedocr2
-  results_revision: 7b698ea44036f6e820d3833ac6699b6eab0b45bc
+  results_revision: beef41a63bf68f2ed3989ff521aa478d79edd0ac
