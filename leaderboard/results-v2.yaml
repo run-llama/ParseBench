@@ -235,3 +235,7 @@ rows:
   pipeline: google_gemini_3_5_flash_lite_parse_with_layout_file
   results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
   run_dates: 2026-10-29 to 2026-11-06
+- provider: jina-ocr-v1
+  status: verified
+  pipeline: jinaocr_vllm
+  results_revision: dd7953cba049fa03a1cfd6dc4af4bad388079c80
