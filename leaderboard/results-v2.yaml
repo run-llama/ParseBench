@@ -238,4 +238,4 @@ rows:
 - provider: KDL-Frontier-Parser-nano-v2
   status: verified
   pipeline: kdl_frontier_nano_v2
-  results_revision: 1542eec27b8e3f93bcb43880c64e2b8cb269d024
+  results_revision: 51019a731db013cae959b71d64413964ddf7aae9
