@@ -235,3 +235,7 @@ rows:
   pipeline: google_gemini_3_5_flash_lite_parse_with_layout_file
   results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
   run_dates: 2026-10-29 to 2026-11-06
+- provider: gemma-4-E4B-it
+  status: verified
+  pipeline: gemma4_e4b_vllm_with_layout
+  results_revision: 6a268625486305725e0feebe395087e8f02d15dc
