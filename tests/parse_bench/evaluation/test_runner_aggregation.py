@@ -396,9 +396,8 @@ def test_missing_layout_output_is_synthesized_as_zero(tmp_path: Path, monkeypatc
     assert len(summary.per_example_results) == 1
     synthesized = summary.per_example_results[0]
     assert synthesized.success is False
-    # Tagged PARSE so the synthetic 0 lands in the padding scope of the
-    # cross-eval parse metrics the layout group actually reports.
-    assert synthesized.product_type == "parse"
+    # A layout-only case uses cross-evaluation, whose metrics are tagged layout_detection.
+    assert synthesized.product_type == "layout_detection"
     assert synthesized.error == "No usable inference output for this example"
 
 
