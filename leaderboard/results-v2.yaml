@@ -239,6 +239,10 @@ rows:
   status: verified
   pipeline: kdl_frontier_nano_v2
   results_revision: 51019a731db013cae959b71d64413964ddf7aae9
+- provider: MiniCPM-OCR-1.0
+  status: verified
+  pipeline: minicpm_ocr_sdk
+  results_revision: 4fbda85f81c50543334193d4c91ca2647214b800
 - provider: dots.mocr
   status: verified
   pipeline: dots_ocr_1_5_parse
