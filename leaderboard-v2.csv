@@ -49,5 +49,6 @@ dots.mocr,Open Weight,63.16,86.32,80.63,83.40,0.78,65.19,62.63,,yes
 Gemini 3.1 Flash-Lite,Vision Models,62.73,83.96,79.28,79.77,12.22,48.14,73.02,0.389,yes
 Qwen3.8 27B,Open Weight,61.58,81.59,77.24,36.73,41.33,63.53,69.05,,yes
 Gemini 3.5 Flash-Lite,Vision Models,61.43,79.15,78.68,72.24,5.05,62.18,71.25,0.717,yes
+jina-ocr-v1,Open Weight,48.20,75.19,79.87,55.00,8.74,0.00,70.41,,yes
 Qwen3.5-4B,Open Weight,42.34,77.34,74.77,12.86,6.88,15.03,67.19,,yes
 gemma-4-E4B-it,Open Weight,42.32,65.07,70.57,30.82,5.39,21.57,60.48,,yes
