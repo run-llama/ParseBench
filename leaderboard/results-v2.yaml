@@ -251,6 +251,10 @@ rows:
   status: verified
   pipeline: surya2_sdk
   results_revision: a0bf745782c9966dce84db96e9c40f965aa59f66
+- provider: HunyuanOCR
+  status: verified
+  pipeline: hunyuanocr_1_5
+  results_revision: dd06a9082aa7486f94c81ec175804d86ce39f42a
 - provider: dots.mocr
   status: verified
   pipeline: dots_ocr_1_5_parse
