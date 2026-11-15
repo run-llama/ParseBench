@@ -238,4 +238,4 @@ rows:
 - provider: Qwen3.5-4B
   status: verified
   pipeline: qwen3_5_4b_vllm_layout
-  results_revision: 38e1c6bf15ac7012871db23919953a05f3d9b5d2
+  results_revision: 9af7b470d9474dc02cec522d253ace88cb8c20c0
