@@ -263,6 +263,10 @@ rows:
   status: verified
   pipeline: gemma4_e4b_vllm_with_layout
   results_revision: 878281b3d4eccb338203fd9f6d5bbf34e3763665
+- provider: jina-ocr-v1
+  status: verified
+  pipeline: jinaocr_vllm
+  results_revision: 1e823f0fa70fe846565b16504a759833ef8e1bd2
 - provider: dots.mocr
   status: verified
   pipeline: dots_ocr_1_5_parse
