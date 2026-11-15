@@ -243,3 +243,7 @@ rows:
   status: verified
   pipeline: falconocr_pipeline
   results_revision: 411da0fe3e0cac6611d78a806748b95b00d102f8
+- provider: TeleOCR
+  status: verified
+  pipeline: teleocr_vllm
+  results_revision: 23ebd7c4fb2a7b61d2ff02e0e955ceee36b863dd
