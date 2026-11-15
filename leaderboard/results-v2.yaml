@@ -239,3 +239,7 @@ rows:
   status: verified
   pipeline: jinaocr_vllm
   results_revision: 1e823f0fa70fe846565b16504a759833ef8e1bd2
+- provider: dots.mocr
+  status: verified
+  pipeline: dots_ocr_1_5_parse
+  results_revision: dd3cd89ad0b318c286604fec7dd63e62a0701baa
