@@ -235,3 +235,7 @@ rows:
   pipeline: google_gemini_3_5_flash_lite_parse_with_layout_file
   results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
   run_dates: 2026-10-29 to 2026-11-06
+- provider: Unlimited-OCR-2
+  status: verified
+  pipeline: unlimitedocr2
+  results_revision: 7b698ea44036f6e820d3833ac6699b6eab0b45bc
