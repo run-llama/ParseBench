@@ -239,3 +239,7 @@ rows:
   status: verified
   pipeline: dots_ocr_1_5_parse
   results_revision: dd3cd89ad0b318c286604fec7dd63e62a0701baa
+- provider: Falcon-OCR
+  status: verified
+  pipeline: falconocr_pipeline
+  results_revision: 411da0fe3e0cac6611d78a806748b95b00d102f8
