@@ -238,4 +238,4 @@ rows:
 - provider: MiniCPM-OCR-1.0
   status: verified
   pipeline: minicpm_ocr_sdk
-  results_revision: 589841219126729684e5068e9574de34af1015cc
+  results_revision: 4fbda85f81c50543334193d4c91ca2647214b800
