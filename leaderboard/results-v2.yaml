@@ -238,4 +238,4 @@ rows:
 - provider: dots.mocr
   status: verified
   pipeline: dots_ocr_1_5_parse
-  results_revision: 688134939de84fcaee878a1ae5b9163e06fc4b78
+  results_revision: dd3cd89ad0b318c286604fec7dd63e62a0701baa
