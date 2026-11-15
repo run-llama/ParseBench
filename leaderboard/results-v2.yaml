@@ -239,3 +239,7 @@ rows:
   status: verified
   pipeline: dots_ocr_1_5_parse
   results_revision: dd3cd89ad0b318c286604fec7dd63e62a0701baa
+- provider: KDL-Frontier-Parser-nano-v2
+  status: verified
+  pipeline: kdl_frontier_nano_v2
+  results_revision: 51019a731db013cae959b71d64413964ddf7aae9

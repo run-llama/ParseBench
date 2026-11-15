@@ -11,6 +11,7 @@ Pulse (Ultra 2),Document Parsers,82.73,86.09,88.68,84.80,86.80,73.54,76.50,1.500
 Extend (Parse Light),Document Parsers,81.58,78.29,78.65,81.39,85.35,84.66,81.16,0.625,yes
 Datalab (Accurate),Document Parsers,81.30,91.14,92.54,90.38,67.83,70.14,75.79,1.000,yes
 Datalab (Balanced),Document Parsers,81.06,90.26,92.57,89.62,67.60,70.33,76.01,0.400,yes
+KDL-Frontier-Parser-nano-v2,Open Weight,78.89,80.25,84.58,80.54,73.55,84.12,70.32,,yes
 Datalab (Fast),Document Parsers,78.32,87.17,92.07,84.15,61.47,69.43,75.61,0.400,yes
 Infinity-Parser2 Pro,Open Weight,77.09,85.60,78.70,86.27,55.64,82.36,73.97,,yes
 GPT-5.6 terra (low),Vision Models,77.06,81.00,87.86,79.64,76.30,62.48,75.09,3.116,yes
