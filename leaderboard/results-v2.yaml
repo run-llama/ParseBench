@@ -235,3 +235,7 @@ rows:
   pipeline: google_gemini_3_5_flash_lite_parse_with_layout_file
   results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
   run_dates: 2026-10-29 to 2026-11-06
+- provider: surya-ocr-2
+  status: verified
+  pipeline: surya2_sdk
+  results_revision: 8131517bd5a1f8a4945a27323cc4a99254f9980a
