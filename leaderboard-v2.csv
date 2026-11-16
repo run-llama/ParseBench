@@ -31,6 +31,7 @@ GPT-6.1 terra (low),Vision Models,74.25,87.35,88.23,92.33,46.69,51.85,79.04,1.15
 Claude Sonnet 5.5,Vision Models,73.78,91.38,86.21,90.99,38.59,57.91,77.58,3.130,yes
 GPT-6 luna (low),Vision Models,73.48,84.73,89.16,81.60,47.88,61.68,75.80,0.127,yes
 Nemotron Parse 3.5,Open Weight,73.46,81.16,82.04,69.62,60.12,76.40,71.44,,yes
+Qwen3.8 27B (Thinking),Open Weight,73.39,81.53,79.33,76.75,65.15,67.86,69.74,,yes
 Mistral OCR 4.1 (annotation),Document Parsers,72.55,84.51,81.91,81.89,29.83,81.82,75.32,0.500,yes
 Reducto (r-1-mini),Document Parsers,71.62,85.10,91.55,86.11,1.35,87.92,77.67,0.100,yes
 LandingAI,Document Parsers,70.83,86.16,80.04,84.70,38.77,58.39,76.92,3.001,yes
