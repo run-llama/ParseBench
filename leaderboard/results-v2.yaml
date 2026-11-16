@@ -279,3 +279,7 @@ rows:
   status: verified
   pipeline: teleocr_vllm
   results_revision: 23ebd7c4fb2a7b61d2ff02e0e955ceee36b863dd
+- provider: Qwen3.8 27B (Thinking)
+  status: verified
+  pipeline: qwen3_8_27b_thinking_parse_with_layout
+  results_revision: 21ecc920c6969f69353d4be51d27a4346979f645
