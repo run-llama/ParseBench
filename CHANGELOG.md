@@ -6,6 +6,18 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-11-16
+
+### Fixed
+- Associate complete checkbox option groups with their GT questions, including reordered questions and clear table marker/label pairs; preserve existing behavior when ownership is ambiguous.
+- Read local printed-ID values after instructions without confusing inline subfields with amount columns, skipping empty answer cells, or splitting currency amounts.
+- Preserve exact parenthesized caption suffixes and support values above explicit footer captions; avoid mistaking row descriptions for table headers.
+- Reuse identical caption-matching windows and avoid unnecessary field-line regex work on pathological repeated output.
+
+### Added
+- Explicit `metadata.forms.reference_scope: mapped_fields_only` support for partial native form trees; only extra-field detection is disabled.
+- Reviewed v2.03 GT compatibility notes and all-parser sanity-check results: 32,993 saved form outputs across 55 parsers, with coverage gaps and remaining limitations recorded. Blank-field policy remains label required, empty marker optional.
+
 ## [2.0.3] - 2026-11-16
 
 ### Fixed
