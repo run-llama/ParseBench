@@ -1627,6 +1627,8 @@ class TableNextResult:
     events: TableNextEvents
 
     def metadata(self, examples: int = 12) -> dict[str, Any]:
+        from parse_bench.evaluation.metric_policy import table_inputs
+
         types: dict[str, int] = {}
         for kind, _, _, sev in self.events.items:
             if sev != "detail":
@@ -1637,6 +1639,7 @@ class TableNextResult:
             if s in ("critical", "major", "minor")
         ][:examples]
         return {
+            "policy_inputs": table_inputs(self.events.items),
             "events": {"critical": self.events.critical, "major": self.events.major, "minor": self.events.minor},
             "event_types": types,
             "event_examples": shown,

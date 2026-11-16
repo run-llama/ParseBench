@@ -799,12 +799,8 @@ class EvaluationRunner:
             if verbose:
                 print(f"   Filtered to {len(result_files)} files in group '{group}' (from {original_file_count} total)")
 
-        # Filter by pipeline if specified
-        if pipeline_name:
-            # Pipeline name is typically in the parent directory path
-            result_files = [f for f in result_files if pipeline_name in str(f.parent)]
-            if verbose:
-                print(f"   Filtered to {len(result_files)} files for pipeline '{pipeline_name}'")
+        if pipeline_name and verbose:
+            print(f"   Filtering results for pipeline '{pipeline_name}'")
 
         # Load and evaluate each result
         evaluation_results: list[EvaluationResult] = []
@@ -825,6 +821,11 @@ class EvaluationRunner:
                 skipped += 1
                 if verbose:
                     print(f"⚠️  Skipped {result_file.name}: Failed to load inference result")
+                continue
+
+            # Pipeline identity is stored in the result; directory names can be
+            # renamed, shared, or contain the names of unrelated pipelines.
+            if pipeline_name and inference_result.pipeline_name != pipeline_name:
                 continue
 
             # Filter by product type if specified
@@ -1406,11 +1407,13 @@ class EvaluationRunner:
             aggregate_stats=aggregate_stats,
         )
 
-    def aggregate_metrics(self, evaluation_results: list[EvaluationResult]) -> dict[str, float]:
+    @staticmethod
+    def aggregate_metrics(evaluation_results: list[EvaluationResult]) -> dict[str, float]:
         """Aggregate metrics of a list of evaluation results, as the run summary does."""
-        return self._aggregate_metrics(evaluation_results)
+        return EvaluationRunner._aggregate_metrics(evaluation_results)
 
-    def _aggregate_metrics(self, evaluation_results: list[EvaluationResult]) -> dict[str, float]:
+    @staticmethod
+    def _aggregate_metrics(evaluation_results: list[EvaluationResult]) -> dict[str, float]:
         """
         Aggregate metrics across all evaluation results.
 

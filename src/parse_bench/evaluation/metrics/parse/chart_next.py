@@ -852,9 +852,12 @@ class ChartNextEvents:
     minor: int = 0
     examples: list[tuple[str, str, str]] = field(default_factory=list)
 
+    policy_events: list[tuple[str, str, int]] = field(default_factory=list)
+
     def add(self, severity: str, kind: str, reference: str = "", output: str = "", n: int = 1) -> None:
         setattr(self, severity, getattr(self, severity) + n)
         self.examples.append((kind, reference, output))
+        self.policy_events.append((kind, severity, n))
 
     def kinds(self) -> dict[str, int]:
         out: dict[str, int] = {}
@@ -892,9 +895,19 @@ class ChartNextResult:
     charts_found: int
     events: ChartNextEvents
     points: list[dict[str, Any]] = field(default_factory=list)
+    policy_groups: list[dict[str, Any]] | None = None
 
     def metadata(self, max_examples: int = 20) -> dict[str, Any]:
         return {
+            "policy_inputs": self.policy_groups
+            if self.policy_groups is not None
+            else [
+                {
+                    "mode": self.mode,
+                    "size": self.n_cells,
+                    "events": self.events.policy_events,
+                }
+            ],
             "mode": self.mode,
             "proportional": self.proportional,
             "floor": self.floor,
@@ -2495,6 +2508,8 @@ class _Fit:
     penalty_minor: float = 0.0
     cell_n: dict[str, int] = field(default_factory=dict)  # per-cell events by severity (charged scaled)
     struct_n: dict[str, int] = field(default_factory=dict)  # structural events by severity (charged in full)
+    policy_size: int = 1
+    cap_omissions: bool = True
     unit: float = 1.0  # per-cell scale of this chart: min(1, CELL_EVENT_REF / cells)
     claimed: set[tuple[int, int]] = field(default_factory=set)  # grid cells (row, col) read as this chart's
     panel: float = 0.0  # share of matched cells whose row/column chain names the chart (merged panels)
@@ -3671,6 +3686,7 @@ def _fit_view(  # noqa: C901 - one pass over the matching steps
         cell_n=pen.cell_n,
         struct_n=pen.struct_n,
         unit=unit,
+        policy_size=n_cells,
         claimed=claimed,
         panel=panel_cells / bound if bound else 0.0,
         bound=bound,
@@ -3738,6 +3754,8 @@ def _copy_charges(f: _Fit, placed: _Fit, tol: _Tol) -> _Fit:
         cell_n=pen.cell_n,
         struct_n=pen.struct_n,
         unit=f.unit,
+        policy_size=f.policy_size,
+        cap_omissions=False,
     )
 
 
@@ -3964,6 +3982,16 @@ def score_chart_tables(
         n_cells=n_cells,
         n_charts=len(refs),
         charts_found=len(place),
+        policy_groups=[
+            {
+                "mode": "tables",
+                "size": f.policy_size,
+                "cap_omissions": f.cap_omissions,
+                "events": f.events.policy_events,
+            }
+            for f in placed
+        ]
+        + [{"mode": "tables", "size": 1, "events": [("chart missing", "critical", n_missing)]}],
         events=ev,
     )
 

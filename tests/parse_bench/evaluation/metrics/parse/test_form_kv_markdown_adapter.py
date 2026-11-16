@@ -285,3 +285,10 @@ def test_a_form_laid_out_as_a_table_is_read_as_fields() -> None:
 def test_a_caption_cell_beside_a_value_cell_is_one_pair() -> None:
     out, _ = adapt_page_markdown("<table><tr><td><strong>Name:</strong></td><td>Ada Lovelace</td></tr></table>")
     assert out == "- **Name**: Ada Lovelace"
+
+
+def test_a_cell_nested_past_the_recursion_limit_is_read() -> None:
+    # unclosed tags in model output can nest thousands of elements deep inside one cell
+    deep = "<table><tr><td>" + "<span>" * 2000 + "<strong>Name:</strong></td><td>Ada Lovelace</td></tr></table>"
+    out, _ = adapt_page_markdown(deep)
+    assert out == "- **Name**: Ada Lovelace"
