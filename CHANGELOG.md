@@ -44,6 +44,9 @@ All notable changes to `parse-bench` are recorded here. The format follows
 - Gemini 4 Argon pricing in the Google provider.
 
 ### Scoring
+- Evaluation's pipeline-name filter matches the exact name stored in each result. Similarly named pipelines
+  and matching ancestor directories no longer contaminate a selected pipeline's metrics; renamed or flat result
+  directories remain filterable using their saved `pipeline_name` rather than the renamed directory name.
 - Layout adapters for the `mineru2605pro` and `mistral_ocr` providers. Their results fell back to the LlamaParse
   adapter, which re-scaled MinerU2.5-Pro's normalized boxes to the page corner (ParseBench 2 visual grounding 75.81
   instead of 82.23) and read Mistral OCR's blocks slightly differently (81.86 instead of 81.82).
