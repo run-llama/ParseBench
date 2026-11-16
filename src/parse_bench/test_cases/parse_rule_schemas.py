@@ -593,6 +593,10 @@ class ParseHeadingStructureRule(ParseRuleBase):
 class ParsePageSectionRule(ParseRuleBase):
     type: Literal[TestType.IS_HEADER.value, TestType.IS_FOOTER.value]
     text: str = ""
+    section_matching: Literal["legacy", "nested-v1"] = Field(
+        default="legacy",
+        description="Header/footer matching contract; omitted preserves historical raw-Markdown matching.",
+    )
 
 
 class ParseBagOfDigitPercentRule(ParseRuleBase, _VersionedTextBag):
