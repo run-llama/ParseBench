@@ -44,6 +44,8 @@ All notable changes to `parse-bench` are recorded here. The format follows
 - Gemini 4 Argon pricing in the Google provider.
 
 ### Scoring
+- `chart_next` skips empty HTML rows when combining per-series tables. An empty `<tr></tr>` no longer aborts
+  extended scoring for the document.
 - Evaluation's pipeline-name filter matches the exact name stored in each result. Similarly named pipelines
   and matching ancestor directories no longer contaminate a selected pipeline's metrics; renamed or flat result
   directories remain filterable using their saved `pipeline_name` rather than the renamed directory name.
