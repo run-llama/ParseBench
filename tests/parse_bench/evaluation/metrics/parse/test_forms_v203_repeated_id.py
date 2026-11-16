@@ -114,3 +114,39 @@ def test_table_identifier_does_not_select_among_multiple_answer_columns(monkeypa
     actual = forms.score_forms(ref, text)
     monkeypatch.setattr(forms, "_repeated_id_reading", lambda *args: None)
     assert actual == forms.score_forms(ref, text)
+
+
+@pytest.mark.parametrize("value", ["6,413", "9,999"])
+def test_nonempty_immediate_value_allows_trailing_empty_padding(value):
+    text = (
+        "<table><tr><td>16 Tax (see instructions). Check if any from Forms: 1 [ ] 8814</td>"
+        f"<td>16</td><td>{value}</td><td></td><td></td></tr></table>"
+    )
+    assert (score_forms(reference(False), text).score == 1) == (value == "6,413")
+
+
+def test_inline_subfield_with_same_line_number_does_not_hide_the_amount():
+    rules = [
+        {"type": "form_field", "label": "16 Tax (see instructions)", "value": "6,413", "value_type": "text"},
+        {"type": "form_field", "label": "16 (3) form number", "value": "", "value_type": "text"},
+    ]
+    text = (
+        "<table><tr><td>16 Tax (see instructions). Check if any from Forms: 1 [ ] 8814</td>"
+        "<td>16</td><td>6,413</td><td></td></tr></table>"
+    )
+    result = score_forms(reference_from_rules(rules), text)
+    assert not any(e.charged and e.item == 0 for e in result.events)
+
+
+def test_shared_expense_caption_keeps_column_resolver(monkeypatch):
+    import parse_bench.evaluation.metrics.parse.forms_v2 as forms
+
+    rules = [
+        {"type": "form_field", "label": "11(a) Real estate taxes — direct", "value": "", "value_type": "text"},
+        {"type": "form_field", "label": "11(b) Real estate taxes — indirect", "value": "4,320", "value_type": "text"},
+    ]
+    text = "<table><tr><td>11 Real estate taxes (see instructions)</td><td>11</td><td>4,320</td></tr></table>"
+    ref = forms.reference_from_rules(rules)
+    actual = forms.score_forms(ref, text)
+    monkeypatch.setattr(forms, "_repeated_id_reading", lambda *args: None)
+    assert actual == forms.score_forms(ref, text)

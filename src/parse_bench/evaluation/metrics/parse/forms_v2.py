@@ -3521,10 +3521,18 @@ def _repeated_id_reading(ref: Reference, out: Out, occ: list[Occ | None], x: int
     if c.table >= 0:
         if not tail:
             return None
+
         # One printed row ID cannot select among multiple GT column slots.
         # Preserve the table resolver for direct/indirect or A/B/C expenses.
-        if any(
-            y != x and other.kind == "text" and (other.pid or (word_keys(other.label) or [""])[0]) == pid
+        def row_caption(label: str) -> list[str]:
+            return [k for k in word_keys(label.split("—", 1)[0]) if len(k) > 1 and not _digits(k)][:2]
+
+        caption = row_caption(it.label)
+        if caption and any(
+            y != x
+            and other.kind == "text"
+            and (other.pid or (word_keys(other.label) or [""])[0]) == pid
+            and row_caption(other.label) == caption
             for y, other in enumerate(ref.items)
         ):
             return None
@@ -3538,12 +3546,18 @@ def _repeated_id_reading(ref: Reference, out: Out, occ: list[Occ | None], x: int
             return None
         # Extra empty/value columns make the target column ambiguous. A
         # following prose instruction is safe, but another numeric cell is not.
+        # Trailing empty padding does not invalidate a nonempty immediate value.
         later = right[position + 1 :]
+        tokens = _cell_tokens(out, right[position])
         if any(
-            ci >= 0 and (not _cell_tokens(out, ci) or _isdigits(out.toks[_cell_tokens(out, ci)[0]].key)) for ci in later
+            ci >= 0
+            and (
+                (not tokens and not _cell_tokens(out, ci))
+                or (_cell_tokens(out, ci) and _isdigits(out.toks[_cell_tokens(out, ci)[0]].key))
+            )
+            for ci in later
         ):
             return None
-        tokens = _cell_tokens(out, right[position])
         if not tokens:
             return Reading([], "")
         if any(out.toks[t].box for t in tokens) or any(
