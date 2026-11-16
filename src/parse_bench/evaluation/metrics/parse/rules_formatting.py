@@ -1579,6 +1579,9 @@ class PageSectionRule(ParseTestRule):
             raise ValueError("Text field cannot be empty")
         self.text = raw_text.strip()
         self.tag = self._TAG_MAP[self.type]
+        self.section_matching = rule_data.section_matching
+        if self.section_matching != "legacy":
+            self.result_details["section_matching"] = self.section_matching
 
     def run(self, md_content: str, normalized_content: str | None = None) -> tuple[bool, str]:
         """Check if the target text appears inside the expected page section."""
@@ -1613,7 +1616,22 @@ class PageSectionRule(ParseTestRule):
             re.IGNORECASE | re.DOTALL,
         )
 
-        if pattern.search(md_content):
+        if self.section_matching == "nested-v1":
+            # Search within one complete section. Formatting tags are allowed,
+            # but section/sub-page boundaries stop malformed blocks from spilling
+            # into another section or the surrounding body.
+            blocks = re.finditer(
+                r"<" + self.tag + r">"
+                r"((?:(?!</?(?:page_header|page_footer|sub_page)\b)[\s\S])*)"
+                r"</" + self.tag + r">",
+                md_content,
+                re.IGNORECASE,
+            )
+            target = re.compile(flexible, re.IGNORECASE | re.DOTALL)
+            matched = any(target.search(block.group(1)) for block in blocks)
+        else:
+            matched = pattern.search(md_content) is not None
+        if matched:
             return True, ""
 
         section_label = "header" if self.tag == "page_header" else "footer"

@@ -56,6 +56,9 @@ from parse_bench.evaluation.metrics.parse.formnode_scoring.text_normalization im
 W_LABEL, W_VALUE, W_ID, W_POS, W_PATH = 0.40, 0.25, 0.20, 0.10, 0.05
 SIM_THRESHOLD = 0.5
 _FORBIDDEN = 1e6  # off-diagonal dummy cost: unusable, but finite
+# Above this many square-matrix cells (~200 MB of float64), align() solves the equivalent
+# rectangular problem instead; a runaway prediction can emit tens of thousands of fields.
+_MAX_SQUARE_CELLS = 25_000_000
 
 
 def kind_credit(gk: str, pk: str) -> float:
@@ -152,6 +155,24 @@ def similarity(g: Field, p: Field, gt_n: int, pred_n: int) -> float:
     return sum(w * s for w, s in parts) / total_w if total_w else 0.0
 
 
+def _rectangular_pairs(gt: list[Field], pred: list[Field], two_d: float) -> list[tuple[int, int]]:
+    """Same optimum as the square dummy solve, in O(n*m) memory.
+
+    The square solve's cost is d*(n+m) + sum over matched pairs of (1 - s - 2d): dummies
+    pair with each other at zero cost, so only that sum varies. Minimizing it over partial
+    matchings is a rectangular assignment on min(1 - s - 2d, 0) that keeps the strictly
+    negative pairs. Ties may resolve differently, so this runs only when the square matrix
+    would not fit in memory.
+    """
+    n, m = len(gt), len(pred)
+    gain = np.zeros((n, m), dtype=float)
+    for i, g in enumerate(gt):
+        for j, p in enumerate(pred):
+            gain[i, j] = min(1.0 - similarity(g, p, n, m) - two_d, 0.0)
+    row_ind, col_ind = linear_sum_assignment(gain)
+    return [(i, j) for i, j in zip(row_ind.tolist(), col_ind.tolist(), strict=True) if gain[i, j] < 0.0]
+
+
 def align(gt: list[Field], pred: list[Field]) -> None:
     """Optimal Hungarian assignment on pairwise similarity, then loose-checkbox rescue.
 
@@ -166,20 +187,23 @@ def align(gt: list[Field], pred: list[Field]) -> None:
     n, m = len(gt), len(pred)
     if n and m:
         d = (1.0 - SIM_THRESHOLD) / 2.0
-        cost = np.zeros((n + m, n + m), dtype=float)
-        for i, g in enumerate(gt):
-            for j, p in enumerate(pred):
-                cost[i, j] = 1.0 - similarity(g, p, n, m)
-        cost[:n, m:] = _FORBIDDEN  # each gt field reaches only its own dummy
-        cost[n:, :m] = _FORBIDDEN  # likewise each pred field
-        for i in range(n):
-            cost[i, m + i] = d
-        for j in range(m):
-            cost[n + j, j] = d
-        row_ind, col_ind = linear_sum_assignment(cost)
-        for i, j in zip(row_ind.tolist(), col_ind.tolist(), strict=True):
-            if i < n and j < m:
-                gt[i].match, pred[j].match = pred[j], gt[i]
+        if (n + m) ** 2 <= _MAX_SQUARE_CELLS:
+            cost = np.zeros((n + m, n + m), dtype=float)
+            for i, g in enumerate(gt):
+                for j, p in enumerate(pred):
+                    cost[i, j] = 1.0 - similarity(g, p, n, m)
+            cost[:n, m:] = _FORBIDDEN  # each gt field reaches only its own dummy
+            cost[n:, :m] = _FORBIDDEN  # likewise each pred field
+            for i in range(n):
+                cost[i, m + i] = d
+            for j in range(m):
+                cost[n + j, j] = d
+            row_ind, col_ind = linear_sum_assignment(cost)
+            pairs = [(i, j) for i, j in zip(row_ind.tolist(), col_ind.tolist(), strict=True) if i < n and j < m]
+        else:
+            pairs = _rectangular_pairs(gt, pred, 2.0 * d)
+        for i, j in pairs:
+            gt[i].match, pred[j].match = pred[j], gt[i]
 
     # rescue: GT select emitted as loose pred checkboxes — options still score,
     # the structure axis records the shape violation
