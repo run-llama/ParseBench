@@ -825,13 +825,13 @@ def _data_grids_at(md: str, include_tables: bool, series_json: bool) -> list[tup
     grids += kv
     tables = extract_tables(md)
     if len(tables) >= 2 and all(tb.rows and len(tb.rows[0]) == 2 for tb in tables):
-        cats = list(dict.fromkeys(r[0] for tb in tables for r in tb.rows[1:]))
+        cats = list(dict.fromkeys(r[0] for tb in tables for r in tb.rows[1:] if r))
         names = [heading_of(tb.context) or tb.rows[0][1] for tb in tables]
         merged = [[tables[0].rows[0][0], *names]]
         for c in cats:
             vals = []
             for tb in tables:
-                hit = next((r for r in tb.rows if r[0] == c), [])
+                hit = next((r for r in tb.rows if r and r[0] == c), [])
                 vals.append(hit[1] if len(hit) > 1 else "")
             merged.append([c, *vals])
         grids.append((merged, None))
