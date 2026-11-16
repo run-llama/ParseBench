@@ -8,6 +8,6 @@ The new matcher extracts one complete `<page_header>` or `<page_footer>` block a
 {"type": "is_footer", "text": "Report title", "section_matching": "nested-v1"}
 ```
 
-The local ParseBench-2 v2.02 dataset opts in on its header/footer rules. Earlier dataset snapshots remain unchanged. New-mode rule results include `details.section_matching` for auditability. Pin both the dataset revision and scorer revision for comparisons; a pre-fix scorer must not be used to evaluate opted-in rules. This flag does not implement general `<sub_page>` text normalization.
+The local ParseBench-2 v2.02 dataset opts in on its header/footer rules. Earlier dataset snapshots remain unchanged. New-mode rule results include `details.section_matching` for auditability. Pin both the dataset revision and scorer revision for comparisons; a pre-fix scorer must not be used to evaluate opted-in rules. For GT containing `<sub_page>`, dataset metadata must also set `sub_page_handling: "transparent-v1"` (CLI 2.0.3+). This strips only the container tags before text and formatting scoring, preserves all content inside, and does not require providers to emit the wrappers. Without that metadata, text scoring is unchanged.
 
 Generation: `markdownToCombinedRules(md, {sectionMatching: "nested-v1"})` in the annotation tools forwards the contract to the generated header/footer rules. The default generator output omits the flag.

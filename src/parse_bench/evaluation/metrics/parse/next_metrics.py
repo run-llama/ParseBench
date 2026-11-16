@@ -49,6 +49,7 @@ from parse_bench.evaluation.metrics.parse.table_next import table_next_metrics
 from parse_bench.evaluation.metrics.parse.text_next import (
     output_hypothesis,
     reference_markdown,
+    strip_sub_page_wrappers,
     text_next_applies,
     text_next_metrics,
 )
@@ -119,9 +120,13 @@ def _document_metrics(
     assert isinstance(output, ParseOutput)
     metrics: list[MetricValue] = []
     if run_text:
+        sub_page_handling = metadata.get("sub_page_handling")
+        if sub_page_handling not in (None, "transparent-v1"):
+            raise ValueError(f"Unsupported sub_page_handling: {sub_page_handling!r}")
+        transparent_sub_pages = sub_page_handling == "transparent-v1"
         reference = reference_markdown(test_case.expected_markdown, rules)
         if reference is not None and text_next_applies(reference, rules, metadata):
-            metrics.extend(text_next_metrics(reference, output))
+            metrics.extend(text_next_metrics(reference, output, transparent_sub_pages=transparent_sub_pages))
 
         # A full-page decoration inventory takes precedence over the reference Markdown and the rules.
         decorations = decoration_reference(metadata)
@@ -133,7 +138,11 @@ def _document_metrics(
         if decorations is not None:
             fmt_ref, neutral = (decorations[0], decorations[1]), decorations[2]
         if fmt_ref is not None:
-            metrics.extend(formatting_v2_metrics(fmt_ref[0], output_hypothesis(output), fmt_ref[1], neutral))
+            fmt_reference, hypothesis = fmt_ref[0], output_hypothesis(output)
+            if transparent_sub_pages:
+                fmt_reference = strip_sub_page_wrappers(fmt_reference)
+                hypothesis = strip_sub_page_wrappers(hypothesis)
+            metrics.extend(formatting_v2_metrics(fmt_reference, hypothesis, fmt_ref[1], neutral))
 
     forms_ref = forms_reference(metadata, rules)
     if forms_ref is not None and forms_v2_applies(forms_ref):

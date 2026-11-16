@@ -6,6 +6,19 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-11-16
+
+### Fixed
+- Add opt-in `section_matching: nested-v1` for header/footer rules; nested formatting and pagination tags no longer cause false failures. Unflagged rules retain legacy behavior.
+- Add dataset metadata `sub_page_handling: transparent-v1` to ignore GT-only `<sub_page>` containers in text and formatting scoring while retaining their content. Required by dataset v2.02; old datasets retain their existing behavior.
+- Bound oversized form-scoring inputs to avoid excessive matching work.
+
+### Added
+- Replay saved evaluations with Metric Lab scoring policies and retain reclassifiable form-coverage events.
+- Add provider configurations and published results for additional OCR pipelines, including Falcon-OCR and TeleOCR.
+
+## [2.0.2] - 2026-11-14
+
 ### Added
 - ParseBench 2 leaderboard accountability, as for ParseBench v1: `leaderboard/results-v2.yaml` ties every
   `leaderboard-v2.csv` row to its published outputs in `llamaindex/ParseBench-2-results`, `leaderboard-v2.csv` gains a
