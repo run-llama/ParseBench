@@ -1,0 +1,3256 @@
+{
+  "scope": "All published forms and fillable_forms outputs; other benchmark dimensions are unchanged and are not re-evaluated.",
+  "results_revision": "23ebd7c4fb2a7b61d2ff02e0e955ceee36b863dd",
+  "scorer_sha256": "722f7440eff21ace1aacf662dbcf09c3d24c02a1e4f93e6d1e7bbb852e63e20c",
+  "baseline_scorer_sha256": "f014a844736c487fedf186ef562439adb04311f26af1287fc5e087ff3d909ea5",
+  "candidate_manifest_sha256": "8fc7857365a09392606f8f14c8a5caf8c231bdca8d498da01ed3885871c322af",
+  "outputs": 32993,
+  "pipelines": 55,
+  "coverage_gaps": [
+    {
+      "path": "results/openai_gpt_5_6_luna_reasoning_low_parse_with_layout/forms.jsonl",
+      "pipeline": "openai_gpt_5_6_luna_reasoning_low_parse_with_layout",
+      "subset": "forms",
+      "expected": 500,
+      "actual": 498,
+      "missing": [
+        "forms/blank__japan--01_kakutei_shinkokusho--p2__blank",
+        "forms/filled__japan--36_junkakutei_fuhyo--p1__typed"
+      ],
+      "unexpected": []
+    },
+    {
+      "path": "results/openai_gpt_5_6_terra_reasoning_low_parse_with_layout/forms.jsonl",
+      "pipeline": "openai_gpt_5_6_terra_reasoning_low_parse_with_layout",
+      "subset": "forms",
+      "expected": 500,
+      "actual": 498,
+      "missing": [
+        "forms/blank__japan--01_kakutei_shinkokusho--p2__blank",
+        "forms/filled__japan--36_junkakutei_fuhyo--p1__typed"
+      ],
+      "unexpected": []
+    },
+    {
+      "path": "results/openai_gpt_6_luna_reasoning_low_parse_with_layout/forms.jsonl",
+      "pipeline": "openai_gpt_6_luna_reasoning_low_parse_with_layout",
+      "subset": "forms",
+      "expected": 500,
+      "actual": 498,
+      "missing": [
+        "forms/blank__japan--01_kakutei_shinkokusho--p2__blank",
+        "forms/filled__japan--36_junkakutei_fuhyo--p1__typed"
+      ],
+      "unexpected": []
+    },
+    {
+      "path": "results/pulse_ultra_2/forms.jsonl",
+      "pipeline": "pulse_ultra_2",
+      "subset": "forms",
+      "expected": 500,
+      "actual": 499,
+      "missing": [
+        "forms/filled__us--02_1040--p2__typed"
+      ],
+      "unexpected": []
+    }
+  ],
+  "errors": [],
+  "empty_outputs_scored": 242,
+  "scorer_regressions": 1,
+  "scorer_regression_pages": 1,
+  "gt_regressions": 3950,
+  "gt_regression_pages": 314,
+  "summary": [
+    {
+      "pipeline": "anthropic_haiku_5_5_parse_with_layout",
+      "forms": {
+        "original": 0.7324378431405963,
+        "gt_only": 0.7736678657808693,
+        "updated": 0.7761594818973087,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 282,
+          "down": 71,
+          "min": -0.22230769230769232,
+          "max": 0.7552173913043478
+        },
+        "scorer_delta": {
+          "up": 15,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.33666666666666667
+        },
+        "combined_delta": {
+          "up": 286,
+          "down": 67,
+          "min": -0.22230769230769232,
+          "max": 0.7552173913043478
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9063805881171514,
+        "gt_only": 0.9063805881171514,
+        "updated": 0.9065805881171514,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7541806862626657,
+        "gt_only": 0.7902569560729047,
+        "updated": 0.792462120174789
+      }
+    },
+    {
+      "pipeline": "anthropic_opus_5_5_parse_with_layout",
+      "forms": {
+        "original": 0.756452836935749,
+        "gt_only": 0.8042537053249043,
+        "updated": 0.8069079004825294,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 287,
+          "down": 66,
+          "min": -0.20666666666666678,
+          "max": 1.0
+        },
+        "scorer_delta": {
+          "up": 11,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3063636363636364
+        },
+        "combined_delta": {
+          "up": 290,
+          "down": 64,
+          "min": -0.20666666666666678,
+          "max": 1.0
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9310741692919138,
+        "gt_only": 0.9310741692919138,
+        "updated": 0.9312741692919136,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7782805034802697,
+        "gt_only": 0.8201062633207804,
+        "updated": 0.8224536840837025
+      }
+    },
+    {
+      "pipeline": "anthropic_sonnet_5_5_parse_with_layout_file",
+      "forms": {
+        "original": 0.7549019876967173,
+        "gt_only": 0.799323203397487,
+        "updated": 0.801846489464203,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 282,
+          "down": 61,
+          "min": -0.2837931034482759,
+          "max": 0.5700000000000001
+        },
+        "scorer_delta": {
+          "up": 10,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3063636363636364
+        },
+        "combined_delta": {
+          "up": 284,
+          "down": 60,
+          "min": -0.2837931034482759,
+          "max": 0.7154545454545455
+        }
+      },
+      "fillable_forms": {
+        "original": 0.922172147688553,
+        "gt_only": 0.922172147688553,
+        "updated": 0.9223721476885529,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7758107576956967,
+        "gt_only": 0.8146793214338702,
+        "updated": 0.8169121967422468
+      }
+    },
+    {
+      "pipeline": "azure_di_layout",
+      "forms": {
+        "original": 0.7374254286632734,
+        "gt_only": 0.7743593495329756,
+        "updated": 0.776379133216784,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 279,
+          "down": 79,
+          "min": -0.2245454545454546,
+          "max": 0.6699999999999999
+        },
+        "scorer_delta": {
+          "up": 8,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.21052631578947367
+        },
+        "combined_delta": {
+          "up": 279,
+          "down": 77,
+          "min": -0.2245454545454546,
+          "max": 0.6699999999999999
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9398280274370384,
+        "gt_only": 0.9398280274370384,
+        "updated": 0.9398280274370384,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.762725753509994,
+        "gt_only": 0.7950429342709835,
+        "updated": 0.7968102449943159
+      }
+    },
+    {
+      "pipeline": "chandra2_vllm",
+      "forms": {
+        "original": 0.7221654304428973,
+        "gt_only": 0.7634318469818031,
+        "updated": 0.7662538095977904,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 266,
+          "down": 68,
+          "min": -0.31999999999999995,
+          "max": 0.6699999999999999
+        },
+        "scorer_delta": {
+          "up": 11,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3063636363636364
+        },
+        "combined_delta": {
+          "up": 268,
+          "down": 66,
+          "min": -0.31999999999999995,
+          "max": 0.7154545454545455
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8923447073060402,
+        "gt_only": 0.8923447073060402,
+        "updated": 0.8923447073060402,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.74343784005079,
+        "gt_only": 0.7795459545223328,
+        "updated": 0.7820151718113216
+      }
+    },
+    {
+      "pipeline": "databricks_ai_parse",
+      "forms": {
+        "original": 0.7094148534138164,
+        "gt_only": 0.742324142664281,
+        "updated": 0.7442173895068777,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 245,
+          "down": 93,
+          "min": -0.3276923076923077,
+          "max": 1.0
+        },
+        "scorer_delta": {
+          "up": 9,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.32052631578947377
+        },
+        "combined_delta": {
+          "up": 247,
+          "down": 91,
+          "min": -0.3276923076923077,
+          "max": 1.0
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9158697725264608,
+        "gt_only": 0.9158697725264608,
+        "updated": 0.9158697725264608,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7352217183028968,
+        "gt_only": 0.7640173463970534,
+        "updated": 0.7656739373843255
+      }
+    },
+    {
+      "pipeline": "datalab_accurate",
+      "forms": {
+        "original": 0.7320559782105638,
+        "gt_only": 0.7767870383853477,
+        "updated": 0.7795412565618666,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 272,
+          "down": 70,
+          "min": -0.22999999999999998,
+          "max": 0.585
+        },
+        "scorer_delta": {
+          "up": 12,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3063636363636364
+        },
+        "combined_delta": {
+          "up": 276,
+          "down": 65,
+          "min": -0.22999999999999998,
+          "max": 0.7154545454545455
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9385520501727885,
+        "gt_only": 0.9385520501727885,
+        "updated": 0.9385520501727885,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7578679872058418,
+        "gt_only": 0.7970076648587777,
+        "updated": 0.7994176057632317
+      }
+    },
+    {
+      "pipeline": "datalab_balanced",
+      "forms": {
+        "original": 0.7345926339474007,
+        "gt_only": 0.7773310704534352,
+        "updated": 0.7800363231127126,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 267,
+          "down": 72,
+          "min": -0.22999999999999998,
+          "max": 0.581304347826087
+        },
+        "scorer_delta": {
+          "up": 12,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3063636363636364
+        },
+        "combined_delta": {
+          "up": 270,
+          "down": 68,
+          "min": -0.22999999999999998,
+          "max": 0.7154545454545455
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9387038512889732,
+        "gt_only": 0.9387038512889732,
+        "updated": 0.9387038512889732,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7601065361150973,
+        "gt_only": 0.7975026680578774,
+        "updated": 0.7998697641347452
+      }
+    },
+    {
+      "pipeline": "datalab_fast",
+      "forms": {
+        "original": 0.7302176668264903,
+        "gt_only": 0.7734346826454642,
+        "updated": 0.7770028344644055,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 271,
+          "down": 68,
+          "min": -0.22230769230769232,
+          "max": 0.6699999999999999
+        },
+        "scorer_delta": {
+          "up": 12,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.5166666666666666
+        },
+        "combined_delta": {
+          "up": 272,
+          "down": 66,
+          "min": -0.22230769230769232,
+          "max": 0.7154545454545455
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9371089919112895,
+        "gt_only": 0.9371089919112895,
+        "updated": 0.9371089919112895,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7560790824620901,
+        "gt_only": 0.7938939713036923,
+        "updated": 0.797016104145266
+      }
+    },
+    {
+      "pipeline": "dots_ocr_1_5_parse",
+      "forms": {
+        "original": 0.6140979178149,
+        "gt_only": 0.6441038260552334,
+        "updated": 0.6450029110225536,
+        "pages": 500,
+        "empty_outputs": 18,
+        "gt_delta": {
+          "up": 217,
+          "down": 66,
+          "min": -0.4444444444444444,
+          "max": 0.9791304347826086
+        },
+        "scorer_delta": {
+          "up": 7,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.20000000000000007
+        },
+        "combined_delta": {
+          "up": 219,
+          "down": 64,
+          "min": -0.4444444444444444,
+          "max": 0.9791304347826086
+        }
+      },
+      "fillable_forms": {
+        "original": 0.7114326173090921,
+        "gt_only": 0.7114326173090921,
+        "updated": 0.7114326173090921,
+        "pages": 100,
+        "empty_outputs": 3,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.626264755251674,
+        "gt_only": 0.6525199249619658,
+        "updated": 0.6533066243083709
+      }
+    },
+    {
+      "pipeline": "extend_parse",
+      "forms": {
+        "original": 0.7983692829019895,
+        "gt_only": 0.8451263970557277,
+        "updated": 0.8483338380731,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 298,
+          "down": 56,
+          "min": -0.27000000000000013,
+          "max": 0.62
+        },
+        "scorer_delta": {
+          "up": 10,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3352631578947368
+        },
+        "combined_delta": {
+          "up": 301,
+          "down": 52,
+          "min": -0.27000000000000013,
+          "max": 0.62
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9500738456691721,
+        "gt_only": 0.9500738456691721,
+        "updated": 0.9502738456691721,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.8173323532478873,
+        "gt_only": 0.8582448281324082,
+        "updated": 0.861076339022609
+      }
+    },
+    {
+      "pipeline": "extend_parse_2",
+      "forms": {
+        "original": 0.7961501114180216,
+        "gt_only": 0.8444822010179528,
+        "updated": 0.8467966438094234,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 303,
+          "down": 51,
+          "min": -0.27000000000000013,
+          "max": 0.5111111111111111
+        },
+        "scorer_delta": {
+          "up": 8,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.2666666666666666
+        },
+        "combined_delta": {
+          "up": 303,
+          "down": 49,
+          "min": -0.27000000000000013,
+          "max": 0.52
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9482879752334212,
+        "gt_only": 0.9482879752334212,
+        "updated": 0.9484879752334211,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.8151673443949465,
+        "gt_only": 0.8574579227948864,
+        "updated": 0.8595080602374232
+      }
+    },
+    {
+      "pipeline": "extend_parse_light",
+      "forms": {
+        "original": 0.791543519299796,
+        "gt_only": 0.8359186419120035,
+        "updated": 0.8384846499351256,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 295,
+          "down": 60,
+          "min": -0.27000000000000013,
+          "max": 0.4972222222222222
+        },
+        "scorer_delta": {
+          "up": 9,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.28421052631578947
+        },
+        "combined_delta": {
+          "up": 298,
+          "down": 58,
+          "min": -0.27000000000000013,
+          "max": 0.52
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9516039831735167,
+        "gt_only": 0.9516039831735167,
+        "updated": 0.9516039831735167,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.8115510772840111,
+        "gt_only": 0.8503793095696925,
+        "updated": 0.8526245665899245
+      }
+    },
+    {
+      "pipeline": "falconocr_pipeline",
+      "forms": {
+        "original": 0.6298290636308971,
+        "gt_only": 0.6562193189979192,
+        "updated": 0.6568070908339264,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 238,
+          "down": 82,
+          "min": -0.4444444444444444,
+          "max": 0.4972222222222222
+        },
+        "scorer_delta": {
+          "up": 5,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.1554545454545455
+        },
+        "combined_delta": {
+          "up": 239,
+          "down": 81,
+          "min": -0.4444444444444444,
+          "max": 0.4972222222222222
+        }
+      },
+      "fillable_forms": {
+        "original": 0.869137792779863,
+        "gt_only": 0.869137792779863,
+        "updated": 0.869137792779863,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.6597426547745179,
+        "gt_only": 0.6828341282206623,
+        "updated": 0.6833484285771685
+      }
+    },
+    {
+      "pipeline": "gemini_4_argon_thinking_low_parse_with_layout_file",
+      "forms": {
+        "original": 0.7489050891039583,
+        "gt_only": 0.7941928762845136,
+        "updated": 0.7971101968134995,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 275,
+          "down": 70,
+          "min": -0.20000000000000007,
+          "max": 0.5800000000000001
+        },
+        "scorer_delta": {
+          "up": 14,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3063636363636364
+        },
+        "combined_delta": {
+          "up": 278,
+          "down": 69,
+          "min": -0.1679310344827586,
+          "max": 0.7154545454545455
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9321766646566165,
+        "gt_only": 0.9321766646566165,
+        "updated": 0.9321766646566165,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7718140360480406,
+        "gt_only": 0.8114408498310264,
+        "updated": 0.8139935052938891
+      }
+    },
+    {
+      "pipeline": "gemma4_e4b_vllm_with_layout",
+      "forms": {
+        "original": 0.5836516699584609,
+        "gt_only": 0.5991232886959175,
+        "updated": 0.5995883565692206,
+        "pages": 500,
+        "empty_outputs": 51,
+        "gt_delta": {
+          "up": 198,
+          "down": 83,
+          "min": -0.25,
+          "max": 0.35
+        },
+        "scorer_delta": {
+          "up": 4,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.19999999999999996
+        },
+        "combined_delta": {
+          "up": 198,
+          "down": 81,
+          "min": -0.25,
+          "max": 0.35
+        }
+      },
+      "fillable_forms": {
+        "original": 0.7528718789789806,
+        "gt_only": 0.7528718789789806,
+        "updated": 0.7528718789789806,
+        "pages": 100,
+        "empty_outputs": 10,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.6048041960860258,
+        "gt_only": 0.6183418624813004,
+        "updated": 0.6187487968704406
+      }
+    },
+    {
+      "pipeline": "google_gemini_3_1_flash_lite_parse_with_layout_file",
+      "forms": {
+        "original": 0.7073460035382996,
+        "gt_only": 0.7423071825132038,
+        "updated": 0.7433897456445169,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 251,
+          "down": 89,
+          "min": -0.3165517241379311,
+          "max": 0.5218181818181818
+        },
+        "scorer_delta": {
+          "up": 11,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.12571428571428578
+        },
+        "combined_delta": {
+          "up": 255,
+          "down": 85,
+          "min": -0.3165517241379311,
+          "max": 0.5218181818181818
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8905686369626001,
+        "gt_only": 0.8905686369626001,
+        "updated": 0.8905686369626001,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7302488327163371,
+        "gt_only": 0.7608398643193783,
+        "updated": 0.7617871070592772
+      }
+    },
+    {
+      "pipeline": "google_gemini_3_5_flash_lite_parse_with_layout_file",
+      "forms": {
+        "original": 0.687469388731848,
+        "gt_only": 0.7159432058837415,
+        "updated": 0.7164477892170749,
+        "pages": 500,
+        "empty_outputs": 8,
+        "gt_delta": {
+          "up": 241,
+          "down": 83,
+          "min": -0.31666666666666665,
+          "max": 0.4933333333333333
+        },
+        "scorer_delta": {
+          "up": 4,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.20000000000000007
+        },
+        "combined_delta": {
+          "up": 242,
+          "down": 81,
+          "min": -0.31666666666666665,
+          "max": 0.4933333333333333
+        }
+      },
+      "fillable_forms": {
+        "original": 0.88799638506778,
+        "gt_only": 0.88799638506778,
+        "updated": 0.88799638506778,
+        "pages": 100,
+        "empty_outputs": 1,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7125352632738395,
+        "gt_only": 0.7374498532817463,
+        "updated": 0.737891363698413
+      }
+    },
+    {
+      "pipeline": "google_gemini_3_5_flash_parse_with_layout_file",
+      "forms": {
+        "original": 0.7521684145020398,
+        "gt_only": 0.7945969891073691,
+        "updated": 0.7962758620021178,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 266,
+          "down": 74,
+          "min": -0.20000000000000007,
+          "max": 0.461111111111111
+        },
+        "scorer_delta": {
+          "up": 13,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.21666666666666667
+        },
+        "combined_delta": {
+          "up": 269,
+          "down": 72,
+          "min": -0.1804347826086956,
+          "max": 0.4833333333333334
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9240725072276991,
+        "gt_only": 0.9240725072276991,
+        "updated": 0.9240725072276991,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7736564260927471,
+        "gt_only": 0.8107814288724103,
+        "updated": 0.8122504426553154
+      }
+    },
+    {
+      "pipeline": "google_gemini_3_6_flash_parse_with_layout_file",
+      "forms": {
+        "original": 0.7565287573707132,
+        "gt_only": 0.8007486820803847,
+        "updated": 0.8029036953260105,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 271,
+          "down": 75,
+          "min": -0.20666666666666678,
+          "max": 0.5
+        },
+        "scorer_delta": {
+          "up": 13,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.4047368421052632
+        },
+        "combined_delta": {
+          "up": 273,
+          "down": 74,
+          "min": -0.20666666666666678,
+          "max": 0.5
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9303634040388158,
+        "gt_only": 0.9303634040388158,
+        "updated": 0.9303634040388158,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.778258088204226,
+        "gt_only": 0.8169505223251886,
+        "updated": 0.8188361589151111
+      }
+    },
+    {
+      "pipeline": "google_gemini_3_7_flash_thinking_low_parse_with_layout_file",
+      "forms": {
+        "original": 0.7346550929321186,
+        "gt_only": 0.7813738459666781,
+        "updated": 0.7839458442538807,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 280,
+          "down": 72,
+          "min": -0.22793103448275864,
+          "max": 1.0
+        },
+        "scorer_delta": {
+          "up": 14,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.5410526315789473
+        },
+        "combined_delta": {
+          "up": 284,
+          "down": 68,
+          "min": -0.22793103448275864,
+          "max": 1.0
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9305731639507404,
+        "gt_only": 0.9305731639507404,
+        "updated": 0.9305731639507404,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7591448518094464,
+        "gt_only": 0.8000237607146858,
+        "updated": 0.8022742592159882
+      }
+    },
+    {
+      "pipeline": "google_gemini_3_8_flash_thinking_low_parse_with_layout_file",
+      "forms": {
+        "original": 0.7353847128327234,
+        "gt_only": 0.783470030931235,
+        "updated": 0.7872722645003969,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 276,
+          "down": 71,
+          "min": -0.20000000000000007,
+          "max": 0.8565217391304347
+        },
+        "scorer_delta": {
+          "up": 15,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.5410526315789473
+        },
+        "combined_delta": {
+          "up": 282,
+          "down": 66,
+          "min": -0.16526315789473678,
+          "max": 0.8565217391304347
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9302316159925121,
+        "gt_only": 0.9302316159925121,
+        "updated": 0.9302316159925121,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.759740575727697,
+        "gt_only": 0.8018152290638947,
+        "updated": 0.8051421834369114
+      }
+    },
+    {
+      "pipeline": "google_gemini_3_flash_thinking_minimal_parse_with_layout_file",
+      "forms": {
+        "original": 0.7213907048325712,
+        "gt_only": 0.7633227872016074,
+        "updated": 0.7661592508647209,
+        "pages": 500,
+        "empty_outputs": 1,
+        "gt_delta": {
+          "up": 259,
+          "down": 73,
+          "min": -0.3165517241379311,
+          "max": 0.7452173913043478
+        },
+        "scorer_delta": {
+          "up": 14,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.488421052631579
+        },
+        "combined_delta": {
+          "up": 262,
+          "down": 70,
+          "min": -0.3165517241379311,
+          "max": 0.7452173913043478
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8504696641164046,
+        "gt_only": 0.8504696641164046,
+        "updated": 0.8504696641164046,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7375255747430504,
+        "gt_only": 0.7742161468159571,
+        "updated": 0.7766980525211814
+      }
+    },
+    {
+      "pipeline": "hunyuanocr_1_5",
+      "forms": {
+        "original": 0.6714541847678744,
+        "gt_only": 0.6995069375793344,
+        "updated": 0.7008549114355435,
+        "pages": 500,
+        "empty_outputs": 6,
+        "gt_delta": {
+          "up": 256,
+          "down": 70,
+          "min": -0.38,
+          "max": 0.48944444444444446
+        },
+        "scorer_delta": {
+          "up": 6,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.20000000000000007
+        },
+        "combined_delta": {
+          "up": 256,
+          "down": 69,
+          "min": -0.38,
+          "max": 0.531818181818182
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8783135081812327,
+        "gt_only": 0.8783135081812327,
+        "updated": 0.8785135081812327,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.6973116001945442,
+        "gt_only": 0.7218577589045716,
+        "updated": 0.7230622360287546
+      }
+    },
+    {
+      "pipeline": "infinity_parser2_flash_deep",
+      "forms": {
+        "original": 0.7113652359924597,
+        "gt_only": 0.7410450705778426,
+        "updated": 0.7415250705778426,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 249,
+          "down": 80,
+          "min": -0.38,
+          "max": 0.4972222222222222
+        },
+        "scorer_delta": {
+          "up": 4,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.20000000000000007
+        },
+        "combined_delta": {
+          "up": 249,
+          "down": 79,
+          "min": -0.38,
+          "max": 0.4972222222222222
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9227261262637048,
+        "gt_only": 0.9227261262637048,
+        "updated": 0.9229261262637048,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7377853472763654,
+        "gt_only": 0.7637552025385754,
+        "updated": 0.7642002025385753
+      }
+    },
+    {
+      "pipeline": "infinity_parser2_pro_deep",
+      "forms": {
+        "original": 0.7143426786566386,
+        "gt_only": 0.7497042573490391,
+        "updated": 0.7522053952342019,
+        "pages": 500,
+        "empty_outputs": 5,
+        "gt_delta": {
+          "up": 252,
+          "down": 84,
+          "min": -0.47099567099567086,
+          "max": 0.7033333333333334
+        },
+        "scorer_delta": {
+          "up": 11,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3063636363636364
+        },
+        "combined_delta": {
+          "up": 253,
+          "down": 82,
+          "min": -0.47099567099567086,
+          "max": 0.7433333333333334
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9170513163222546,
+        "gt_only": 0.9170513163222546,
+        "updated": 0.9170513163222546,
+        "pages": 100,
+        "empty_outputs": 1,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7396812583648406,
+        "gt_only": 0.770622639720691,
+        "updated": 0.7728111353702085
+      }
+    },
+    {
+      "pipeline": "jinaocr_vllm",
+      "forms": {
+        "original": 0.6829133320111016,
+        "gt_only": 0.708758321618333,
+        "updated": 0.7101193673699668,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 237,
+          "down": 78,
+          "min": -0.2727272727272727,
+          "max": 0.49521739130434783
+        },
+        "scorer_delta": {
+          "up": 6,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.2833333333333333
+        },
+        "combined_delta": {
+          "up": 237,
+          "down": 77,
+          "min": -0.2727272727272727,
+          "max": 0.49521739130434783
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8520774817167951,
+        "gt_only": 0.8520774817167951,
+        "updated": 0.8522774817167952,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7040588507243133,
+        "gt_only": 0.7266732166306407,
+        "updated": 0.7278891316633204
+      }
+    },
+    {
+      "pipeline": "kdl_frontier_nano_v2",
+      "forms": {
+        "original": 0.6786016713718636,
+        "gt_only": 0.7111542916533675,
+        "updated": 0.7124431805422564,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 249,
+          "down": 82,
+          "min": -0.2748275862068965,
+          "max": 0.691044776119403
+        },
+        "scorer_delta": {
+          "up": 6,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.20000000000000007
+        },
+        "combined_delta": {
+          "up": 249,
+          "down": 81,
+          "min": -0.2748275862068965,
+          "max": 0.691044776119403
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8752933626781088,
+        "gt_only": 0.8752933626781088,
+        "updated": 0.8752933626781088,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7031881327851442,
+        "gt_only": 0.7316716755314602,
+        "updated": 0.732799453309238
+      }
+    },
+    {
+      "pipeline": "landingai_parse",
+      "forms": {
+        "original": 0.747477418968463,
+        "gt_only": 0.7988660837756727,
+        "updated": 0.8021125979771319,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 293,
+          "down": 61,
+          "min": -0.27000000000000013,
+          "max": 0.94
+        },
+        "scorer_delta": {
+          "up": 13,
+          "down": 1,
+          "min": -0.032553191489361755,
+          "max": 0.34789473684210537
+        },
+        "combined_delta": {
+          "up": 293,
+          "down": 59,
+          "min": -0.27000000000000013,
+          "max": 0.94
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9214534069892144,
+        "gt_only": 0.9214534069892144,
+        "updated": 0.9216534069892145,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7692244174710569,
+        "gt_only": 0.8141894991773654,
+        "updated": 0.8170551991036422
+      }
+    },
+    {
+      "pipeline": "lightonocr3_0_8b_vllm",
+      "forms": {
+        "original": 0.722832745430582,
+        "gt_only": 0.7599220714629544,
+        "updated": 0.7626925142365552,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 262,
+          "down": 70,
+          "min": -0.4444444444444444,
+          "max": 0.7747619047619048
+        },
+        "scorer_delta": {
+          "up": 10,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.5166666666666666
+        },
+        "combined_delta": {
+          "up": 264,
+          "down": 67,
+          "min": -0.4444444444444444,
+          "max": 0.8147619047619048
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8949315616805823,
+        "gt_only": 0.8949315616805823,
+        "updated": 0.8949315616805823,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7443450974618321,
+        "gt_only": 0.776798257740158,
+        "updated": 0.7792223951670586
+      }
+    },
+    {
+      "pipeline": "lightonocr3_4b_vllm",
+      "forms": {
+        "original": 0.7282592817728273,
+        "gt_only": 0.7665537778878466,
+        "updated": 0.7693440293306777,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 265,
+          "down": 75,
+          "min": -0.4444444444444444,
+          "max": 0.5700000000000001
+        },
+        "scorer_delta": {
+          "up": 11,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.5166666666666666
+        },
+        "combined_delta": {
+          "up": 269,
+          "down": 70,
+          "min": -0.4444444444444444,
+          "max": 0.5700000000000001
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9015800665924613,
+        "gt_only": 0.9015800665924613,
+        "updated": 0.9015800665924613,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7499243798752816,
+        "gt_only": 0.7834320639759235,
+        "updated": 0.7858735339884007
+      }
+    },
+    {
+      "pipeline": "llamaparse_agentic",
+      "forms": {
+        "original": 0.7886592742464712,
+        "gt_only": 0.8331154784360207,
+        "updated": 0.8356196977628032,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 297,
+          "down": 67,
+          "min": -0.3700000000000001,
+          "max": 0.5233333333333334
+        },
+        "scorer_delta": {
+          "up": 8,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.2833333333333333
+        },
+        "combined_delta": {
+          "up": 299,
+          "down": 65,
+          "min": -0.3700000000000001,
+          "max": 0.5233333333333334
+        }
+      },
+      "fillable_forms": {
+        "original": 0.954481779889453,
+        "gt_only": 0.954481779889453,
+        "updated": 0.954481779889453,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.809387087451844,
+        "gt_only": 0.8482862661176997,
+        "updated": 0.8504774580286344
+      }
+    },
+    {
+      "pipeline": "llamaparse_agentic_plus",
+      "forms": {
+        "original": 0.7976811261098647,
+        "gt_only": 0.8378741649822706,
+        "updated": 0.8410960278390561,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 275,
+          "down": 75,
+          "min": -0.3700000000000001,
+          "max": 0.61
+        },
+        "scorer_delta": {
+          "up": 11,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3063636363636364
+        },
+        "combined_delta": {
+          "up": 278,
+          "down": 71,
+          "min": -0.3700000000000001,
+          "max": 0.7154545454545455
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9571905581906149,
+        "gt_only": 0.9571905581906149,
+        "updated": 0.9571905581906149,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.8176198051199586,
+        "gt_only": 0.8527887141333137,
+        "updated": 0.8556078441330011
+      }
+    },
+    {
+      "pipeline": "llamaparse_cost_effective",
+      "forms": {
+        "original": 0.7924343727947362,
+        "gt_only": 0.8393568841975141,
+        "updated": 0.841223330616592,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 296,
+          "down": 58,
+          "min": -0.3700000000000001,
+          "max": 0.4255555555555556
+        },
+        "scorer_delta": {
+          "up": 7,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.2833333333333333
+        },
+        "combined_delta": {
+          "up": 297,
+          "down": 56,
+          "min": -0.3700000000000001,
+          "max": 0.4255555555555556
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9493997833299289,
+        "gt_only": 0.9493997833299289,
+        "updated": 0.9493997833299289,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.8120550491116352,
+        "gt_only": 0.8531122465890659,
+        "updated": 0.8547453872057591
+      }
+    },
+    {
+      "pipeline": "mineru2605pro_vllm",
+      "forms": {
+        "original": 0.6831634646471324,
+        "gt_only": 0.7143540367133877,
+        "updated": 0.715332919660506,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 255,
+          "down": 76,
+          "min": -0.5666666666666667,
+          "max": 0.8307462686567164
+        },
+        "scorer_delta": {
+          "up": 7,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.20000000000000007
+        },
+        "combined_delta": {
+          "up": 255,
+          "down": 75,
+          "min": -0.5666666666666667,
+          "max": 0.8307462686567164
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9069555559136728,
+        "gt_only": 0.9069555559136728,
+        "updated": 0.9069555559136728,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7111374760554499,
+        "gt_only": 0.7384292266134234,
+        "updated": 0.7392857491921518
+      }
+    },
+    {
+      "pipeline": "minicpm_ocr_sdk",
+      "forms": {
+        "original": 0.660265213712273,
+        "gt_only": 0.6830339289016505,
+        "updated": 0.6833872622349838,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 227,
+          "down": 71,
+          "min": -0.4444444444444444,
+          "max": 0.5111111111111111
+        },
+        "scorer_delta": {
+          "up": 4,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.10000000000000009
+        },
+        "combined_delta": {
+          "up": 228,
+          "down": 69,
+          "min": -0.4444444444444444,
+          "max": 0.5111111111111111
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8728082182449812,
+        "gt_only": 0.8728082182449812,
+        "updated": 0.8728082182449812,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.6868330892788616,
+        "gt_only": 0.7067557150695668,
+        "updated": 0.7070648817362335
+      }
+    },
+    {
+      "pipeline": "mistral_ocr_4_1",
+      "forms": {
+        "original": 0.7277832513423251,
+        "gt_only": 0.7701017054384942,
+        "updated": 0.7726463564148105,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 271,
+          "down": 64,
+          "min": -0.4444444444444444,
+          "max": 0.6799999999999999
+        },
+        "scorer_delta": {
+          "up": 10,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.41363636363636364
+        },
+        "combined_delta": {
+          "up": 275,
+          "down": 61,
+          "min": -0.4444444444444444,
+          "max": 0.6799999999999999
+        }
+      },
+      "fillable_forms": {
+        "original": 0.923239888198541,
+        "gt_only": 0.923239888198541,
+        "updated": 0.923239888198541,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7522153309493521,
+        "gt_only": 0.7892439782835001,
+        "updated": 0.7914705478877768
+      }
+    },
+    {
+      "pipeline": "mistral_ocr_4_1_annotation",
+      "forms": {
+        "original": 0.7288849180089918,
+        "gt_only": 0.771098372105161,
+        "updated": 0.773643023081477,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 271,
+          "down": 64,
+          "min": -0.4444444444444444,
+          "max": 0.6799999999999999
+        },
+        "scorer_delta": {
+          "up": 10,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.41363636363636364
+        },
+        "combined_delta": {
+          "up": 275,
+          "down": 61,
+          "min": -0.4444444444444444,
+          "max": 0.6799999999999999
+        }
+      },
+      "fillable_forms": {
+        "original": 0.923239888198541,
+        "gt_only": 0.923239888198541,
+        "updated": 0.923239888198541,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7531792892826854,
+        "gt_only": 0.7901160616168335,
+        "updated": 0.79234263122111
+      }
+    },
+    {
+      "pipeline": "muse_ember_1_0_reasoning_low_parse_with_layout_file",
+      "forms": {
+        "original": 0.7522023835165758,
+        "gt_only": 0.7977911621588075,
+        "updated": 0.7999153754652528,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 276,
+          "down": 61,
+          "min": -0.20666666666666678,
+          "max": 0.5800000000000001
+        },
+        "scorer_delta": {
+          "up": 13,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3063636363636364
+        },
+        "combined_delta": {
+          "up": 278,
+          "down": 60,
+          "min": -0.20666666666666678,
+          "max": 0.7154545454545455
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9332313868297298,
+        "gt_only": 0.9332313868297298,
+        "updated": 0.9332313868297298,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7748310089307201,
+        "gt_only": 0.8147211902426729,
+        "updated": 0.8165798768858125
+      }
+    },
+    {
+      "pipeline": "nemotron_parse_3_5_sdk",
+      "forms": {
+        "original": 0.6931036342442375,
+        "gt_only": 0.7129325029968114,
+        "updated": 0.7134324026237732,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 232,
+          "down": 101,
+          "min": -0.36666666666666664,
+          "max": 0.4933333333333334
+        },
+        "scorer_delta": {
+          "up": 5,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.20000000000000007
+        },
+        "combined_delta": {
+          "up": 233,
+          "down": 99,
+          "min": -0.36666666666666664,
+          "max": 0.4933333333333334
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8635758149209325,
+        "gt_only": 0.8635758149209325,
+        "updated": 0.8635758149209325,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7144126568288244,
+        "gt_only": 0.7317629169873265,
+        "updated": 0.732200329160918
+      }
+    },
+    {
+      "pipeline": "openai_gpt_5_6_luna_reasoning_low_parse_with_layout",
+      "forms": {
+        "original": 0.7209925530254324,
+        "gt_only": 0.7616712132942093,
+        "updated": 0.7647968860314863,
+        "pages": 498,
+        "empty_outputs": 15,
+        "gt_delta": {
+          "up": 267,
+          "down": 79,
+          "min": -0.2968421052631579,
+          "max": 0.5800000000000001
+        },
+        "scorer_delta": {
+          "up": 12,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3431578947368421
+        },
+        "combined_delta": {
+          "up": 271,
+          "down": 75,
+          "min": -0.2820689655172415,
+          "max": 0.7154545454545455
+        }
+      },
+      "fillable_forms": {
+        "original": 0.896968556146619,
+        "gt_only": 0.896968556146619,
+        "updated": 0.897168556146619,
+        "pages": 100,
+        "empty_outputs": 1,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7429895534155807,
+        "gt_only": 0.7785833811507604,
+        "updated": 0.781343344795878
+      }
+    },
+    {
+      "pipeline": "openai_gpt_5_6_terra_reasoning_low_parse_with_layout",
+      "forms": {
+        "original": 0.7294926608878485,
+        "gt_only": 0.7746816065217299,
+        "updated": 0.779020966449838,
+        "pages": 498,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 264,
+          "down": 78,
+          "min": -0.2968421052631579,
+          "max": 0.7652380952380953
+        },
+        "scorer_delta": {
+          "up": 16,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.5333333333333332
+        },
+        "combined_delta": {
+          "up": 267,
+          "down": 74,
+          "min": -0.21666666666666667,
+          "max": 0.7652380952380953
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9209965073726305,
+        "gt_only": 0.9209965073726305,
+        "updated": 0.9209965073726305,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7534306416984463,
+        "gt_only": 0.7929709691280925,
+        "updated": 0.796767909065187
+      }
+    },
+    {
+      "pipeline": "openai_gpt_6_1_terra_reasoning_low_parse_with_layout_file",
+      "forms": {
+        "original": 0.7766662006633952,
+        "gt_only": 0.8240884395596892,
+        "updated": 0.8275977704627043,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 287,
+          "down": 66,
+          "min": -0.20000000000000007,
+          "max": 0.7452173913043478
+        },
+        "scorer_delta": {
+          "up": 12,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3063636363636364
+        },
+        "combined_delta": {
+          "up": 290,
+          "down": 63,
+          "min": -0.15000000000000002,
+          "max": 0.7452173913043478
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8868051136736851,
+        "gt_only": 0.8868051136736851,
+        "updated": 0.8870051136736851,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7904335647896815,
+        "gt_only": 0.8319280238239387,
+        "updated": 0.8350236883640769
+      }
+    },
+    {
+      "pipeline": "openai_gpt_6_luna_reasoning_low_parse_with_layout",
+      "forms": {
+        "original": 0.7386715329153424,
+        "gt_only": 0.7825918308809067,
+        "updated": 0.7849219655762917,
+        "pages": 498,
+        "empty_outputs": 8,
+        "gt_delta": {
+          "up": 279,
+          "down": 76,
+          "min": -0.2493103448275863,
+          "max": 0.6299999999999999
+        },
+        "scorer_delta": {
+          "up": 8,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3063636363636364
+        },
+        "combined_delta": {
+          "up": 280,
+          "down": 75,
+          "min": -0.2493103448275863,
+          "max": 0.7154545454545455
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9140851175077682,
+        "gt_only": 0.9140851175077682,
+        "updated": 0.9142851175077682,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7605982309893956,
+        "gt_only": 0.7990284917092644,
+        "updated": 0.8010923595677263
+      }
+    },
+    {
+      "pipeline": "paddleocr_vl_1_6_pipeline",
+      "forms": {
+        "original": 0.6565507131229664,
+        "gt_only": 0.6871090760790266,
+        "updated": 0.6873859388241247,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 249,
+          "down": 76,
+          "min": -0.26758620689655166,
+          "max": 0.47555555555555545
+        },
+        "scorer_delta": {
+          "up": 4,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.10000000000000009
+        },
+        "combined_delta": {
+          "up": 249,
+          "down": 74,
+          "min": -0.26758620689655166,
+          "max": 0.47555555555555545
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8548555946237206,
+        "gt_only": 0.8548555946237206,
+        "updated": 0.8548555946237206,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.6813388233105607,
+        "gt_only": 0.7080773908971133,
+        "updated": 0.7083196457990741
+      }
+    },
+    {
+      "pipeline": "pulse_ultra_2",
+      "forms": {
+        "original": 0.744092843087907,
+        "gt_only": 0.7845160801543096,
+        "updated": 0.7856555846239043,
+        "pages": 499,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 271,
+          "down": 70,
+          "min": -0.22230769230769232,
+          "max": 0.53
+        },
+        "scorer_delta": {
+          "up": 7,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.20000000000000007
+        },
+        "combined_delta": {
+          "up": 272,
+          "down": 69,
+          "min": -0.22230769230769232,
+          "max": 0.53
+        }
+      },
+      "fillable_forms": {
+        "original": 0.921684951021571,
+        "gt_only": 0.921684951021571,
+        "updated": 0.921684951021571,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.766291856579615,
+        "gt_only": 0.8016621890127172,
+        "updated": 0.8026592554236126
+      }
+    },
+    {
+      "pipeline": "qwen3_5_4b_vllm_layout",
+      "forms": {
+        "original": 0.6548919416576549,
+        "gt_only": 0.6777779348638502,
+        "updated": 0.6779137401072959,
+        "pages": 500,
+        "empty_outputs": 47,
+        "gt_delta": {
+          "up": 230,
+          "down": 64,
+          "min": -0.38,
+          "max": 0.47944444444444445
+        },
+        "scorer_delta": {
+          "up": 3,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.040000000000000036
+        },
+        "combined_delta": {
+          "up": 231,
+          "down": 63,
+          "min": -0.38,
+          "max": 0.47944444444444445
+        }
+      },
+      "fillable_forms": {
+        "original": 0.7910187579474334,
+        "gt_only": 0.7910187579474334,
+        "updated": 0.7910187579474334,
+        "pages": 100,
+        "empty_outputs": 14,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.6719077936938771,
+        "gt_only": 0.691933037749298,
+        "updated": 0.692051867337313
+      }
+    },
+    {
+      "pipeline": "qwen3_8_27b_parse_with_layout",
+      "forms": {
+        "original": 0.667308687800076,
+        "gt_only": 0.6986458038753196,
+        "updated": 0.699485001870307,
+        "pages": 500,
+        "empty_outputs": 46,
+        "gt_delta": {
+          "up": 240,
+          "down": 62,
+          "min": -0.2646153846153847,
+          "max": 0.8147619047619048
+        },
+        "scorer_delta": {
+          "up": 4,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.24578947368421056
+        },
+        "combined_delta": {
+          "up": 240,
+          "down": 62,
+          "min": -0.2646153846153847,
+          "max": 0.8147619047619048
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8531578220198331,
+        "gt_only": 0.8531578220198331,
+        "updated": 0.853357822019833,
+        "pages": 100,
+        "empty_outputs": 7,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.6905398295775457,
+        "gt_only": 0.7179598061433838,
+        "updated": 0.7187191043889978
+      }
+    },
+    {
+      "pipeline": "reducto",
+      "forms": {
+        "original": 0.7806078815139796,
+        "gt_only": 0.8184373207027756,
+        "updated": 0.8214027174169544,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 280,
+          "down": 66,
+          "min": -0.4444444444444444,
+          "max": 0.6599999999999999
+        },
+        "scorer_delta": {
+          "up": 11,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3042105263157895
+        },
+        "combined_delta": {
+          "up": 283,
+          "down": 64,
+          "min": -0.4444444444444444,
+          "max": 0.6599999999999999
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9351634851249405,
+        "gt_only": 0.9351634851249405,
+        "updated": 0.9353634851249404,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7999273319653497,
+        "gt_only": 0.8330280912555462,
+        "updated": 0.8356478133804526
+      }
+    },
+    {
+      "pipeline": "reducto_agentic",
+      "forms": {
+        "original": 0.7902139434420786,
+        "gt_only": 0.8302847435231238,
+        "updated": 0.8333909742062828,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 278,
+          "down": 60,
+          "min": -0.3755172413793104,
+          "max": 0.5800000000000001
+        },
+        "scorer_delta": {
+          "up": 13,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.2863636363636364
+        },
+        "combined_delta": {
+          "up": 282,
+          "down": 57,
+          "min": -0.3755172413793104,
+          "max": 0.5800000000000001
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9391763446347245,
+        "gt_only": 0.9391763446347245,
+        "updated": 0.9393763446347245,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.8088342435911593,
+        "gt_only": 0.8438961936620739,
+        "updated": 0.846639145509838
+      }
+    },
+    {
+      "pipeline": "reducto_r1",
+      "forms": {
+        "original": 0.7623120792792542,
+        "gt_only": 0.8105756036269124,
+        "updated": 0.8136015448162836,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 278,
+          "down": 60,
+          "min": -0.4117241379310346,
+          "max": 0.7652380952380953
+        },
+        "scorer_delta": {
+          "up": 12,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3063636363636364
+        },
+        "combined_delta": {
+          "up": 279,
+          "down": 59,
+          "min": -0.4117241379310346,
+          "max": 0.7652380952380953
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9280905899342968,
+        "gt_only": 0.9280905899342968,
+        "updated": 0.9282905899342968,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7830343931111345,
+        "gt_only": 0.8252649769153355,
+        "updated": 0.8279376754560351
+      }
+    },
+    {
+      "pipeline": "reducto_r1_mini",
+      "forms": {
+        "original": 0.7556208988014765,
+        "gt_only": 0.8041059895668775,
+        "updated": 0.806681242226155,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 280,
+          "down": 60,
+          "min": -0.20000000000000007,
+          "max": 0.7652380952380953
+        },
+        "scorer_delta": {
+          "up": 10,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.3063636363636364
+        },
+        "combined_delta": {
+          "up": 280,
+          "down": 59,
+          "min": -0.17862068965517247,
+          "max": 0.7652380952380953
+        }
+      },
+      "fillable_forms": {
+        "original": 0.924381359940739,
+        "gt_only": 0.924381359940739,
+        "updated": 0.924581359940739,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        },
+        "combined_delta": {
+          "up": 1,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.020000000000000018
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7767159564438844,
+        "gt_only": 0.8191404108636102,
+        "updated": 0.8214187569404781
+      }
+    },
+    {
+      "pipeline": "surya2_sdk",
+      "forms": {
+        "original": 0.7144843812064615,
+        "gt_only": 0.7549022692241338,
+        "updated": 0.7574833136247946,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 270,
+          "down": 71,
+          "min": -0.3584615384615385,
+          "max": 0.7452173913043478
+        },
+        "scorer_delta": {
+          "up": 9,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.5833333333333333
+        },
+        "combined_delta": {
+          "up": 272,
+          "down": 68,
+          "min": -0.3584615384615385,
+          "max": 0.7452173913043478
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8976008914738142,
+        "gt_only": 0.8976008914738142,
+        "updated": 0.8976008914738142,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7373739449898806,
+        "gt_only": 0.7727395970053439,
+        "updated": 0.7749980108559221
+      }
+    },
+    {
+      "pipeline": "teleocr_vllm",
+      "forms": {
+        "original": 0.6701212767918613,
+        "gt_only": 0.6973555932047472,
+        "updated": 0.6981748491122384,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 237,
+          "down": 90,
+          "min": -0.21818181818181814,
+          "max": 0.6098507462686567
+        },
+        "scorer_delta": {
+          "up": 5,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.20000000000000007
+        },
+        "combined_delta": {
+          "up": 237,
+          "down": 89,
+          "min": -0.21818181818181814,
+          "max": 0.6098507462686567
+        }
+      },
+      "fillable_forms": {
+        "original": 0.8844859227035949,
+        "gt_only": 0.8844859227035949,
+        "updated": 0.8844859227035949,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.696916857530828,
+        "gt_only": 0.7207468843921031,
+        "updated": 0.721463733311158
+      }
+    },
+    {
+      "pipeline": "unlimitedocr2",
+      "forms": {
+        "original": 0.6768960187447626,
+        "gt_only": 0.7090763918993535,
+        "updated": 0.7098323999435968,
+        "pages": 500,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 247,
+          "down": 82,
+          "min": -0.4444444444444444,
+          "max": 0.7647619047619048
+        },
+        "scorer_delta": {
+          "up": 6,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.20000000000000007
+        },
+        "combined_delta": {
+          "up": 249,
+          "down": 80,
+          "min": -0.4444444444444444,
+          "max": 0.7647619047619048
+        }
+      },
+      "fillable_forms": {
+        "original": 0.9045575002525191,
+        "gt_only": 0.9045575002525191,
+        "updated": 0.9045575002525191,
+        "pages": 100,
+        "empty_outputs": 0,
+        "gt_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "scorer_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "combined_delta": {
+          "up": 0,
+          "down": 0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "forms_dimension": {
+        "original": 0.7053537039332322,
+        "gt_only": 0.7335115304434991,
+        "updated": 0.7341730374822121
+      }
+    }
+  ]
+}
