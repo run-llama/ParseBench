@@ -821,3 +821,45 @@ def test_short_alt_reading_does_not_exempt_unmarked_body_narration() -> None:
     ref = "Kite\n\n" + PROSE
     out = "![logo: Kite](logo.png)\n\nA bright bird perched above the distant river.\n\n" + PROSE
     assert score_text_next(ref, out).score < 1.0
+
+
+@pytest.mark.parametrize("opt_in", [False, True])
+def test_sub_page_opt_in_ignores_nested_wrappers_but_keeps_footer_content(opt_in: bool) -> None:
+    plain = "<page_header>ACME Report</page_header>\n\n" + PROSE + "\n<page_footer>Page 12</page_footer>"
+    wrapped = "<sub_page><sub_page>" + plain + "</sub_page></sub_page>"
+    metadata = {"scoring": "next"}
+    if opt_in:
+        metadata["sub_page_handling"] = "transparent-v1"
+    case = _case(metadata)
+    case.expected_markdown = wrapped
+    metrics = NextScorers().evaluate(_inference_result(_output(plain)), case).metrics
+    text = next(m for m in metrics if m.metric_name == "text_next")
+    if opt_in:
+        assert text.value == 1.0
+        assert text.metadata["sub_page_handling"] == "transparent-v1"
+    else:
+        assert text.value == score_text_next(wrapped, plain).score < 1.0
+    missing = plain.replace("<page_footer>Page 12</page_footer>", "")
+    metrics = NextScorers().evaluate(_inference_result(_output(missing)), case).metrics
+    assert next(m.value for m in metrics if m.metric_name == "text_next") < 1.0
+
+
+def test_sub_page_opt_in_ignores_wrappers_in_provider_output() -> None:
+    case = _case({"scoring": "next", "sub_page_handling": "transparent-v1"})
+    md = "<sub_page>" + case.expected_markdown + "</sub_page>"
+    metrics = NextScorers().evaluate(_inference_result(_output(md)), case).metrics
+    assert next(m.value for m in metrics if m.metric_name == "text_next") == 1.0
+
+
+def test_unknown_sub_page_contract_is_not_silently_ignored() -> None:
+    case = _case({"scoring": "next", "sub_page_handling": "typo"})
+    with pytest.raises(ValueError, match="Unsupported sub_page_handling"):
+        NextScorers().evaluate(_inference_result(_output(PROSE)), case)
+
+
+@pytest.mark.parametrize("content", ["", "<table><tr><td>Revenue</td><td>120</td></tr></table>"])
+def test_sub_page_wrapper_does_not_make_table_only_reference_text_applicable(content: str) -> None:
+    case = _case({"scoring": "next", "sub_page_handling": "transparent-v1"})
+    case.expected_markdown = "<sub_page>" + content + "</sub_page>"
+    metrics = NextScorers().evaluate(_inference_result(_output(content)), case).metrics
+    assert not any(m.metric_name.startswith("text_next") for m in metrics)

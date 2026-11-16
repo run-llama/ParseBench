@@ -2003,10 +2003,21 @@ def output_hypothesis(output: ParseOutput) -> str:
     )
 
 
-def text_next_metrics(reference: str, output: ParseOutput) -> list[MetricValue]:
+def strip_sub_page_wrappers(markdown: str) -> str:
+    """Remove GT-only page containers while retaining all printed content and boundaries."""
+    return regex.sub(r"</?sub_page\s*>", "\n", markdown, flags=regex.IGNORECASE)
+
+
+def text_next_metrics(reference: str, output: ParseOutput, *, transparent_sub_pages: bool = False) -> list[MetricValue]:
     """``text_next`` headline plus its lane diagnostics as metric values."""
-    res = score_text_next(reference, output_hypothesis(output))
+    hypothesis = output_hypothesis(output)
+    if transparent_sub_pages:
+        reference = strip_sub_page_wrappers(reference)
+        hypothesis = strip_sub_page_wrappers(hypothesis)
+    res = score_text_next(reference, hypothesis)
     meta = res.metadata()
+    if transparent_sub_pages:
+        meta["sub_page_handling"] = "transparent-v1"
     metrics = [MetricValue(metric_name="text_next", value=res.score, metadata=meta)]
     for lane in ("words", "critical", "integrity", "order"):
         value = getattr(res, lane)
