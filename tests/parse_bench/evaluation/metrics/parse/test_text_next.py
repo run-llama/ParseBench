@@ -855,3 +855,11 @@ def test_unknown_sub_page_contract_is_not_silently_ignored() -> None:
     case = _case({"scoring": "next", "sub_page_handling": "typo"})
     with pytest.raises(ValueError, match="Unsupported sub_page_handling"):
         NextScorers().evaluate(_inference_result(_output(PROSE)), case)
+
+
+@pytest.mark.parametrize("content", ["", "<table><tr><td>Revenue</td><td>120</td></tr></table>"])
+def test_sub_page_wrapper_does_not_make_table_only_reference_text_applicable(content: str) -> None:
+    case = _case({"scoring": "next", "sub_page_handling": "transparent-v1"})
+    case.expected_markdown = "<sub_page>" + content + "</sub_page>"
+    metrics = NextScorers().evaluate(_inference_result(_output(content)), case).metrics
+    assert not any(m.metric_name.startswith("text_next") for m in metrics)

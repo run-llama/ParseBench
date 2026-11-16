@@ -125,12 +125,16 @@ def _document_metrics(
             raise ValueError(f"Unsupported sub_page_handling: {sub_page_handling!r}")
         transparent_sub_pages = sub_page_handling == "transparent-v1"
         reference = reference_markdown(test_case.expected_markdown, rules)
+        if reference is not None and transparent_sub_pages:
+            reference = strip_sub_page_wrappers(reference)
         if reference is not None and text_next_applies(reference, rules, metadata):
             metrics.extend(text_next_metrics(reference, output, transparent_sub_pages=transparent_sub_pages))
 
         # A full-page decoration inventory takes precedence over the reference Markdown and the rules.
         decorations = decoration_reference(metadata)
         fmt_md = reference_markdown(test_case.expected_markdown, rules)
+        if fmt_md is not None and transparent_sub_pages:
+            fmt_md = strip_sub_page_wrappers(fmt_md)
         fmt_ref = None if fmt_md else rules_reference(rules)
         if fmt_md and text_next_applies(fmt_md, rules, metadata):
             fmt_ref = (fmt_md, FULL_SCOPE) if formatting_v2_applies(fmt_md) else None
