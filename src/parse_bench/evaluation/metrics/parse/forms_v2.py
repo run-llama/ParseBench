@@ -537,15 +537,29 @@ def read_output(
         ):
             rows = [_PIPE_SPLIT.split(line)]
             width = len(rows[0])
-            i += 2
-            while i < len(lines) and _BARE_ROW.match(lines[i]):
-                parts = _PIPE_SPLIT.split(lines[i])
+            j = i + 2
+            while j < len(lines) and "|" in lines[j]:
+                parts = _PIPE_SPLIT.split(lines[j])
+                if len(parts) > width and not parts[0].strip():
+                    parts = parts[1:]
+                if len(parts) > width and not parts[-1].strip():
+                    parts = parts[:-1]
                 if len(parts) != width:
                     break
                 rows.append(parts)
-                i += 1
-            add_grid(rows)
-            continue
+                j += 1
+            # Restrict new recognition to explicit footer captions. Ordinary
+            # grids may contain fixed printed values (e.g. TIN branch zeros)
+            # outside the annotated slot, and must keep their existing fallback.
+            if len(rows) == 2 and all(
+                _PAREN_ALL.fullmatch(clean_text(text).strip())
+                and 0 < len(word_keys(text)) <= 8
+                and not any(_digits(word) for word in word_keys(text))
+                for text in rows[1]
+            ):
+                add_grid(rows)
+                i = j
+                continue
         if _BARE_ROW.match(line):
             # "Tätigkeit | ab/von | bis" then "- [ ] Minijob | 29,517.20 | [___]": three or more lines (blank lines
             # between) with the same number of " | " and no outer pipes are a grid without a delimiter row
@@ -1045,10 +1059,16 @@ def _candidates(
                 starts.append(s)
     starts.sort()
     cands: list[Occ] = []
+    # Hallucinated repeated prose can produce thousands of identical windows.
+    # Reusing their exact match result changes neither candidates nor scores.
+    matches: dict[tuple[str, ...], tuple[float, int, int]] = {}
     for s in starts:
         e = min(s + len(phrase) + WINDOW_SLACK, _window_bound(out, out.tcell[s]))
         window = [out.toks[x].key if not out.toks[x].box else "\u0001" for x in range(s, e)]
-        got, first, last = _window_match(phrase, w, window)
+        key = tuple(window)
+        if key not in matches:
+            matches[key] = _window_match(phrase, w, window)
+        got, first, last = matches[key]
         q = got / total if total else 0.0
         if at_start and first >= 0 and not _starts_cell(out, s + first):
             continue
@@ -1566,65 +1586,175 @@ def _copies(ref: Reference, out: Out, x: int, placed: Occ, used: list[bool]) -> 
 def _repair_question_options(
     ref: Reference, out: Out, per_item: list[list[Occ]], occ: list[Occ | None], used: list[bool]
 ) -> None:
-    """Repeated options follow their explicitly recorded question, regardless of option order.
+    """Associate explicit GT question groups without consulting expected states.
 
-    Only a group with an option actually present under its located question is repaired.
-    Unrelated fields and general section context keep their existing matching behavior.
+    Unique full question captions win over a shared instruction suffix. Options
+    must form one complete, unambiguous local group. Prose uses question bounds;
+    tables additionally preserve same-cell, column or row ownership. Changes are
+    atomic: a competing occurrence is never discarded to manufacture uniqueness.
     """
     items = ref.items
-    original_occ, original_used = list(occ), list(used)
-    counts = Counter(it.label for it in items if it.kind == "box")
-    heads = [x for x, it in enumerate(items) if it.role == "context" and occ[x] is not None]
-    starts = sorted(occ[x].start for x in heads if occ[x] is not None)
-    moves: list[tuple[int, int, int, Occ | None]] = []
-    for a in heads:
-        heading = occ[a]
-        assert heading is not None
-        lo = heading.end + 1
-        hi = next((start for start in starts if start > heading.end), len(out.toks))
-        members = []
-        for x in range(a + 1, len(items)):
-            if items[x].role in ("context", "section"):
-                break
-            if items[x].kind == "box" and items[x].ctx.split(" > ")[-1] == items[a].label:
-                members.append(x)
-        if len(members) < 2 or not any(counts[items[x].label] > 1 for x in members):
-            continue
-        if not any(q.q >= PASS2_Q and lo <= q.start <= q.end < hi for x in members for q in per_item[x]):
-            continue
-        for x in members:
-            current = occ[x]
-            if current is not None and lo <= current.start <= current.end < hi:
-                continue
-            moves.append((x, lo, hi, current))
-            if current is not None:
-                for token in range(current.start, current.end + 1):
-                    used[token] = False
-                occ[x] = None
-    for x, lo, hi, old in moves:
-        local = [q for q in per_item[x] if q.q >= PASS2_Q and lo <= q.start <= q.end < hi and _standalone(out, q, True)]
-        free = [q for q in local if not any(used[t] for t in range(q.start, q.end + 1))]
-        # Full and shortened captions can describe the same occurrence. Deduplicate
-        # overlapping spans before deciding that two distinct options are ambiguous.
-        candidates: list[Occ] = []
-        for q in sorted(free, key=lambda q: (-q.q, -(q.end - q.start))):
-            if not any(q.start <= other.end and other.start <= q.end for other in candidates):
-                candidates.append(q)
+    heads = [x for x, it in enumerate(items) if it.role in ("context", "group")]
+    groups = {
+        a: [
+            x
+            for x, it in enumerate(items)
+            if it.kind == "box"
+            and (
+                (items[a].role == "context" and it.ctx.split(" > ")[-1] == items[a].label)
+                or (items[a].role == "group" and it.group == items[a].group)
+            )
+        ]
+        for a in heads
+    }
+    groups = {a: xs for a, xs in groups.items() if len(xs) >= 2}
+    # The global reading-order chain can swap two questions sharing boilerplate.
+    # Only unique full-caption evidence is strong enough to override that chain.
+    exact = {}
+    for a in groups:
+        candidates = [q for q in per_item[a] if q.q >= 1 - 1e-9]
         if len(candidates) == 1:
-            occ[x] = candidates[0]
-        elif local and not free and old is not None and not any(used[t] for t in range(old.start, old.end + 1)):
-            # A field outside the repairable groups owns the local tokens. Do not
-            # create a new omission by partially repairing this unresolved collision.
-            occ[x] = old
-        elif local and not free:
-            # A partially repairable chain cannot safely displace an option whose
-            # own question was not located. Defer the page's question repair as a
-            # unit instead of leaving a new omission or stealing another slot.
-            occ[:], used[:] = original_occ, original_used
-            return
-        if (chosen := occ[x]) is not None:
-            for token in range(chosen.start, chosen.end + 1):
-                used[token] = True
+            exact[a] = candidates[0]
+    for a, q in exact.items():
+        if any(
+            p is not None and y != a and y not in exact and p.start <= q.end and q.start <= p.end
+            for y, p in enumerate(occ)
+        ):
+            continue
+        occ[a] = q
+    used[:] = [False] * len(out.toks)
+    for q in occ:
+        if q is not None:
+            used[q.start : q.end + 1] = [True] * (q.end - q.start + 1)
+
+    def marked(q: Occ) -> bool:
+        c = out.cells[out.tcell[q.start]]
+        if c.table >= 0:
+            # Separate label/glyph cells are resolved by find_glyph in row order.
+            return True
+        return _standalone(out, q, True) or (q.end < c.last and bool(out.toks[q.end + 1].box))
+
+    proposals: dict[int, dict[int, Occ]] = {}
+    for a, members in groups.items():
+        heading = occ[a]
+        if heading is None or any(len(word_keys(items[x].label)) > 4 for x in members):
+            continue
+        hc = out.cells[out.tcell[heading.end]]
+        others = [occ[h] for h in heads if h != a and occ[h] is not None]
+
+        def local(q: Occ, mode: str, heading: Occ = heading, hc: Cell = hc, others: list[Occ] = others) -> bool:
+            c = out.cells[out.tcell[q.start]]
+            if q.start <= heading.end:
+                return False
+            if mode == "prose":
+                return not any(heading.end < h.start <= q.end for h in others)
+            if c.table != hc.table:
+                return False
+            if mode == "cell":
+                return out.tcell[q.start] == out.tcell[heading.end] and not any(
+                    heading.end < h.start <= q.end and out.tcell[h.start] == out.tcell[heading.end] for h in others
+                )
+            if mode == "column":
+                return (
+                    c.col == hc.col
+                    and c.row >= hc.row
+                    and not any(
+                        heading.end < h.start <= q.end
+                        and out.cells[out.tcell[h.start]].table == hc.table
+                        and out.cells[out.tcell[h.start]].col == hc.col
+                        for h in others
+                    )
+                )
+            return (
+                c.row == hc.row
+                and c.col >= hc.col
+                and not any(
+                    heading.end < h.start <= q.end
+                    and out.cells[out.tcell[h.start]].table == hc.table
+                    and out.cells[out.tcell[h.start]].row == hc.row
+                    for h in others
+                )
+            )
+
+        for mode in ["prose"] if hc.table < 0 else ["cell", "column", "row"]:
+            # A local option may contain intervening words or its own amount field.
+            # Do not replace it with a cleaner-looking option elsewhere nearby.
+            if any(
+                occ[x] is not None and local(occ[x], mode) and _starts_cell(out, occ[x].start) and not marked(occ[x])
+                for x in members
+            ):
+                continue
+            chosen = {}
+            for x in members:
+                candidates = [q for q in per_item[x] if q.q >= PASS2_Q and local(q, mode) and marked(q)]
+                distinct: list[Occ] = []
+                for q in sorted(candidates, key=lambda q: (-q.q, -(q.end - q.start))):
+                    if not any(q.start <= p.end and p.start <= q.end for p in distinct):
+                        distinct.append(q)
+                if len(distinct) != 1:
+                    break
+                chosen[x] = distinct[0]
+            if len(chosen) != len(members):
+                continue
+            # Three glyphs around two options do not establish leading versus
+            # trailing ownership. Do not promote that local ambiguity to a repair.
+            option_cells = {out.tcell[q.start] for q in chosen.values()}
+            if len(option_cells) == 1:
+                ci = next(iter(option_cells))
+                lo = min(q.start for q in chosen.values())
+                hi = max(q.end for q in chosen.values())
+                if lo > out.cells[ci].first and out.toks[lo - 1].box:
+                    lo -= 1
+                if hi < out.cells[ci].last and out.toks[hi + 1].box:
+                    hi += 1
+                if sum(bool(out.toks[t].box) for t in range(lo, hi + 1)) != len(members):
+                    continue
+            # Require a distinct observed glyph for each option, with no answer-key
+            # assistance. This also rejects a lone tick between No and Yes.
+            trial = [
+                None
+                if y not in chosen
+                and p is not None
+                and any(p.start <= q.end and q.start <= p.end for q in chosen.values())
+                else p
+                for y, p in enumerate(occ)
+            ]
+            for x, q in chosen.items():
+                trial[x] = q
+            trial_used = [False] * len(out.toks)
+            for q in trial:
+                if q is not None:
+                    trial_used[q.start : q.end + 1] = [True] * (q.end - q.start + 1)
+            elements = _box_elements(out, trial, ref)
+            glyphs = [
+                find_glyph(out, q, elements, [False] * len(out.toks), trial_used, len(word_keys(items[x].label)))
+                for x, q in chosen.items()
+            ]
+            if any(g < 0 for g in glyphs) or len(set(glyphs)) != len(members):
+                continue
+            proposals[a] = chosen
+            break
+    # Remove proposals whose target is owned by a field that will not move away.
+    # Iterate because removing one group may block another. Never partially apply.
+    while proposals:
+        moved = {x: q for group in proposals.values() for x, q in group.items()}
+        blocked = set()
+        for a, group in proposals.items():
+            for x, q in group.items():
+                for y, original in enumerate(occ):
+                    p = moved.get(y, original)
+                    if y != x and p is not None and p.start <= q.end and q.start <= p.end:
+                        blocked.add(a)
+        if not blocked:
+            for x, q in moved.items():
+                occ[x] = q
+            break
+        for a in blocked:
+            del proposals[a]
+    used[:] = [False] * len(out.toks)
+    for q in occ:
+        if q is not None:
+            used[q.start : q.end + 1] = [True] * (q.end - q.start + 1)
 
 
 def _repair_sections(
@@ -1638,6 +1768,7 @@ def _repair_sections(
     heads = [x for x, it in enumerate(items) if it.kind == "anchor" and it.role == "section" and occ[x] is not None]
     starts = sorted(xo.start for x in heads if (xo := occ[x]) is not None)
     moves: list[tuple[int, int, int, Occ | None]] = []
+
     for a in heads:
         oa = occ[a]
         assert oa is not None
@@ -2727,6 +2858,36 @@ def find_glyph(
 ) -> int:
     """The box token that belongs to the option label at ``o`` (-1 = none; ``words``: the label's word count)."""
     cell = out.tcell[o.start]
+    c = out.cells[cell]
+    if c.table >= 0:
+        row_cells = list(dict.fromkeys(out.grids[c.table][c.row]))
+        row_elements = sorted(e for ci in row_cells if ci >= 0 for e in el.get(ci, []))
+        kinds = [e[1] for e in row_elements]
+        adjacent_pairs = True
+        for i in range(0, len(row_elements) - 1, 2):
+            pair = row_elements[i : i + 2]
+            if {e[1] for e in pair} != {0, 1}:
+                adjacent_pairs = False
+                break
+            label = next(e for e in pair if e[1] == 1)
+            glyph = next(e for e in pair if e[1] == 0)
+            adjacent_pairs &= (
+                all(used[t] for t in range(label[0], glyph[0])) if label[0] < glyph[0] else glyph[0] + 1 == label[0]
+            )
+        if (
+            len(kinds) >= 4
+            and len(kinds) % 2 == 0
+            and words <= 4
+            and len({out.tcell[e[0]] for e in row_elements}) == len(row_elements)
+            and adjacent_pairs
+            and kinds in ([1, 0] * (len(kinds) // 2), [0, 1] * (len(kinds) // 2))
+        ):
+            for i in range(0, len(row_elements), 2):
+                pair = row_elements[i : i + 2]
+                label = next(e for e in pair if e[1] == 1)
+                glyph = next(e[0] for e in pair if e[1] == 0)
+                if label[0] == o.start and not claimed[glyph]:
+                    return glyph
     elems = el.get(cell, [])
     trailing = bool(elems) and elems[0][1] == 1 and elems[-1][1] == 0
 
@@ -3346,7 +3507,7 @@ def _repeated_id_reading(ref: Reference, out: Out, occ: list[Occ | None], x: int
         return None
     cell = out.tcell[o.end]
     c = out.cells[cell]
-    if c.table >= 0 or out.tcell[o.start] != cell:
+    if out.tcell[o.start] != cell:
         return None
     keys = word_keys(it.label)
     pid = it.pid or (keys[0] if len(keys) > 1 and _BOX_CODE.fullmatch(keys[0]) else "")
@@ -3355,16 +3516,48 @@ def _repeated_id_reading(ref: Reference, out: Out, occ: list[Occ | None], x: int
     tail = [out.toks[t].key for t in range(o.end + 1, c.last + 1)]
     if tail and (tail[0] not in {"check", "enter", "see", "include", "attach", "select", "tick"}):
         return None
-    # A direct numeric reading is not an instruction and must not be replaced.
-    if any(_digits(k) for k in tail):
-        return None
+    # An instruction may itself contain printed form numbers. The opening
+    # instruction word above distinguishes it from a directly entered amount.
+    if c.table >= 0:
+        if not tail:
+            return None
+        # One printed row ID cannot select among multiple GT column slots.
+        # Preserve the table resolver for direct/indirect or A/B/C expenses.
+        if any(
+            y != x and other.kind == "text" and (other.pid or (word_keys(other.label) or [""])[0]) == pid
+            for y, other in enumerate(ref.items)
+        ):
+            return None
+        row = list(dict.fromkeys(out.grids[c.table][c.row]))
+        right = row[row.index(cell) + 1 :]
+        occupied = [ci for ci in right if ci >= 0 and out.cells[ci].last >= out.cells[ci].first]
+        if not occupied or _cell_keys(out, occupied[0]) != word_keys(pid):
+            return None
+        position = right.index(occupied[0]) + 1
+        if position >= len(right) or right[position] < 0:
+            return None
+        # Extra empty/value columns make the target column ambiguous. A
+        # following prose instruction is safe, but another numeric cell is not.
+        later = right[position + 1 :]
+        if any(
+            ci >= 0 and (not _cell_tokens(out, ci) or _isdigits(out.toks[_cell_tokens(out, ci)[0]].key)) for ci in later
+        ):
+            return None
+        tokens = _cell_tokens(out, right[position])
+        if not tokens:
+            return Reading([], "")
+        if any(out.toks[t].box for t in tokens) or any(
+            p is not None and y != x and p.start <= tokens[-1] and tokens[0] <= p.end for y, p in enumerate(occ)
+        ):
+            return None
+        return Reading(tokens, _span_text(out, tokens))
     boundary = min(
         (
             p.start
             for y, p in enumerate(occ)
             if y != x
             and p is not None
-            and p.start > o.end
+            and p.start > c.last
             and (ref.items[y].kind in ("text", "sig") or ref.items[y].role in ("section", "context"))
         ),
         default=len(out.toks),
@@ -3374,8 +3567,21 @@ def _repeated_id_reading(ref: Reference, out: Out, occ: list[Occ | None], x: int
         nc = out.cells[ci]
         if nc.line - c.line > 24 or nc.table >= 0 or nc.first >= boundary:
             break
-        match = _FIELD_LINE.match(nc.text)
+        match = _FIELD_LINE.match(nc.text) if ":" in nc.text else None
         if match is None:
+            tokens = _cell_tokens(out, ci)
+            if tail and len(tokens) >= 2 and [out.toks[tokens[0]].key] == word_keys(pid):
+                value_tokens = tokens[1:]
+                prefix = nc.text[: out.toks[tokens[0]].start]
+                gap = nc.text[out.toks[tokens[0]].end : out.toks[value_tokens[0]].start]
+                # A grouping comma in "$12,400" does not turn 12 into a line ID.
+                if (
+                    not prefix.strip(" \t*_")
+                    and gap
+                    and not gap.strip(" \t*_")
+                    and all(_isdigits(out.toks[t].key) for t in value_tokens)
+                ):
+                    matches.append(Reading(value_tokens, _span_text(out, value_tokens)))
             continue
         key = word_keys(match.group("key"))
         if key != word_keys(pid):
@@ -3661,8 +3867,7 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
                 if k is not None and (cell := _grid_cell(out, c.table, c.row, k)) >= 0:
                     column_cells[x] = cell
     # A two-row footer grid may put values ABOVE their captions (place/date | signature).
-    # Require a caption-only bottom row: unannotated neighbours must be explicit
-    # parenthesised word-only captions. Select by geometry, never by expected values.
+    # Require a bottom row of explicit parenthesised word-only captions. Select by geometry, never by expected values.
     footer_caps: dict[int, dict[int, int]] = {}
     for x, it in enumerate(items):
         o = occ[x]
@@ -3680,9 +3885,10 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
         if len(lower) < 2 or len(upper) != len(lower) or len(set(lower)) != len(lower):
             continue
 
-        def footer_caption(ci: int, captions: dict[int, int] = caps) -> bool:
-            if ci in captions:
-                return True
+        def footer_caption(ci: int) -> bool:
+            # A matching GT label is not sufficient: ordinary blank forms stack
+            # label rows, or put declaration prose above signature labels. Require
+            # explicit parenthesised captions even for annotated neighbours.
             text = clean_text(out.cells[ci].text).strip() if ci >= 0 else ""
             words = word_keys(text)
             return bool(_PAREN_ALL.fullmatch(text)) and 0 < len(words) <= 8 and not any(_digits(w) for w in words)
@@ -4198,7 +4404,7 @@ def _extra_fields(
             continue
         if any(used[t] for t in range(c.first, c.last + 1)):
             continue
-        m = _FIELD_LINE.match(c.text)
+        m = _FIELD_LINE.match(c.text) if ":" in c.text else None
         if not m or not (m.group("bullet") or m.group("bold")):
             continue
         key_keys = word_keys(m.group("key"))
@@ -4305,7 +4511,7 @@ def _part_lines(out: Out) -> list[list[tuple[int, str, str]]]:
     for ci, c in enumerate(out.cells):
         if c.table >= 0 or c.last < c.first:
             continue
-        m = _FIELD_LINE.match(c.text)
+        m = _FIELD_LINE.match(c.text) if ":" in c.text else None
         key = word_keys(m.group("key")) if m else []
         if m is None or not key or any(k not in DATE_UNITS for k in key):
             continue
