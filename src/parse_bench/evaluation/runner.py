@@ -1015,20 +1015,21 @@ class EvaluationRunner:
                 if isinstance(test_case, LayoutDetectionTestCase):
                     if not test_case.get_layout_annotations():
                         continue
-                    # Tag this synthetic 0 as PARSE, not LAYOUT_DETECTION: the
-                    # layout group scores cross-eval'd parse output, so its
-                    # metrics (rule_pass_rate, etc.) are emitted under the PARSE
-                    # product type. Per-product-type padding only zero-pads a
-                    # metric with failures of a product type that produced it,
-                    # so a LAYOUT_DETECTION-tagged failure here would never reach
-                    # the parse metrics and the provider's no-output pages would
-                    # silently drop out of the denominator (inflating the score).
+                    # Match the successful dispatch above: mixed-rule parse
+                    # evaluation emits PARSE metrics; layout-only or explicitly
+                    # filtered cross-evaluation emits LAYOUT_DETECTION metrics.
+                    # A failure tagged differently would escape zero-padding.
+                    missing_product = (
+                        ProductType.PARSE
+                        if self.multi_task and self._has_mixed_rules(test_case) and product_type != "layout_detection"
+                        else ProductType.LAYOUT_DETECTION
+                    )
                     evaluation_results.append(
                         EvaluationResult(
                             test_id=test_id,
                             example_id=test_id,
                             pipeline_name=pipeline_name or self.output_dir.name,
-                            product_type=ProductType.PARSE.value,
+                            product_type=missing_product.value,
                             success=False,
                             metrics=[],
                             error="No usable inference output for this example",
@@ -1265,11 +1266,35 @@ class EvaluationRunner:
                 # handler below closes over a stable mapping).
                 future_tasks: dict[Future, TaskEntry] = {}
 
+                def _record_worker_failure(entry: TaskEntry, reason: str) -> None:
+                    nonlocal failed
+                    task, _label, _attempts = entry
+                    inf_dict, tc_dict = task[:2]
+                    evaluation_results.append(
+                        EvaluationResult(
+                            test_id=tc_dict["test_id"],
+                            example_id=inf_dict["request"]["example_id"],
+                            pipeline_name=inf_dict["pipeline_name"],
+                            product_type=(
+                                ProductType.LAYOUT_DETECTION.value if task[3] is True else inf_dict["product_type"]
+                            ),
+                            success=False,
+                            metrics=[],
+                            error=f"Worker error: {reason}",
+                        )
+                    )
+                    failed += 1
+
                 def _handle_future(future: Future) -> None:
                     nonlocal successful, failed, skipped
                     try:
                         result_dict = future.result()
                         eval_result = EvaluationResult.model_validate(result_dict)
+                    except Exception as exc:
+                        entry = future_tasks[future]
+                        _record_worker_failure(entry, str(exc))
+                        log_progress(entry[1], "FAILED (worker error)")
+                    else:
                         evaluation_results.append(eval_result)
 
                         if eval_result.success:
@@ -1281,17 +1306,12 @@ class EvaluationRunner:
                         else:
                             failed += 1
                             log_progress(eval_result.test_id, "FAILED")
-                    except Exception:
-                        # Worker process error
-                        failed += 1
-                        log_progress("unknown", "FAILED (worker error)")
 
                     # Update progress (can't do this in worker due to separate processes)
                     _note_completed()
 
                 def _fail_timed_out(entry: TaskEntry) -> None:
-                    nonlocal failed
-                    failed += 1
+                    _record_worker_failure(entry, f"timed out after {worker_timeout}s")
                     log_progress(entry[1], f"FAILED (worker timed out after {worker_timeout}s)")
                     _note_completed()
 

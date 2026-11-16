@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 
 from parse_bench.evaluation import runner as runner_mod
-from parse_bench.evaluation.runner import EvaluationRunner, _drain_eval_futures
+from parse_bench.evaluation.runner import EvaluationRunner, _drain_eval_futures, _is_infra_failure
 from parse_bench.schemas.pipeline_io import InferenceRequest, InferenceResult
 from parse_bench.schemas.product import ProductType
 
@@ -110,36 +110,46 @@ def test_drain_reports_a_future_that_finishes_during_the_timeout_sweep() -> None
 # --- end-to-end through run_evaluation ---------------------------------------
 
 
-def _write_case(gt_dir: Path, out_dir: Path, name: str) -> str:
+def _write_case(gt_dir: Path, out_dir: Path, name: str, product_type: ProductType = ProductType.EXTRACT) -> str:
     """Create a matching (test case, result) pair; return the loader's test_id."""
     test_id = f"g/{name}"
     doc_dir = gt_dir / "g"
     doc_dir.mkdir(parents=True, exist_ok=True)
     (doc_dir / f"{name}.pdf").write_bytes(b"%PDF-1.4 dummy")
-    (doc_dir / f"{name}.test.json").write_text(
-        json.dumps(
-            {
-                "data_schema": {"type": "object", "properties": {"name": {"type": "string"}}},
-                "expected_output": {"name": "Alice"},
-            }
-        )
+    config = (
+        {"expected_markdown": "Quarterly revenue rose 20 percent."}
+        if product_type == ProductType.PARSE
+        else {
+            "data_schema": {"type": "object", "properties": {"name": {"type": "string"}}},
+            "expected_output": {"name": "Alice"},
+        }
     )
+    (doc_dir / f"{name}.test.json").write_text(json.dumps(config), encoding="utf-8")
     now = datetime(2026, 1, 1, 0, 0, 0)
     result = InferenceResult(
         request=InferenceRequest(
             example_id=test_id,
             source_file_path="/tmp/doc.pdf",
-            product_type=ProductType.EXTRACT,
+            product_type=product_type,
         ),
         pipeline_name="test-pipe",
-        product_type=ProductType.EXTRACT,
+        product_type=product_type,
         raw_output={},
-        output={
-            "task_type": "extract",
-            "example_id": test_id,
-            "pipeline_name": "test-pipe",
-            "extracted_data": {"name": "Alice"},
-        },
+        output=(
+            {
+                "task_type": "parse",
+                "example_id": test_id,
+                "pipeline_name": "test-pipe",
+                "markdown": "Quarterly revenue rose 20 percent.",
+            }
+            if product_type == ProductType.PARSE
+            else {
+                "task_type": "extract",
+                "example_id": test_id,
+                "pipeline_name": "test-pipe",
+                "extracted_data": {"name": "Alice"},
+            }
+        ),
         started_at=now,
         completed_at=now,
         latency_in_ms=0,
@@ -194,6 +204,12 @@ def test_hung_worker_is_reported_and_never_blocks_the_rest_of_the_run(
     by_id = {r.test_id: r for r in summary.per_example_results}
     assert summary.successful == 2, "documents queued behind the hung one must still be evaluated"
     assert summary.failed == 1, "the timed-out document is counted as a failure, not silently dropped"
+    assert summary.total_examples == summary.successful + summary.failed + summary.skipped == 3
+    assert by_id[hung_id].example_id == hung_id
+    assert by_id[hung_id].pipeline_name == "test-pipe"
+    assert by_id[hung_id].product_type == "extract"
+    assert not by_id[hung_id].success and _is_infra_failure(by_id[hung_id])
+    assert "timed out" in (by_id[hung_id].error or "")
     for ok_id in ok_ids:
         assert by_id[ok_id].success
 
@@ -262,3 +278,45 @@ def test_documents_queued_behind_a_stall_are_retried_before_being_blamed(
     # once, not once per attempt.
     assert out.count("FAILED (worker timed out after 0.5s)") == 1
     assert f"{hung_id}: FAILED (worker timed out after 0.5s)" in out
+    assert len(summary.per_example_results) == summary.total_examples == 3
+    assert sum(result.test_id == hung_id for result in summary.per_example_results) == 1
+    assert not by_id[hung_id].success and _is_infra_failure(by_id[hung_id])
+
+
+@pytest.mark.parametrize("failure", ["exception", "invalid_result"])
+@pytest.mark.parametrize("product_type", [ProductType.EXTRACT, ProductType.PARSE])
+def test_worker_failure_keeps_an_identifiable_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str, product_type: ProductType
+) -> None:
+    gt_dir, out_dir = tmp_path / "gt", tmp_path / "out"
+    failed_id = _write_case(gt_dir, out_dir, "aaa_fails", product_type)
+    good_id = _write_case(gt_dir, out_dir, "bbb_ok", product_type)
+    real_worker = runner_mod._evaluate_single_worker
+
+    def worker(*task: Any) -> dict[str, Any]:
+        if task[1]["test_id"] == failed_id:
+            if failure == "exception":
+                raise RuntimeError("worker terminated")
+            return {"invalid": "worker result"}
+        return real_worker(*task)  # type: ignore[no-any-return]
+
+    monkeypatch.setattr(runner_mod, "_evaluate_single_worker", worker)
+    monkeypatch.setattr(runner_mod, "ProcessPoolExecutor", ThreadPoolExecutor)
+    summary = EvaluationRunner(
+        output_dir=out_dir,
+        test_cases_dir=gt_dir,
+        next_metrics=product_type == ProductType.PARSE,
+        next_only=product_type == ProductType.PARSE,
+    ).run_evaluation(product_type=product_type.value, use_rich=False, max_workers=1)
+
+    assert summary.successful == summary.failed == 1
+    assert summary.total_examples == 2
+    by_id = {result.test_id: result for result in summary.per_example_results}
+    assert by_id[good_id].success
+    failed = by_id[failed_id]
+    assert failed.example_id == failed_id
+    assert failed.pipeline_name == "test-pipe"
+    assert failed.product_type == product_type.value
+    assert not failed.success and failed.metrics == []
+    assert (failed.error or "").startswith("Worker error:")
+    assert _is_infra_failure(failed)

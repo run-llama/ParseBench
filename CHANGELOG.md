@@ -12,6 +12,14 @@ All notable changes to `parse-bench` are recorded here. The format follows
 - Add opt-in `section_matching: nested-v1` for header/footer rules; nested formatting and pagination tags no longer cause false failures. Unflagged rules retain legacy behavior.
 - Add dataset metadata `sub_page_handling: transparent-v1` to ignore GT-only `<sub_page>` containers in text and formatting scoring while retaining their content. Required by dataset v2.02; old datasets retain their existing behavior.
 - Bound oversized form-scoring inputs to avoid excessive matching work.
+- Missing layout-only outputs count as zero in extended layout averages, matching the product type used by
+  successful evaluations. Failed or timed-out pool workers retain identifiable failure rows in evaluation reports,
+  so downstream coverage checks can identify them. Infrastructure failures remain excluded from zero-padding.
+- `chart_next` skips empty HTML rows when combining per-series tables. An empty `<tr></tr>` no longer aborts
+  extended scoring for the document.
+- Evaluation's pipeline-name filter matches the exact name stored in each result. Similarly named pipelines
+  and matching ancestor directories no longer contaminate a selected pipeline's metrics; renamed or flat result
+  directories remain filterable using their saved `pipeline_name` rather than the renamed directory name.
 
 ### Added
 - Replay saved evaluations with Metric Lab scoring policies and retain reclassifiable form-coverage events.
@@ -44,11 +52,6 @@ All notable changes to `parse-bench` are recorded here. The format follows
 - Gemini 4 Argon pricing in the Google provider.
 
 ### Scoring
-- `chart_next` skips empty HTML rows when combining per-series tables. An empty `<tr></tr>` no longer aborts
-  extended scoring for the document.
-- Evaluation's pipeline-name filter matches the exact name stored in each result. Similarly named pipelines
-  and matching ancestor directories no longer contaminate a selected pipeline's metrics; renamed or flat result
-  directories remain filterable using their saved `pipeline_name` rather than the renamed directory name.
 - Layout adapters for the `mineru2605pro` and `mistral_ocr` providers. Their results fell back to the LlamaParse
   adapter, which re-scaled MinerU2.5-Pro's normalized boxes to the page corner (ParseBench 2 visual grounding 75.81
   instead of 82.23) and read Mistral OCR's blocks slightly differently (81.86 instead of 81.82).
