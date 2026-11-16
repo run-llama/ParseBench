@@ -6,12 +6,7 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
-## [2.0.3] - 2026-11-16
-
 ### Fixed
-- Add opt-in `section_matching: nested-v1` for header/footer rules; nested formatting and pagination tags no longer cause false failures. Unflagged rules retain legacy behavior.
-- Add dataset metadata `sub_page_handling: transparent-v1` to ignore GT-only `<sub_page>` containers in text and formatting scoring while retaining their content. Required by dataset v2.02; old datasets retain their existing behavior.
-- Bound oversized form-scoring inputs to avoid excessive matching work.
 - Missing layout-only outputs count as zero in extended layout averages, matching the product type used by
   successful evaluations. Failed or timed-out pool workers retain identifiable failure rows in evaluation reports,
   so downstream coverage checks can identify them. Infrastructure failures remain excluded from zero-padding.
@@ -20,6 +15,13 @@ All notable changes to `parse-bench` are recorded here. The format follows
 - Evaluation's pipeline-name filter matches the exact name stored in each result. Similarly named pipelines
   and matching ancestor directories no longer contaminate a selected pipeline's metrics; renamed or flat result
   directories remain filterable using their saved `pipeline_name` rather than the renamed directory name.
+
+## [2.0.3] - 2026-11-16
+
+### Fixed
+- Add opt-in `section_matching: nested-v1` for header/footer rules; nested formatting and pagination tags no longer cause false failures. Unflagged rules retain legacy behavior.
+- Add dataset metadata `sub_page_handling: transparent-v1` to ignore GT-only `<sub_page>` containers in text and formatting scoring while retaining their content. Required by dataset v2.02; old datasets retain their existing behavior.
+- Bound oversized form-scoring inputs to avoid excessive matching work.
 
 ### Added
 - Replay saved evaluations with Metric Lab scoring policies and retain reclassifiable form-coverage events.
