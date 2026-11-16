@@ -527,6 +527,25 @@ def read_output(
                 i += 1
             add_grid(rows)
             continue
+        # CommonMark tables need not have outer pipes. An explicit delimiter row
+        # identifies even a two-row grid; the delimiter is not a value row.
+        if (
+            _BARE_ROW.match(line)
+            and i + 1 < len(lines)
+            and _PIPE_SEP.match(lines[i + 1])
+            and len(_PIPE_SPLIT.split(line)) == len(_PIPE_SPLIT.split(lines[i + 1].strip().strip("|")))
+        ):
+            rows = [_PIPE_SPLIT.split(line)]
+            width = len(rows[0])
+            i += 2
+            while i < len(lines) and _BARE_ROW.match(lines[i]):
+                parts = _PIPE_SPLIT.split(lines[i])
+                if len(parts) != width:
+                    break
+                rows.append(parts)
+                i += 1
+            add_grid(rows)
+            continue
         if _BARE_ROW.match(line):
             # "Tätigkeit | ab/von | bis" then "- [ ] Minijob | 29,517.20 | [___]": three or more lines (blank lines
             # between) with the same number of " | " and no outer pipes are a grid without a delimiter row
@@ -601,6 +620,8 @@ class Reference:
     tables: list[RefTable]
     source: str  # tree | rules
     unscorable: int = 0
+    # Trees may annotate only selected fields; representation does not imply coverage.
+    exhaustive: bool = True
 
 
 def _is_empty_value(v: Any) -> bool:
@@ -875,6 +896,7 @@ def forms_reference(metadata: Any, rules: Sequence[Any] | None = None) -> Refere
         fb: dict[str, Any] = meta["form_bench"] if isinstance(meta.get("form_bench"), dict) else {}
         excluded = list(forms.get("review_excluded_pages") or []) + list(fb.get("review_excluded_pages") or [])
         ref = reference_from_tree(gt["pages"], excluded)
+        ref.exhaustive = forms.get("reference_scope") != "mapped_fields_only"
         if any(it.kind != "anchor" for it in ref.items):
             return ref
         return None
@@ -1251,9 +1273,32 @@ def locate(ref: Reference, out: Out) -> tuple[list[Occ | None], list[bool]]:
             for y in range(best.start, best.end + 1):
                 used[y] = True
     _repair_sections(ref, out, per_item, occ, used)
+    _repair_question_options(ref, out, per_item, occ, used)
     _repair_blocks(ref, out, per_item, occ, used)
     _repair_runs(ref, out, per_item, occ, used)
     _first_segments(ref, out, occ, used, found)
+    # The colon bonus may prefer a shortened caption before a printed parenthesised
+    # suffix ("Total liabilities: (D1)"). Retain the suffix when it is explicitly
+    # present and completes the exact GT caption, rather than reading it as a value.
+    for x, o in enumerate(occ):
+        if o is None or o.q >= 1 - 1e-9:
+            continue
+        cell = out.tcell[o.end]
+        if out.tcell[o.start] != cell:
+            continue
+        tail = out.cells[cell].text[out.toks[o.end].end :]
+        hint = _LEAD_HINT.match(tail)
+        if hint is None:
+            continue
+        limit = out.toks[o.end].end + hint.end()
+        extension = [t for t in _cell_tokens(out, cell) if t > o.end and out.toks[t].end <= limit]
+        if not extension or any(used[t] or out.toks[t].box for t in extension):
+            continue
+        candidate = Occ(x, o.start, extension[-1], 1.0)
+        if _span_keys(out, candidate) == word_keys(ref.items[x].label):
+            occ[x] = candidate
+            for t in extension:
+                used[t] = True
     return occ, used
 
 
@@ -1516,6 +1561,70 @@ def _copies(ref: Reference, out: Out, x: int, placed: Occ, used: list[bool]) -> 
         and not any(used[y] for y in range(o.start, o.end + 1))
         and _field_line(out, o, used, len(full))
     ]
+
+
+def _repair_question_options(
+    ref: Reference, out: Out, per_item: list[list[Occ]], occ: list[Occ | None], used: list[bool]
+) -> None:
+    """Repeated options follow their explicitly recorded question, regardless of option order.
+
+    Only a group with an option actually present under its located question is repaired.
+    Unrelated fields and general section context keep their existing matching behavior.
+    """
+    items = ref.items
+    original_occ, original_used = list(occ), list(used)
+    counts = Counter(it.label for it in items if it.kind == "box")
+    heads = [x for x, it in enumerate(items) if it.role == "context" and occ[x] is not None]
+    starts = sorted(occ[x].start for x in heads if occ[x] is not None)
+    moves: list[tuple[int, int, int, Occ | None]] = []
+    for a in heads:
+        heading = occ[a]
+        assert heading is not None
+        lo = heading.end + 1
+        hi = next((start for start in starts if start > heading.end), len(out.toks))
+        members = []
+        for x in range(a + 1, len(items)):
+            if items[x].role in ("context", "section"):
+                break
+            if items[x].kind == "box" and items[x].ctx.split(" > ")[-1] == items[a].label:
+                members.append(x)
+        if len(members) < 2 or not any(counts[items[x].label] > 1 for x in members):
+            continue
+        if not any(q.q >= PASS2_Q and lo <= q.start <= q.end < hi for x in members for q in per_item[x]):
+            continue
+        for x in members:
+            current = occ[x]
+            if current is not None and lo <= current.start <= current.end < hi:
+                continue
+            moves.append((x, lo, hi, current))
+            if current is not None:
+                for token in range(current.start, current.end + 1):
+                    used[token] = False
+                occ[x] = None
+    for x, lo, hi, old in moves:
+        local = [q for q in per_item[x] if q.q >= PASS2_Q and lo <= q.start <= q.end < hi and _standalone(out, q, True)]
+        free = [q for q in local if not any(used[t] for t in range(q.start, q.end + 1))]
+        # Full and shortened captions can describe the same occurrence. Deduplicate
+        # overlapping spans before deciding that two distinct options are ambiguous.
+        candidates: list[Occ] = []
+        for q in sorted(free, key=lambda q: (-q.q, -(q.end - q.start))):
+            if not any(q.start <= other.end and other.start <= q.end for other in candidates):
+                candidates.append(q)
+        if len(candidates) == 1:
+            occ[x] = candidates[0]
+        elif local and not free and old is not None and not any(used[t] for t in range(old.start, old.end + 1)):
+            # A field outside the repairable groups owns the local tokens. Do not
+            # create a new omission by partially repairing this unresolved collision.
+            occ[x] = old
+        elif local and not free:
+            # A partially repairable chain cannot safely displace an option whose
+            # own question was not located. Defer the page's question repair as a
+            # unit instead of leaving a new omission or stealing another slot.
+            occ[:], used[:] = original_occ, original_used
+            return
+        if (chosen := occ[x]) is not None:
+            for token in range(chosen.start, chosen.end + 1):
+                used[token] = True
 
 
 def _repair_sections(
@@ -3031,7 +3140,7 @@ def row_blocks(
         for cell in cells:
             keys = _cell_keys(out, cell)
             for r, hk in ids.items():
-                if r not in starts and hk and keys[: len(hk)] == hk and _caption_spans(forms, out, cell):
+                if r not in starts and hk and keys != hk and keys[: len(hk)] == hk and _caption_spans(forms, out, cell):
                     starts[r] = orow
     caps: dict[int, tuple[int, int]] = {}  # column -> (output row, output column) of its located caption
     for c, x in enumerate(rt.captions):
@@ -3224,6 +3333,60 @@ def _show(it: Item) -> str:
 
 
 _LOST_KINDS = frozenset({"value lost", "field missing", "value without its caption"})
+
+
+def _repeated_id_reading(ref: Reference, out: Out, occ: list[Occ | None], x: int) -> Reading | None:
+    """Read an explicit ID-only value line below an instruction-bearing caption.
+
+    The identifier and local field boundary choose the slot, never the expected value.
+    Ambiguous repeated IDs, other fields and tables end the search conservatively.
+    """
+    it, o = ref.items[x], occ[x]
+    if o is None or it.kind != "text" or it.table >= 0:
+        return None
+    cell = out.tcell[o.end]
+    c = out.cells[cell]
+    if c.table >= 0 or out.tcell[o.start] != cell:
+        return None
+    keys = word_keys(it.label)
+    pid = it.pid or (keys[0] if len(keys) > 1 and _BOX_CODE.fullmatch(keys[0]) else "")
+    if not pid or not any(ch.isdigit() for ch in pid):
+        return None
+    tail = [out.toks[t].key for t in range(o.end + 1, c.last + 1)]
+    if tail and (tail[0] not in {"check", "enter", "see", "include", "attach", "select", "tick"}):
+        return None
+    # A direct numeric reading is not an instruction and must not be replaced.
+    if any(_digits(k) for k in tail):
+        return None
+    boundary = min(
+        (
+            p.start
+            for y, p in enumerate(occ)
+            if y != x
+            and p is not None
+            and p.start > o.end
+            and (ref.items[y].kind in ("text", "sig") or ref.items[y].role in ("section", "context"))
+        ),
+        default=len(out.toks),
+    )
+    matches: list[Reading] = []
+    for ci in range(cell + 1, len(out.cells)):
+        nc = out.cells[ci]
+        if nc.line - c.line > 24 or nc.table >= 0 or nc.first >= boundary:
+            break
+        match = _FIELD_LINE.match(nc.text)
+        if match is None:
+            continue
+        key = word_keys(match.group("key"))
+        if key != word_keys(pid):
+            # Checkboxes may be printed between a heading and its value, but another
+            # key:value field starts a new slot even when it is absent from the GT.
+            break
+        toks = [t for t in _cell_tokens(out, ci) if out.toks[t].start >= match.start("val")]
+        if any(out.toks[t].box for t in toks):
+            return None
+        matches.append(Reading(toks, _span_text(out, toks)))
+    return matches[0] if len(matches) == 1 else None
 
 
 def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mirrored in JavaScript
@@ -3497,6 +3660,41 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
             for x, k in zip(xs, cols, strict=True):
                 if k is not None and (cell := _grid_cell(out, c.table, c.row, k)) >= 0:
                     column_cells[x] = cell
+    # A two-row footer grid may put values ABOVE their captions (place/date | signature).
+    # Require a caption-only bottom row: unannotated neighbours must be explicit
+    # parenthesised word-only captions. Select by geometry, never by expected values.
+    footer_caps: dict[int, dict[int, int]] = {}
+    for x, it in enumerate(items):
+        o = occ[x]
+        if it.kind not in ("text", "sig") or it.table >= 0 or o is None:
+            continue
+        ci = out.tcell[o.start]
+        c = out.cells[ci]
+        if c.table < 0 or c.row != 1 or len(out.grids[c.table]) != 2:
+            continue
+        if _cell_keys(out, ci) != word_keys(it.label):
+            continue
+        footer_caps.setdefault(c.table, {})[ci] = x
+    for table, caps in footer_caps.items():
+        upper, lower = out.grids[table]
+        if len(lower) < 2 or len(upper) != len(lower) or len(set(lower)) != len(lower):
+            continue
+
+        def footer_caption(ci: int, captions: dict[int, int] = caps) -> bool:
+            if ci in captions:
+                return True
+            text = clean_text(out.cells[ci].text).strip() if ci >= 0 else ""
+            words = word_keys(text)
+            return bool(_PAREN_ALL.fullmatch(text)) and 0 < len(words) <= 8 and not any(_digits(w) for w in words)
+
+        if not all(footer_caption(ci) for ci in lower) or len(set(upper)) != len(upper):
+            continue
+        if any(ci < 0 or out.cells[ci].row != 0 or any(stop[t] for t in _cell_tokens(out, ci)) for ci in upper):
+            continue
+        for above, below in zip(upper, lower, strict=True):
+            if below in caps:
+                column_cells[caps[below]] = above
+
     item_readings: dict[int, list[Reading]] = {}
     for x, it in enumerate(items):
         if it.kind not in ("text", "sig"):
@@ -3514,8 +3712,11 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
         elif o is not None:
             located.add(x)
             readings = read_slot(out, o, stop, owned, ref_neighbours.get(x, (False, False)), ids_at, values=values)
+            repeated_id = _repeated_id_reading(ref, out, occ, x)
+            if repeated_id is not None:
+                readings = [repeated_id]
             # a filled field only: a blank field never takes its value from before its caption
-            if it.value is not None:
+            if it.value is not None and repeated_id is None:
                 # the field's printed id before its caption in its own cell (``12 Quantity``) is no value
                 pid = "".join(word_keys(it.pid))
                 before = [
@@ -3847,7 +4048,7 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
     # Fields the output invents: page furniture written as a field (OMB No.: 1545-0112) or a field that is
     # not on the form. Only an exhaustive reference (the tree) can tell; a spot reference lists some
     # fields and cannot. A small error on the floor, no atom loss.
-    extras = _extra_fields(out, used, captions, others, part_lines) if ref.source == "tree" else []
+    extras = _extra_fields(out, used, captions, others, part_lines) if ref.source == "tree" and ref.exhaustive else []
     for key_text, val_text in extras:
         events.append(Event("extra field", "minor", "extra", key_text, "", val_text, "extra field", -1))
 
@@ -3920,7 +4121,7 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
     lanes["ids"] = ids_found / len(with_pid) if with_pid else None
     lanes["extra"] = (
         _clamp01(1 - len(extras) / (n_located + len(extras)))
-        if ref.source == "tree" and (n_located + len(extras)) > 0
+        if ref.source == "tree" and ref.exhaustive and (n_located + len(extras)) > 0
         else None
     )
     return FormsResult(
