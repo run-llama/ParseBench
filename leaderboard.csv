@@ -132,7 +132,7 @@ PaddleOCR-VL,VLM - Open Weight,40.9,67.1,0.9,82.7,54,0,,,,,,PaddlePaddle/PaddleO
 OvisOCR2,VLM - Open Weight,40.84,77.37,1.01,88.47,37.35,0,,,,,,ATH-MaaS/OvisOCR2,no
 Gemma-4-E4B-it,VLM - Open Weight,41.13,43.05,5.86,83.90,41.03,31.79,,,,,,google/gemma-4-E4B-it,yes
 Granite Vision 4.1 4B,VLM - Open Weight,39.45,63.81,47.47,64.43,21.52,0,,,,,,ibm-granite/granite-vision-4.1-4b,no
-WeVisDoc-2B,VLM - Open Weight,38.90,70.42,0.86,76.90,46.32,0.00,,,,,,tencent/WeVisDoc-2B,yes
+WeVisDoc-2B,VLM - Open Weight,38.90,70.42,0.86,76.91,46.32,0.00,,,,,,tencent/WeVisDoc-2B,yes
 WeVisDoc-4B,VLM - Open Weight,36.12,65.86,0.79,70.28,43.66,0.00,,,,,,tencent/WeVisDoc-4B,yes
 Qwen3.5-4B,VLM - Open Weight,30.85,7.97,2.01,83.12,43.76,17.41,,,,,,Qwen/Qwen3.5-4B,yes
 Qwen3.5-9B,VLM - Open Weight,31.9,9.9,5.4,90.5,22,31.8,,,,,,Qwen/Qwen3.5-9B,no
