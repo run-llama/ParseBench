@@ -6,6 +6,16 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+### Scoring
+- A layout page the provider returned no layout for scores 0 instead of being left out of the average, as a document
+  with no layout at all already did; a provider that skips hard pages no longer scores above one that attempts them.
+  The leaderboard re-score now re-scores those dimensions instead of keeping their old value. Two scorer crashes that
+  left pages out are fixed: layout labels outside the 11 core classes (`Code`, `Document Index`, ...) map to their core
+  class in every `parse_with_layout` adapter, and the TEDS, header-accuracy and structural-consistency table metrics
+  read a malformed `colspan`/`rowspan` as HTML does (GriTS and TRM already count such a table as unparseable). On the
+  ParseBench leaderboard this moves GLM-5.3 Flash Grounding -0.44, PyMuPDF4LLM -0.25, Anthropic Haiku 5.5 -0.04,
+  Infinity-Parser2-Flash Tables -0.16 and Qianfan-OCR -0.14; ParseBench 2 already scored such pages and is unchanged.
+
 ## [2.1.0] - 2026-11-17
 
 ### Scoring

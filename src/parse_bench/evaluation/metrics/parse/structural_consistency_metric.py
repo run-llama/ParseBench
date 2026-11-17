@@ -21,6 +21,7 @@ from bs4 import BeautifulSoup
 
 from parse_bench.evaluation.metrics.base import Metric
 from parse_bench.evaluation.metrics.parse.table_extraction import extract_html_tables
+from parse_bench.evaluation.metrics.parse.table_parsing import html_span
 from parse_bench.schemas.evaluation import MetricValue
 
 
@@ -81,8 +82,8 @@ def _check_table_consistency(table_html: str) -> dict[str, Any]:
             while (row_idx, col_idx) in occupied:
                 col_idx += 1
 
-            rowspan = int(str(cell.get("rowspan", "1")))
-            colspan = int(str(cell.get("colspan", "1")))
+            rowspan = html_span(cell.get("rowspan"))
+            colspan = html_span(cell.get("colspan"))
 
             for r in range(row_idx, row_idx + rowspan):
                 for c in range(col_idx, col_idx + colspan):

@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import BOARDS, DIMENSIONS, V1, V2_DIMENSIONS, Board, git_head, load_map, overall  # noqa: E402
 
 from parse_bench.evaluation.next_score import NEXT_DIMENSIONS  # noqa: E402
-from parse_bench.evaluation.runner import _is_infra_failure, _is_skipped_result  # noqa: E402
+from parse_bench.evaluation.runner import _is_infra_failure  # noqa: E402
 from parse_bench.schemas.evaluation import EvaluationResult  # noqa: E402
 
 # Published results category (results/<pipeline>/<category>.jsonl) behind each evaluation group.
@@ -185,14 +185,14 @@ def rescore_pipeline(
         value = (report.get("aggregate_metrics") or {}).get(f"avg_{metric}")
         # Failures the evaluator counts as the provider's (no output, no layout)
         # are already 0 in the average. Failures it leaves out of the
-        # denominator (harness crashes, skipped pages) would make the average
+        # denominator (harness crashes) would make the average
         # cover fewer pages than the ground truth, so the dimension is reported
         # as an error instead of a score. The classification is the evaluator's
         # own, so this always agrees with `parse-bench run`.
         dropped = Counter(
             (r.error or "")[:200]
             for r in (EvaluationResult.model_validate(x) for x in report.get("per_example_results") or [])
-            if not r.success and (_is_infra_failure(r) or _is_skipped_result(r))
+            if not r.success and _is_infra_failure(r)
         )
         error = None
         if dropped:
@@ -227,11 +227,11 @@ def rescore_pipeline(
 
 
 def _dropped(report: dict[str, Any]) -> Counter:
-    """Pages the evaluator left out of the average (harness crashes, skipped pages), by error."""
+    """Pages the evaluator left out of the average (harness crashes), by error."""
     return Counter(
         (r.error or "")[:200]
         for r in (EvaluationResult.model_validate(x) for x in report.get("per_example_results") or [])
-        if not r.success and (_is_infra_failure(r) or _is_skipped_result(r))
+        if not r.success and _is_infra_failure(r)
     )
 
 

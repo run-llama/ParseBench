@@ -211,19 +211,19 @@ def test_genuine_failures_pad_score_metrics_with_zeros() -> None:
     assert aggregate["max_rule_pass_rate"] == 0.8
 
 
-def test_skipped_results_do_not_pad() -> None:
+def test_a_page_without_layout_scores_zero() -> None:
+    """A provider that returns layout for some pages but not this one is scored 0 on it, not left out."""
     runner = EvaluationRunner(output_dir=Path("/tmp/unused"))
     results = [
         _success("a", [MetricValue(metric_name="mean_f1", value=0.9)], product_type="layout_detection"),
         _success("b", [MetricValue(metric_name="mean_f1", value=0.7)], product_type="layout_detection"),
-        # Cross-eval page the provider was never meant to be scored on
         _failure("c", error="No layout data for page 0", product_type="layout_detection"),
     ]
 
     aggregate = runner._aggregate_metrics(results)
 
-    assert aggregate["avg_mean_f1"] == pytest.approx(0.8)
-    assert aggregate["min_mean_f1"] == 0.7
+    assert aggregate["avg_mean_f1"] == pytest.approx(1.6 / 3)
+    assert aggregate["min_mean_f1"] == 0.0
 
 
 def test_infra_failures_do_not_pad() -> None:

@@ -27,6 +27,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+from parse_bench.evaluation.metrics.parse.table_parsing import html_span
 from parse_bench.schemas.evaluation import MetricValue
 
 _WS = re.compile(r"\s+")
@@ -40,7 +41,7 @@ def _row_width(tr: Any) -> int:
     w = 0
     for c in tr.find_all(["td", "th"], recursive=False):
         try:
-            w += int(c.get("colspan", 1) or 1)
+            w += html_span(c.get("colspan"))
         except (TypeError, ValueError):
             w += 1
     return w

@@ -76,7 +76,7 @@ def test_hy4_layout_resolves_to_its_adapter(monkeypatch: pytest.MonkeyPatch, tmp
 
 def test_hy4_empty_layout_scores_as_a_provider_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A successful call that returns no layout blocks is the provider's 0, not a harness error."""
-    from parse_bench.evaluation.runner import _is_infra_failure, _is_skipped_result
+    from parse_bench.evaluation.runner import _is_infra_failure
     from parse_bench.schemas.evaluation import EvaluationResult
 
     result = _run_hy4_page(monkeypatch, tmp_path, "")
@@ -92,4 +92,4 @@ def test_hy4_empty_layout_scores_as_a_provider_failure(monkeypatch: pytest.Monke
         success=False,
         error=f"Worker error: {exc.value}",
     )
-    assert not _is_infra_failure(failed) and not _is_skipped_result(failed)
+    assert not _is_infra_failure(failed)

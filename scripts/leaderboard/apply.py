@@ -39,8 +39,8 @@ from common import (  # noqa: E402
 
 COLUMNS = ["Overall", *V1.dimensions]  # v1; see columns()
 POLICY = (
-    "Pages the provider produced nothing usable for score 0. A dimension where the evaluator left pages out of its "
-    "average (a harness error or missing layout data) is not re-scored and keeps its old value."
+    "Pages the provider produced nothing usable for (no record, empty output, no layout) score 0. A dimension where "
+    "the evaluator left pages out of its average (a harness error) is not re-scored and keeps its old value."
 )
 SHORT = V1.short
 
