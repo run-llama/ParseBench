@@ -19,4 +19,4 @@ A clipped prediction receives no new inward allowance. It can still receive part
 
 ## Compatibility
 
-The dataset must opt in; updating the CLI alone does not change old scores. CLI 2.0.4 and earlier ignore this new field and score using legacy tightness. To reproduce scores from an annotated dataset, record both its revision and a scorer revision that implements this contract. This support is currently unreleased; do not claim that CLI 2.0.4 applies the allowance.
+The dataset must opt in; updating the CLI alone does not change old scores. CLI 2.0.4 and earlier ignore this new field and score using legacy tightness. To reproduce scores from an annotated dataset, record both its revision and a scorer revision that implements this contract. This support is available in CLI 2.1.0 and later; CLI 2.0.4 does not apply the allowance.
