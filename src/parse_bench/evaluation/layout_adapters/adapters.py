@@ -1268,12 +1268,11 @@ def _parse_with_layout_to_layout_output(
     *,
     model: LayoutDetectionModel,
     page_filter: int | None = None,
-    collapse_to_core: bool = False,
 ) -> LayoutOutput:
     """Shared conversion for LLM parse_with_layout adapters (Google/OpenAI/Anthropic).
 
-    ``collapse_to_core`` maps Canonical17 labels outside Core11 (``Code``, ``Document Index``, ...)
-    to their Core11 class; otherwise they pass through and the label mapper rejects the page.
+    Canonical17 labels outside Core11 (``Code``, ``Document Index``, ...) map to their Core11 class; passed
+    through, the label mapper would reject the whole page.
     """
     # Handle LayoutOutput (e.g. from multi-task re-evaluation)
     if isinstance(inference_result.output, LayoutOutput):
@@ -1307,7 +1306,7 @@ def _parse_with_layout_to_layout_output(
 
                 lookup_key = str_label.lower().replace("-", "_")
                 qwen_enum = QWEN3VL_STR_TO_LABEL.get(lookup_key)
-                if qwen_enum is None and collapse_to_core:
+                if qwen_enum is None:
                     core = _canonical_to_core(str_label)
                     if core is not None:
                         qwen_enum = QWEN3VL_STR_TO_LABEL.get(core.value.lower().replace("-", "_"))
@@ -3370,7 +3369,6 @@ class LightOnOcr3LayoutAdapter(Gemma4LayoutAdapter):
             inference_result,
             model=LayoutDetectionModel.OPENAI_COMPATIBLE_VLM_LAYOUT,
             page_filter=page_filter,
-            collapse_to_core=True,
         )
 
 

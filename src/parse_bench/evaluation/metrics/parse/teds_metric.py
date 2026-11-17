@@ -25,6 +25,7 @@ from lxml import etree, html
 from parse_bench.evaluation.metrics.base import Metric
 from parse_bench.evaluation.metrics.parse import fast_tree_edit
 from parse_bench.evaluation.metrics.parse.table_pairing import assign_tables, page_blocking_active
+from parse_bench.evaluation.metrics.parse.table_parsing import html_span
 from parse_bench.evaluation.metrics.parse.utils import normalize_cell_text
 from parse_bench.schemas.evaluation import MetricValue
 
@@ -255,8 +256,8 @@ class TEDS:
 
             new_node = TableTree(
                 node.tag,
-                int(node.attrib.get("colspan", "1")),
-                int(node.attrib.get("rowspan", "1")),
+                html_span(node.attrib.get("colspan")),
+                html_span(node.attrib.get("rowspan")),
                 cell_content,
                 *deque(),
             )

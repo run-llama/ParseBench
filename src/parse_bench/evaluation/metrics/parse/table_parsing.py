@@ -5,6 +5,7 @@ Ported from OlmOCR bench table parsing logic.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -26,6 +27,18 @@ _ASCII_TO_SUBSCRIPT = dict(zip("0123456789", _SUBSCRIPT_DIGITS, strict=True))
 # ``_INLINE_STYLE_MARKER_RUN_RE`` in ``utils.py``.  ``sup``/``sub`` are excluded
 # for the same reason they are there: they are handled by _sup_sub_to_unicode.
 _INLINE_STYLE_TAGS = frozenset({"b", "i", "u", "s", "del", "strike", "ins", "mark", "span"})
+
+_SPAN_DIGITS = re.compile(r"\s*([0-9]+)")
+
+
+def html_span(value: object) -> int:
+    """A ``colspan``/``rowspan`` attribute read as HTML reads it: its leading digits, capped at 1000, and 1 when
+    it has none or they are 0. For the diagnostic table metrics, which must not fail a page on a malformed value;
+    the scored extraction (:func:`parse_html_tables`) rejects such a table as unparseable instead."""
+    if isinstance(value, int):
+        return max(1, min(1000, value))
+    m = _SPAN_DIGITS.match("" if value is None else str(value))
+    return max(1, min(1000, int(m.group(1)))) if m else 1
 
 
 def _separate_abutting_inline_markers(cell: Tag) -> None:

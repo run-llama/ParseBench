@@ -63,7 +63,7 @@ from parse_bench.evaluation.metrics.parse.grits_metric import (
     factored_2dmss,
 )
 from parse_bench.evaluation.metrics.parse.table_extraction import extract_html_tables
-from parse_bench.evaluation.metrics.parse.table_parsing import _sup_sub_to_unicode
+from parse_bench.evaluation.metrics.parse.table_parsing import _sup_sub_to_unicode, html_span
 from parse_bench.evaluation.metrics.parse.utils import (
     cells_match_leader_insensitive,
     normalize_cell_text,
@@ -164,8 +164,8 @@ def _parse_header_cells(table_html: str) -> tuple[list[HeaderCell], int, int]:
             while (row_idx, col_idx) in occupied:
                 col_idx += 1
 
-            rowspan = int(str(cell.get("rowspan", "1")))
-            colspan = int(str(cell.get("colspan", "1")))
+            rowspan = html_span(cell.get("rowspan"))
+            colspan = html_span(cell.get("colspan"))
             is_header = cell.name == "th" or row_idx in thead_row_indices
 
             # Mark occupied
@@ -418,8 +418,8 @@ def _build_text_lookup(table_html: str) -> dict[tuple[int, int], str]:
         for cell in row.find_all(["td", "th"]):
             while (row_idx, col_idx) in occupied:
                 col_idx += 1
-            rowspan = int(str(cell.get("rowspan", "1")))
-            colspan = int(str(cell.get("colspan", "1")))
+            rowspan = html_span(cell.get("rowspan"))
+            colspan = html_span(cell.get("colspan"))
             text = _normalize_header_text(cell.get_text(strip=True))
             for r in range(row_idx, row_idx + rowspan):
                 for c in range(col_idx, col_idx + colspan):
@@ -503,8 +503,8 @@ def _promote_cells_at_positions(pred_html: str, positions: set[tuple[int, int]])
         for cell in row.find_all(["td", "th"]):
             while (row_idx, col_idx) in occupied:
                 col_idx += 1
-            rowspan = int(str(cell.get("rowspan", "1")))
-            colspan = int(str(cell.get("colspan", "1")))
+            rowspan = html_span(cell.get("rowspan"))
+            colspan = html_span(cell.get("colspan"))
             # Check if any of this cell's positions should be promoted
             should_promote = False
             for r in range(row_idx, row_idx + rowspan):

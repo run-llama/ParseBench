@@ -93,8 +93,9 @@ def test_lightonocr3_matcher_reads_served_model() -> None:
     assert not LightOnOcr3LayoutAdapter.matches(_result("unregistered", {"_config": {"model": "loocr-grounding"}}))
 
 
-def test_lightonocr3_collapses_labels_outside_core11() -> None:
+@pytest.mark.parametrize("pipeline_name", ["lightonocr3_4b_vllm", "anthropic_opus_5_5_parse_with_layout"])
+def test_labels_outside_core11_collapse_to_their_core_class(pipeline_name: str) -> None:
     """``Code`` has no Qwen3-VL class; passed through, the label mapper failed the whole page."""
-    result = _result("lightonocr3_4b_vllm", {}, label="Code")
+    result = _result(pipeline_name, {}, label="Code")
     [prediction] = create_layout_adapter_for_result(result).to_layout_output(result).predictions
     assert prediction.label == str(int(QWEN3VL_STR_TO_LABEL["text"]))

@@ -8,9 +8,9 @@ re-score it and the numbers stay current as the harness improves.
   (`results/<pipeline>/<category>.jsonl`) at a pinned `results_revision`.
 - **Verified** rows (`Verified=yes` in the csv) are re-scored from those outputs with the current ParseBench
   harness against the ground truth at `data_revision`. Pages the provider produced nothing usable for (no record,
-  empty output, no layout) score 0, exactly as in `parse-bench run`. If the evaluator leaves any page of a dimension
-  out of its average (a harness error such as an unknown label, or layout data missing from the record), that
-  dimension is not re-scored: it keeps its old value and is listed in the re-score report.
+  empty output, no layout for the page) score 0, exactly as in `parse-bench run`. If the evaluator leaves any page of
+  a dimension out of its average (a harness error, such as a crash in a scorer), that dimension is not re-scored: it
+  keeps its old value and is listed in the re-score report.
 - **Unverified** rows (`Verified=no`, marked † in the README) have no published outputs; their numbers are as
   submitted, and the map's `note` says why. They cannot be added or changed until outputs are published.
 - Documents the provider was run on but that failed without output (a timeout, a provider error) have no record;

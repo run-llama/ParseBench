@@ -56,17 +56,6 @@ if TYPE_CHECKING:
     from parse_bench.schemas.parse_output import ParseOutput
 
 
-def _is_skipped_result(result: EvaluationResult) -> bool:
-    """Distinguish a legitimately-skipped result from a genuine failure.
-
-    Both carry ``success=False``. A skip is a case the provider was never
-    meant to be scored on (e.g. a cross-eval page for which it produced no
-    layout data); a failure is a case it was meant to handle but errored on.
-    Only failures should count as 0 in the aggregate denominator.
-    """
-    return bool(result.error and "No layout data" in result.error)
-
-
 def _is_infra_failure(result: EvaluationResult) -> bool:
     """Failure caused by the evaluation harness, not by the provider's output.
 
@@ -1166,9 +1155,6 @@ class EvaluationRunner:
                 if eval_result.success:
                     successful += 1
                     log_progress(tc.test_id, "OK")
-                elif _is_skipped_result(eval_result):
-                    skipped += 1
-                    log_progress(tc.test_id, "skipped (no layout data)")
                 else:
                     failed += 1
                     log_progress(tc.test_id, "FAILED")
@@ -1300,9 +1286,6 @@ class EvaluationRunner:
                         if eval_result.success:
                             successful += 1
                             log_progress(eval_result.test_id, "OK")
-                        elif _is_skipped_result(eval_result):
-                            skipped += 1
-                            log_progress(eval_result.test_id, "skipped (no layout data)")
                         else:
                             failed += 1
                             log_progress(eval_result.test_id, "FAILED")
@@ -1467,7 +1450,7 @@ class EvaluationRunner:
         # same group.
         failed_by_product: dict[str, int] = {}
         for r in evaluation_results:
-            if r.success or _is_skipped_result(r) or _is_infra_failure(r):
+            if r.success or _is_infra_failure(r):
                 continue
             failed_by_product[r.product_type] = failed_by_product.get(r.product_type, 0) + 1
 

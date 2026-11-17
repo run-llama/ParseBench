@@ -800,3 +800,26 @@ def test_page_blocking_length_mismatch_falls_back_to_global():
     res = metric.compute(exp_tables, act_tables, expected_pages=[1], actual_pages=[1, 2])
     assert res[0].value == 1.0
     assert set(_pairing(res)) == {(0, 1), (1, 0)}
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(None, 1), ("2", 2), (" 3 ", 3), ("4>Years Ended", 4), ("\\\\", 1), ("", 1), ("0", 1), ("99999", 1000), (2, 2)],
+)
+def test_html_span_reads_spans_as_html_does(value: object, expected: int) -> None:
+    from parse_bench.evaluation.metrics.parse.table_parsing import html_span
+
+    assert html_span(value) == expected
+
+
+@pytest.mark.parametrize("bad", ["'\\\\'", "'4>Years Ended December 31,</td><td colspan='"])
+def test_diagnostic_table_metrics_read_a_malformed_span_instead_of_failing_the_page(bad: str) -> None:
+    """GriTS and TRM count such a predicted table as unparseable; the diagnostics must not crash the whole page."""
+    from parse_bench.evaluation.metrics.parse.header_accuracy_metric import HeaderAccuracyMetric
+    from parse_bench.evaluation.metrics.parse.structural_consistency_metric import StructuralConsistencyMetric
+    from parse_bench.evaluation.metrics.parse.teds_metric import TEDSMetric
+
+    expected = "<table><tr><td>a</td><td>b</td></tr></table>"
+    actual = f"<table><tr><td colspan={bad}>a</td><td>b</td></tr></table>"
+    for metric in (TEDSMetric(), HeaderAccuracyMetric(), StructuralConsistencyMetric()):
+        metric.compute(expected, actual)
