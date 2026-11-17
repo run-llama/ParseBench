@@ -16,6 +16,11 @@ All notable changes to `parse-bench` are recorded here. The format follows
   ParseBench leaderboard this moves GLM-5.3 Flash Grounding -0.44, PyMuPDF4LLM -0.25, Anthropic Haiku 5.5 -0.04,
   Infinity-Parser2-Flash Tables -0.16 and Qianfan-OCR -0.14; ParseBench 2 already scored such pages and is unchanged.
 
+## [2.1.0] - 2026-11-17
+
+### Scoring
+- Opt-in word-height outward layout tolerance (`bbox_tolerance`, `outward-word-height-10-v1`). Annotated datasets can allow up to 10% of letter height outside each edge, capped by neighbors. Existing datasets retain their scores; localization, attribution, grouping and extra-box penalties are unchanged. Box-only, table and rotated regions retain legacy tightness. See `docs/layout-outward-tolerance.md` for dataset preparation and compatibility.
+
 ## [2.0.4] - 2026-11-16
 
 ### Fixed

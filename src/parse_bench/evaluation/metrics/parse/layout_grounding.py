@@ -194,6 +194,20 @@ def _build_page(
     model = Page(
         elements=elements,
         word_boxes=word_boxes,
+        word_outward=(
+            np.array(
+                [
+                    np.array(r.bbox_tolerance.outward_normalized) * [pw, ph, pw, ph]
+                    if r.bbox_tolerance is not None and not r.r
+                    else np.zeros(4)
+                    for r, _ in words
+                ],
+                dtype=float,
+            ).reshape(-1, 4)
+            if any(r.bbox_tolerance is not None for r, _ in words)
+            else None
+        ),
+        page_size=(pw, ph),
         word_tokens=[tuple(t) for t in word_tokens],
         token_text=token_text,
         pred_boxes=np.array(

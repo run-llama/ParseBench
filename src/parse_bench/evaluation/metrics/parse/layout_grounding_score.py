@@ -127,6 +127,8 @@ class Page:
     skip_match: list[bool] = field(default_factory=list)  # True: neutral only for a prediction matching the box
     page: int = 1
     chain_tolerance: float = CHAIN_OVERLAP_POINTS
+    word_outward: np.ndarray | None = None  # (W, 4) left/top/right/bottom in page units
+    page_size: tuple[float, float] | None = None
 
 
 @dataclass
@@ -139,6 +141,55 @@ class PageScore:
     n_extra: int
     element_rows: list[dict[str, Any]]
     prediction_rows: list[dict[str, Any]]
+
+
+def _outward_tightness_iou(
+    page: Page, members: Sequence[int], gt: np.ndarray, pred: np.ndarray, baseline: float
+) -> float:
+    """Grow the region hull only toward outward prediction edges within annotated margins.
+
+    Word-hull growth transfers to the existing region boundary; matching still uses
+    the original boxes. A second neighbor cap accounts for region font padding.
+    Box-only, table and rotated elements retain their original tightness.
+    """
+    if page.word_outward is None or any(
+        page.elements[i].caption or page.elements[i].cls in ("Picture", "Table") or page.elements[i].angle
+        for i in members
+    ):
+        return baseline
+    ids = list(dict.fromkeys(w for i in members for w in page.elements[i].words))
+    if not ids:
+        return baseline
+    boxes = page.word_boxes[ids]
+    expanded = boxes.copy()
+    expanded[:, :2] -= page.word_outward[ids, :2]
+    expanded[:, 2:] += page.word_outward[ids, 2:]
+    ink, outer = _ubox(boxes), _ubox(expanded)
+    margins = np.maximum(0, np.r_[ink[:2] - outer[:2], outer[2:] - ink[2:]])
+    if not margins.any():
+        return baseline
+    own = set(ids)
+    for j, box in enumerate(page.word_boxes):
+        if j in own:
+            continue
+        dx, dy = max(box[0] - gt[2], gt[0] - box[2]), max(box[1] - gt[3], gt[1] - box[3])
+        if dx < 0 and dy < 0:
+            return baseline
+        if dx >= max(margins[0], margins[2]) or dy >= max(margins[1], margins[3]):
+            continue
+        if dx >= dy:
+            edge, gap = (2 if gt[2] <= box[0] else 0), dx
+        else:
+            edge, gap = (3 if gt[3] <= box[1] else 1), dy
+        margins[edge] = min(margins[edge], max(0, gap / 2))
+    if page.page_size is not None:
+        pw, ph = page.page_size
+        margins = np.minimum(margins, np.maximum(0, [gt[0], gt[1], pw - gt[2], ph - gt[3]]))
+    candidate = np.r_[
+        np.maximum(gt[:2] - margins[:2], np.minimum(gt[:2], pred[:2])),
+        np.minimum(gt[2:] + margins[2:], np.maximum(gt[2:], pred[2:])),
+    ]
+    return max(baseline, _iou(candidate, pred))
 
 
 def _area(boxes: np.ndarray) -> np.ndarray:
@@ -251,7 +302,10 @@ def score_page(page: Page, h_min: float) -> PageScore:
         """A lone box keeps its rotation (polygon IoU); a set of boxes is the axis-aligned hull of their hulls."""
         g, ga = (g_boxes[gs[0]], g_angles[gs[0]]) if len(gs) == 1 else (_ubox(g_hull[list(gs)]), None)
         p, pa = (p_boxes[ps[0]], p_angles[ps[0]]) if len(ps) == 1 else (_ubox(p_hull[list(ps)]), None)
-        return float(compute_layout_iou(g[None], p[None], [ga], [pa], page_width=1.0, page_height=1.0)[0, 0])
+        baseline = float(compute_layout_iou(g[None], p[None], [ga], [pa], page_width=1.0, page_height=1.0)[0, 0])
+        if ga or pa or page.word_outward is None:
+            return baseline
+        return _outward_tightness_iou(page, gs, g, p, baseline)
 
     word_owner = np.full(len(w_boxes), -1)
     for i, e in enumerate(elems):
