@@ -82,6 +82,23 @@ class LayoutAnnotation(BaseModel):
     tags: list[str] = Field(default_factory=list, description="Optional per-rule tags")
 
 
+class LayoutBboxTolerance(BaseModel):
+    """Opt-in outward margins in normalized page units, ordered left/top/right/bottom.
+
+    The dataset generator resolves letter height, aspect ratio and neighbor caps.
+    Margins change tightness only; the annotated box remains the matching target.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    version: Literal["outward-word-height-10-v1"]
+    outward_normalized: tuple[
+        Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)],
+        Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)],
+        Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)],
+        Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)],
+    ]
+
+
 class LayoutTestRule(BaseModel):
     """Layout annotation as test rule with normalized bbox."""
 
@@ -116,6 +133,10 @@ class LayoutTestRule(BaseModel):
     parent_test_id: str | None = Field(
         default=None,
         description="Id of the layout rule this line or word box belongs to",
+    )
+
+    bbox_tolerance: LayoutBboxTolerance | None = Field(
+        default=None, description="Optional word-level outward tightness allowance; absent preserves legacy scoring"
     )
 
     def to_layout_annotation(self) -> LayoutAnnotation:
