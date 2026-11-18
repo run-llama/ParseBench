@@ -356,7 +356,23 @@ def clean_text(text: str) -> str:
     s = _BOX_UNCHECKED.sub(" " + UNCHECKED + " ", s)
     s = _AUTOLINK.sub(lambda m: " " + m.group(1) + " ", s)
     s = _SUP_NUM.sub(lambda m: " " + m.group(1).translate(_SUPERSCRIPT) + " ", s)
+    # Preserve boundaries only in an inline sequence of numbered blank slots.
+    # Ordinary empty table cells already carry their position in the grid.
+    s = re.sub(
+        r"\b[0-9]{1,2}[ \t]*<empty\s*/?>[ \t]*[0-9]{1,2}[ \t]*<empty\s*/?>",
+        lambda m: re.sub(r"<empty\s*/?>", "[___]", m[0], flags=re.IGNORECASE),
+        s,
+        flags=re.IGNORECASE,
+    )
     s = _TAG.sub(" ", s)
+    # OCR sometimes emits a square-root glyph for a tick. Restrict that
+    # interpretation to an explicit Yes/No option, leaving math unchanged.
+    s = re.sub(r"(?i)(\b(?:yes|no)\b[ \t*_]*)√(?=[ \t*_]*(?:$|▶|(?:yes|no)\b[ \t*_]*[□☐]))", r"\1" + CHECKED, s)
+    s = re.sub(
+        r"(?i)(\b(?:yes|no)\b[ \t*_]*)\$\\(boxtimes|square)\$",
+        lambda m: m[1] + (CHECKED if m[2].casefold() == "boxtimes" else UNCHECKED),
+        s,
+    )
     return s
 
 
@@ -618,6 +634,7 @@ class Item:
     # a section's caption-less text fields, compact values in order ("" = blank): the digit boxes of a date
     # (``Date of birth`` over eight unlabelled boxes). Not scored; see ``_split_dates``.
     parts: tuple[str, ...] = ()
+    printed_value_prefix: str = ""
 
 
 @dataclass
@@ -871,6 +888,44 @@ def reference_from_rules(rules: Sequence[Any] | None) -> Reference | None:
     """A sparse reference from ``form_field`` rules (label or [context..., label], value, value_type)."""
     items: list[Item] = []
     last_ctx: list[str] = []
+    options: dict[tuple[int, str], set[str]] = {}
+    # Some annotations put the question only on one Yes/No option. Recover
+    # that shared prompt only when the same explicit section has one prompt.
+    checkbox_paths: dict[tuple[int, str], list[str]] = {}
+    prompts: dict[tuple[int, str], set[str]] = {}
+    for rule in rules or []:
+        get = (lambda k, r=rule: r.get(k)) if isinstance(rule, dict) else (lambda k, r=rule: getattr(r, k, None))
+        label = get("label")
+        if get("type") != "form_field" or get("value_type") != "checkbox" or not isinstance(label, str):
+            continue
+        if " — " not in label:
+            continue
+        section, tail = label.rsplit(" — ", 1)
+        match = re.fullmatch(r"(.+[?])[ \t]+(Yes|No)", tail, re.IGNORECASE)
+        if match:
+            page = int(get("page") or 1)
+            question = section + " — " + match[1]
+            checkbox_paths[page, label] = [question, match[2]]
+            prompts.setdefault((page, section), set()).add(question)
+    for rule in rules or []:
+        get = (lambda k, r=rule: r.get(k)) if isinstance(rule, dict) else (lambda k, r=rule: getattr(r, k, None))
+        label = get("label")
+        if get("type") != "form_field" or get("value_type") != "checkbox":
+            continue
+        pair = label if isinstance(label, list) else str(label or "").rsplit(" — ", 1)
+        page = int(get("page") or 1)
+        if isinstance(label, str):
+            if (page, label) in checkbox_paths:
+                pair = checkbox_paths[page, label]
+            elif len(pair) == 2 and pair[1].casefold() in {"yes", "no"}:
+                shared = prompts.get((page, pair[0]), set())
+                if len(shared) == 1:
+                    pair = [next(iter(shared)), pair[1]]
+                    checkbox_paths[page, label] = pair
+        if len(pair) == 2 and all(isinstance(p, str) for p in pair):
+            question, option = (_strip(p) for p in pair)
+            if len("".join(word_keys(option))) > 1:
+                options.setdefault((int(get("page") or 1), question), set()).add(option)
     for rule in rules or []:
         get = (lambda k, r=rule: r.get(k)) if isinstance(rule, dict) else (lambda k, r=rule: getattr(r, k, None))
         if get("type") != "form_field":
@@ -878,6 +933,19 @@ def reference_from_rules(rules: Sequence[Any] | None) -> Reference | None:
         label = get("label")
         parts = [_strip(str(p)) for p in (label if isinstance(label, list) else [label]) if p is not None]
         parts = [p for p in parts if p]
+        if get("value_type") == "checkbox" and isinstance(label, str):
+            parts = checkbox_paths.get((int(get("page") or 1), label), parts)
+        # Convert only explicit sibling options. A sparse rule for one option
+        # cannot establish group ownership; one-letter options are ambiguous
+        # with prose tokens and retain the legacy caption representation.
+        if get("value_type") == "checkbox" and len(parts) == 1 and " — " in parts[0]:
+            question, option = parts[0].rsplit(" — ", 1)
+            if len(options.get((int(get("page") or 1), question), set())) >= 2 and (
+                "?" in question
+                or {p.casefold() for p in options[(int(get("page") or 1), question)]}
+                in ({"yes", "no"}, {"ya", "tidak"})
+            ):
+                parts = [question, option]
         if not parts:
             continue
         page = int(get("page") or 1)
@@ -895,7 +963,16 @@ def reference_from_rules(rules: Sequence[Any] | None) -> Reference | None:
         elif vt == "signature":
             items.append(Item(kind="sig", label=parts[-1], state=bool(v), page=page, ctx=" > ".join(ctx)))
         else:
-            items.append(Item(kind="text", label=parts[-1], value=_value_text(v), page=page, ctx=" > ".join(ctx)))
+            items.append(
+                Item(
+                    kind="text",
+                    label=parts[-1],
+                    value=_value_text(v),
+                    page=page,
+                    ctx=" > ".join(ctx),
+                    printed_value_prefix=get("printed_value_prefix") or "",
+                )
+            )
     if not any(it.kind != "anchor" for it in items):
         return None
     return Reference(items=items, tables=[], source="rules")
@@ -949,6 +1026,10 @@ def _phrase(label: str) -> tuple[list[str], list[list[str]]]:
     for keys in (word_keys(_PAREN.sub(" ", clean_text(label))), word_keys(_SEGMENT.split(label)[-1])):
         if keys and keys != full and keys not in alts and sum(_weight(k) for k in keys) >= 1.0:
             alts.append(keys)
+    # Printed IDs often occupy separate number/letter boxes. Keep both parts:
+    # 14a and 14 a are equivalent; 14b must not become an alternative for 14a.
+    if full and (identifier := re.fullmatch(r"([0-9]+)([a-z])", full[0])):
+        alts.append([identifier[1], identifier[2], *full[1:]])
     return full, alts
 
 
@@ -1197,6 +1278,58 @@ def _shields(ref: Reference, out: Out, index: dict[str, list[int]]) -> list[tupl
     return shields
 
 
+_RULE_CAPTION_PREFIX = re.compile(
+    r"^(?:(part|section)[ \t]+([0-9]{1,3}[a-z]?)[.)]?[ \t]+)?"
+    r"([0-9]{1,3}[a-z]?)[.)]?[ \t]+(.+)$",
+    re.IGNORECASE,
+)
+
+
+def _caption_identity(label: str) -> tuple[str, str, str]:
+    """Recognized section path, printed field ID, and remaining caption.
+
+    Short numeric IDs and explicit lettered section paths are syntax here.
+    Dates, statutory numbers inside captions, and descriptive prefixes retain
+    their full text.
+    """
+    text = clean_text(label).strip()
+    match = _RULE_CAPTION_PREFIX.match(text)
+    if match is None:
+        letter_path = re.match(r"^([A-Z])[.]?[ \t]+([a-z])[.)]?[ \t]+(.+)$", text)
+        if letter_path is not None:
+            return letter_path[1].casefold(), letter_path[2], letter_path[3]
+        return "", "", text
+    section = "".join(match.group(1, 2)).casefold() if match[1] else ""
+    return section, match[3].casefold(), match[4]
+
+
+def _local_rule_caption(label: str, out: Out, candidate: Occ, *, require_colon: bool = True) -> Occ | None:
+    """A recovered text caption needs one local key:value boundary.
+
+    A matching printed code may move after the colon when brackets explicitly
+    separate it from the answer. An unmarked code/value remains ambiguous.
+    """
+    cell = out.cells[out.tcell[candidate.end]]
+    if out.tcell[candidate.start] != out.tcell[candidate.end] or cell.table >= 0:
+        return None
+    if not re.match(r"^[ \t*_]*:", cell.text[out.toks[candidate.end].end :]):
+        return None if require_colon else candidate
+    lead = word_keys(label)[0]
+    nxt = candidate.end + 1
+    if nxt <= cell.last and any(ch.isdigit() for ch in lead) and out.toks[nxt].key == lead:
+        if not re.match(r"^[ \t*_]*\[", cell.text[out.toks[nxt].end :]):
+            # An ID separated from a cents placeholder is printed furniture;
+            # an actual amount such as "1,00" keeps its contiguous digits.
+            tail = cell.text[out.toks[nxt].end :]
+            if not re.fullmatch(r"[ \t]+,00[ \t]*", tail):
+                return candidate
+        actual = [out.toks[t].key for t in range(candidate.start, nxt + 1)]
+        expected = word_keys(label)
+        quality = 1.0 if actual == expected[1:] + expected[:1] else candidate.q
+        return Occ(candidate.item, candidate.start, nxt, quality)
+    return candidate
+
+
 def locate(ref: Reference, out: Out) -> tuple[list[Occ | None], list[bool]]:
     """One output occurrence per reference caption (or None), and the tokens they cover."""
     index: dict[str, list[int]] = {}
@@ -1223,7 +1356,14 @@ def locate(ref: Reference, out: Out) -> tuple[list[Occ | None], list[bool]]:
         at_start = it.role == "rowhead" or (it.kind == "anchor" and all(_isdigits(k) for k in full))
         cands = found(x, full, at_start)
         for alt in alts:
+            split_identifier = len(alt) >= 2 and alt[0].isdigit() and len(alt[1]) == 1 and alt[0] + alt[1] == full[0]
             for o in found(x, alt, at_start):
+                if split_identifier and (
+                    o.start + 1 >= len(out.toks)
+                    or [out.toks[o.start].key, out.toks[o.start + 1].key] != alt[:2]
+                    or out.tcell[o.start] != out.tcell[o.start + 1]
+                ):
+                    continue
                 o.q *= CORE_Q  # a shorter form of the caption: a full-caption occurrence wins
                 same = [k for k in cands if k.start == o.start and k.end == o.end]
                 if not same:
@@ -1233,6 +1373,128 @@ def locate(ref: Reference, out: Out) -> tuple[list[Occ | None], list[bool]]:
         if alts:
             cands.sort(key=lambda o: (o.start, o.end))
         per_item.append(cands)
+
+    def competing_caption(x: int, candidate: Occ) -> bool:
+        for y, other in enumerate(per_item):
+            if y == x or not other:
+                continue
+            best = max(o.q for o in other)
+            if any(o.q >= best and o.start <= candidate.end and candidate.start <= o.end for o in other):
+                return True
+        return False
+
+    if ref.source == "rules":
+        identities = [_caption_identity(it.label) for it in ref.items]
+        captions = Counter(tuple(word_keys(identity[2])) for identity in identities)
+        empty_used = [False] * len(out.toks)
+        for x, (section, identifier, caption) in enumerate(identities):
+            it = ref.items[x]
+            bare = word_keys(caption)
+            if (
+                (it.kind not in ("text", "sig") and it.role != "context")
+                or (it.ctx and it.role != "context")
+                or not identifier
+                or sum(map(len, bare)) < 4
+                or captions[tuple(bare)] != 1
+            ):
+                continue
+            if any(o.q >= PASS2_Q for o in per_item[x]):
+                continue  # Preserve established full-caption spans, including their printed IDs.
+            candidates = [o for o in found(x, bare, False) if o.q >= 1 - 1e-9 and _field_line(out, o, empty_used)]
+            if len(candidates) != 1:
+                continue
+            candidate = candidates[0]
+            tail = out.cells[out.tcell[candidate.end]].text[out.toks[candidate.end].end :]
+            # A short section-qualified label followed by multiple isolated
+            # numeric slots does not identify which slot is its answer.
+            if len(bare) < 2 and re.fullmatch(r":[ \t]*[0-9]{1,2}(?:[ \t]*\|[ \t]*|[ \t]{2,})[0-9]{1,2}[ \t]*", tail):
+                continue
+            if it.role != "context":
+                local = _local_rule_caption(it.label, out, candidate, require_colon=False)
+                if local is None:
+                    continue
+                candidate = local
+            actual_section, actual_id, _ = _caption_identity(out.cells[out.tcell[candidate.start]].text)
+            if (actual_id and actual_id != identifier) or (actual_section and actual_section != section):
+                continue
+            if competing_caption(x, candidate):
+                continue
+            # The caption is unique in both references and output. Keep its
+            # local slot; no expected answer participates in this decision.
+            candidate.q = 1.0 if it.role == "context" else CORE_Q
+            per_item[x] = [o for o in per_item[x] if o.end < candidate.start or o.start > candidate.end]
+            per_item[x].append(candidate)
+            per_item[x].sort(key=lambda o: (o.start, o.end))
+
+    def within_section(x: int, candidate: Occ, lo: int, hi: int) -> bool:
+        if lo < out.tcell[candidate.start] < hi:
+            return True
+        item = ref.items[x]
+        section, identifier, _ = _caption_identity(item.label)
+        if not identifier:
+            section, identifier, _ = _caption_identity(item.ctx)
+        actual_text = out.cells[out.tcell[candidate.start]].text
+        if re.search(r"[0-9]+[.][a-z]\b", item.label + " " + item.ctx + " " + actual_text, re.IGNORECASE):
+            return False  # Dotted subfield IDs need their letter; a shared numeric prefix is insufficient.
+        actual_section, actual_id, _ = _caption_identity(actual_text)
+        # A repeated answer block may be emitted after the next section. Its
+        # explicit field ID still owns the answer; an unnumbered option does not.
+        sections = {_caption_identity(it.label)[0] for it in ref.items if _caption_identity(it.label)[1] == identifier}
+        return bool(
+            identifier
+            and actual_id == identifier
+            and (actual_section == section or (not actual_section and len(sections) <= 1))
+        )
+
+    section_bounds: dict[int, tuple[int, int]] = {}
+    if ref.source == "rules":
+        # Explicit indexed section headings bound repeated questions. Missing
+        # options in one section cannot borrow a tick from its neighbour.
+        cell_keys = [word_keys(c.text) for c in out.cells]
+        for x, it in enumerate(ref.items):
+            path = it.label if it.role == "context" else (it.ctx or it.label)
+            section_keys = word_keys(path.split(" — ", 1)[0])
+            # A numbered entity may be embedded in an explicit field path,
+            # while the page gives it a possessive section heading.
+            possessive = [
+                (i, keys[:2])
+                for i, keys in enumerate(cell_keys)
+                if len(keys) == 4
+                and keys[2:] == ["s", "information"]
+                and _isdigits(keys[1])
+                and out.cells[i].table < 0
+                and any(section_keys[j : j + 2] == keys[:2] for j in range(len(section_keys) - 1))
+            ]
+            if len(possessive) == 1:
+                section_keys = possessive[0][1]
+            elif not it.ctx and it.role != "context":
+                continue
+            if len(section_keys) == 3 and _isdigits(section_keys[0]):
+                section_keys = section_keys[1:]
+            if len(section_keys) != 2 or _digits(section_keys[0]) or not _isdigits(section_keys[1]):
+                continue
+            starts = [
+                i
+                for i, keys in enumerate(cell_keys)
+                if (keys == section_keys or keys == section_keys + ["s", "information"]) and out.cells[i].table < 0
+            ]
+            if len(starts) != 1:
+                continue
+            lo = starts[0]
+            hi = next(
+                (
+                    i
+                    for i in range(lo + 1, len(cell_keys))
+                    if (len(cell_keys[i]) == 2 or (len(cell_keys[i]) == 4 and cell_keys[i][2:] == ["s", "information"]))
+                    and out.cells[i].table < 0
+                    and cell_keys[i][0] == section_keys[0]
+                    and _isdigits(cell_keys[i][1])
+                ),
+                len(out.cells),
+            )
+            section_bounds[x] = (lo, hi)
+            per_item[x] = [o for o in per_item[x] if within_section(x, o, lo, hi)]
+
     weights = [sum(_weight(k) for k in word_keys(it.label)) if it.phrase else 0.0 for it in ref.items]
     # max-weight chain in reading order
     points: list[Occ] = []
@@ -1292,26 +1554,79 @@ def locate(ref: Reference, out: Out) -> tuple[list[Occ | None], list[bool]]:
             occ[x] = best
             for y in range(best.start, best.end + 1):
                 used[y] = True
+    if ref.source == "rules":
+        # A unique fuzzy caption on its own field line does not need GT reading
+        # order to establish ownership. Competing captions and repeated labels
+        # retain the existing contextual matching; answer values are not used.
+        repairs: dict[int, Occ] = {}
+        for x in single:
+            if occ[x] is not None or ref.items[x].ctx:
+                continue
+            candidates = [
+                o
+                for o in per_item[x]
+                if o.q >= CLEAN_Q and not any(used[o.start : o.end + 1]) and _field_line(out, o, used)
+            ]
+            if len(candidates) != 1:
+                continue
+            candidate = candidates[0]
+            local = _local_rule_caption(ref.items[x].label, out, candidate)
+            if local is None:
+                continue
+            candidate = local
+            if competing_caption(x, candidate):
+                continue
+            repairs[x] = candidate
+        for x, candidate in repairs.items():
+            occ[x] = candidate
+            for j in range(candidate.start, candidate.end + 1):
+                used[j] = True
     _repair_sections(ref, out, per_item, occ, used)
     _repair_question_options(ref, out, per_item, occ, used)
     _repair_blocks(ref, out, per_item, occ, used)
     _repair_runs(ref, out, per_item, occ, used)
     _first_segments(ref, out, occ, used, found)
+    if ref.source == "rules":
+        for x, located_caption in enumerate(occ):
+            if located_caption is None or ref.items[x].kind not in ("text", "sig"):
+                continue
+            local = _local_rule_caption(ref.items[x].label, out, located_caption)
+            if (
+                local is not None
+                and local.end > located_caption.end
+                and not any(used[located_caption.end + 1 : local.end + 1])
+            ):
+                occ[x] = local
+                for j in range(located_caption.end + 1, local.end + 1):
+                    used[j] = True
     # The colon bonus may prefer a shortened caption before a printed parenthesised
     # suffix ("Total liabilities: (D1)"). Retain the suffix when it is explicitly
     # present and completes the exact GT caption, rather than reading it as a value.
     for x, o in enumerate(occ):
-        if o is None or o.q >= 1 - 1e-9:
+        if o is None:
             continue
         cell = out.tcell[o.end]
         if out.tcell[o.start] != cell:
             continue
         tail = out.cells[cell].text[out.toks[o.end].end :]
         hint = _LEAD_HINT.match(tail)
-        if hint is None:
-            continue
-        limit = out.toks[o.end].end + hint.end()
-        extension = [t for t in _cell_tokens(out, cell) if t > o.end and out.toks[t].end <= limit]
+        if hint is None and not tail.strip() and out.cells[cell].table < 0:
+            following = _next_cell(out, cell)
+            if following >= 0 and out.cells[following].table < 0:
+                text = out.cells[following].text
+                hint = _LEAD_HINT.match(text)
+                extension = (
+                    _cell_tokens(out, following)
+                    if hint and not _DIGIT.search(text) and not text[hint.end() :].strip()
+                    else []
+                )
+            else:
+                extension = []
+        elif hint is not None and o.q < 1:
+            limit = out.toks[o.end].end + hint.end()
+            extension = [t for t in _cell_tokens(out, cell) if t > o.end and out.toks[t].end <= limit]
+        else:
+            extension = []
         if not extension or any(used[t] or out.toks[t].box for t in extension):
             continue
         candidate = Occ(x, o.start, extension[-1], 1.0)
@@ -1319,6 +1634,15 @@ def locate(ref: Reference, out: Out) -> tuple[list[Occ | None], list[bool]]:
             occ[x] = candidate
             for t in extension:
                 used[t] = True
+    for x, (lo, hi) in section_bounds.items():
+        bounded_occ = occ[x]
+        if bounded_occ is not None and not within_section(x, bounded_occ, lo, hi):
+            occ[x] = None
+    if section_bounds:
+        used[:] = [False] * len(out.toks)
+        for bounded_occ in occ:
+            if bounded_occ is not None:
+                used[bounded_occ.start : bounded_occ.end + 1] = [True] * (bounded_occ.end - bounded_occ.start + 1)
     return occ, used
 
 
@@ -1816,6 +2140,34 @@ class Reading:
     exact: bool = False  # past printed instructions: taken only when it reads the value exactly (ok)
 
 
+def _signed_span(text: str, start: int, end: int, *, markdown_line: bool = False) -> str:
+    """Keep a numeric value's unary sign or accounting parentheses outside its word tokens."""
+    if start < end and (text[start].isdigit() or _CURRENCY.match(text, start)):
+        prefix = re.search(r"(?:[(+−-][ \t]*[$€£¥]?[ \t]*|[$€£¥][ \t]*[+−-][ \t]*)$", text[:start])
+        if prefix is not None:
+            lead = prefix.group()
+            # A spaced dash after caption prose is a separator. After a colon or
+            # at the start of a cell/line it can be a unary sign.
+            before = text[: prefix.start()].rstrip(" \t")
+            separated_dash = lead[0] == "-" and len(lead) > 1 and lead[1].isspace()
+            list_marker = markdown_line and separated_dash and not before
+            if (
+                not list_marker
+                and (prefix.start() == 0 or not text[prefix.start() - 1].isalnum())
+                and (not separated_dash or not before or before[-1] in ":\n|")
+            ):
+                if lead.startswith("("):
+                    close = re.match(r"[ \t]*\)", text[end:])
+                    if close is not None:
+                        start, end = prefix.start(), end + close.end()
+                else:
+                    start = prefix.start()
+                    outer = re.search(r"[−-][ \t]*$", text[:start])
+                    if outer and not (markdown_line and outer.start() == 0 and outer.group().startswith("- ")):
+                        start = outer.start()
+    return text[start:end]
+
+
 def _span_text(out: Out, toks: Sequence[int]) -> str:
     if not toks:
         return ""
@@ -1827,10 +2179,16 @@ def _span_text(out: Out, toks: Sequence[int]) -> str:
         c = out.tcell[t]
         if c != cur_cell:
             if cur_cell >= 0:
-                parts.append(out.cells[cur_cell].text[seg_start:seg_end])
+                parts.append(
+                    _signed_span(
+                        out.cells[cur_cell].text, seg_start, seg_end, markdown_line=out.cells[cur_cell].table < 0
+                    )
+                )
             cur_cell, seg_start = c, out.toks[t].start
         seg_end = out.toks[t].end
-    parts.append(out.cells[cur_cell].text[seg_start:seg_end])
+    parts.append(
+        _signed_span(out.cells[cur_cell].text, seg_start, seg_end, markdown_line=out.cells[cur_cell].table < 0)
+    )
     return " / ".join(_strip(p) for p in parts)
 
 
@@ -1870,7 +2228,11 @@ def _skip_label_tail(out: Out, cell: int, after: int, run: list[int]) -> list[in
             return [t for t in run if out.toks[t].start > cut]
     lead = text[after:]
     m = _LEAD_HINT.match(lead)
-    if m and (not _digits(m.group(1)) or len(word_keys(m.group(1))) >= 3) and "signed" not in m.group(1).lower():
+    if (
+        m
+        and (not _digits(m.group(1)) or (len(word_keys(m.group(1))) >= 3 and any(c.isalpha() for c in m.group(1))))
+        and "signed" not in m.group(1).lower()
+    ):
         cut = after + m.end()
         return [t for t in run if out.toks[t].start >= cut]
     return run
@@ -2221,6 +2583,58 @@ def read_slot(
     run = _run(out, occ.end + 1, stop, cell)
     run = _skip_label_tail(out, cell, after, run)
     run = _drop_footnote_mark(out, cell, run)
+    below = _grid_cell(out, c.table, c.row + 1, c.col) if c.table >= 0 else -1
+    below_keys = _cell_keys(out, below) if below >= 0 else []
+    right = _grid_cell(out, c.table, c.row, c.col + 1) if c.table >= 0 else -1
+    blank_beside = right >= 0 and bool(_BLANK_MARK.search(out.cells[right].text))
+    own_format = bool(run) or bool(below_keys and all(k in HINT_WORDS for k in below_keys))
+    if (
+        c.table >= 0
+        and own_format
+        and not blank_beside
+        and _header_row(out, c, stop)
+        and (not run or all(out.toks[t].key in HINT_WORDS for t in run))
+    ):
+        # Header continuations contain format hints or other located captions.
+        # Keep the first data row even when blank; later rows belong to other
+        # people. A date band may own three separately emitted numeric cells.
+        row = c.row + 1
+        has_format = bool(run)
+        width = 1
+        while (right := _grid_cell(out, c.table, c.row, c.col + width)) >= 0 and out.cells[right].colspanned:
+            width += 1
+        while row < len(out.grids[c.table]):
+            under = _grid_cell(out, c.table, row, c.col)
+            under_keys = _cell_keys(out, under) if under >= 0 else []
+            if under_keys and not (all(k in HINT_WORDS for k in under_keys) or under_keys == ["m", "f", "x"]):
+                break  # Another field caption or an entered answer ends this column's header.
+            cells = [ci for ci in out.grids[c.table][row] if ci >= 0]
+            populated = [_cell_tokens(out, ci) for ci in cells if out.cells[ci].last >= out.cells[ci].first]
+            format_hints = [
+                bool(ts)
+                and (all(out.toks[t].key in HINT_WORDS for t in ts) or [out.toks[t].key for t in ts] == ["m", "f", "x"])
+                for ts in populated
+            ]
+            continuation = bool(populated) and all(
+                hint or all(stop[t] for t in ts) for hint, ts in zip(format_hints, populated, strict=True)
+            )
+            continuation = continuation and any(format_hints)
+            if not continuation and not (not populated and any(out.cells[ci].rowspanned for ci in cells)):
+                break
+            has_format = has_format or continuation
+            row += 1
+        if has_format and (row > c.row + 1 or [out.toks[t].key for t in run] == ["day", "month", "year"]):
+            targets = [_grid_cell(out, c.table, row, c.col + j) for j in range(width)]
+            if all(ci >= 0 and ci not in owned for ci in targets) and not neighbours[1]:
+                first_tokens = _cell_run(out, targets[0], stop)[0]
+                tokens = (
+                    first_tokens
+                    if _date_parts([out.toks[t].key for t in first_tokens])
+                    else [t for ci in targets for t in _cell_run(out, ci, stop)[0]]
+                )
+                return [Reading(tokens, _span_text(out, tokens))]
+    if re.fullmatch(r"[ :\t]*[0-9]{1,2}[ \t]*\[_{2,}\][ \t]*[0-9]{1,2}[ \t]*\[_{2,}\](?:[ \t]*,00)?", c.text[after:]):
+        return [Reading([], "", after_blank=True)]
     if run and ids_at and out.toks[run[-1]].key == ids_at.get(run[-1] + 1):
         run = run[:-1]
     if (
@@ -2248,6 +2662,13 @@ def read_slot(
     if run:
         # "ID No: [___] /OR": the field is blank and the run past the marker is printed text (minor, not invented)
         gap, raw = c.text[after : out.toks[run[0]].start], c.text[out.toks[run[0]].start : out.toks[run[-1]].end]
+        if (
+            _BLANK_MARK.search(gap)
+            and _LINE_NO.fullmatch(out.toks[occ.end].key)
+            and _LINE_NO.fullmatch(out.toks[run[0]].key)
+            and re.match(r"[ \t]*\[_{2,}\]", c.text[out.toks[run[0]].end :])
+        ):
+            return [Reading([], "", after_blank=True)]
         # the printed century of a date's year slot ("[___], 20[___]") is form text, like a hint
         century = _CENTURY_SLOT.match(c.text[after:]) is not None
         if century and len(run) == 1:
@@ -2394,12 +2815,19 @@ def _block_lines(out: Out, cell: int, stop: list[bool], tails: bool) -> list[Rea
     not locate) is read, then ends the scan."""
     cands: list[Reading] = []
     for _ in range(BLOCK_LINES):
-        cell = _next_cell(out, cell)
+        previous, cell = cell, _next_cell(out, cell)
         if cell < 0 or out.cells[cell].fill:
             break
         nc = out.cells[cell]
         span = list(range(nc.first, nc.last + 1))
         if any(stop[t] for t in span):
+            break
+        # A standalone currency sign anchors the first amount after printed
+        # instructions. Stop there so a later matching amount cannot rescue it.
+        currency_slot = any(re.fullmatch(r"[ \t*_]*[$€£¥][ \t*_]*", cc.text) for cc in out.cells[previous + 1 : cell])
+        currency_slot = currency_slot or bool(re.match(r"[ \t*_]*[$€£¥]", nc.text))
+        if currency_slot and _amount(nc.text) is not None:
+            cands.append(Reading(span, _span_text(out, span), exact=True))
             break
         colon = max((m.start() for m in _LABEL_COLON.finditer(nc.text)), default=-1)
         tail = [t for t in span if out.toks[t].start > colon] if tails else span
@@ -2627,14 +3055,19 @@ def _is_blank(keys: Sequence[str]) -> bool:
 
 
 _CURRENCY = _rx(r"[$€£¥]|\b(?:USD|EUR|GBP|CAD|AUD|CHF|JPY)\b", re.IGNORECASE)
-_AMOUNT = _rx(r"^(\()?([-−])?[ \t]*([0-9][0-9.,']*)(\))?$")
+_AMOUNT = _rx(r"^(\()?([-−+])?[ \t]*([0-9][0-9.,']*)[ \t]*(\))?$")
 
 
 def _amount(text: str) -> str | None:
-    """Canonical number of a value that is only an amount (currency, sign, grouping and decimal style dropped):
-    ``$ 1,234.50`` -> ``1234.5``, ``1.234,50 EUR`` -> ``1234.5``, ``(12.00)`` -> ``12``. None otherwise. The sign is
-    dropped because a read value's text starts at its first word (``-`` and ``(`` fall outside it)."""
-    m = _AMOUNT.match(_strip(_CURRENCY.sub("", text)))
+    """Normalize grouping, currency and decimal style, retaining numeric sign.
+
+    Accounting parentheses and Unicode minus denote negative amounts. Positive
+    and negative zero compare equally; identifiers and dates are not amounts.
+    """
+    text = re.sub(r"(?<=\d)[ \t]+(?=[.,]\d{2}(?:\)|$))", "", _strip(_CURRENCY.sub("", text)))
+    text = re.sub(r"[ \t]*%$", "", text)
+    text = re.sub(r"(?<=\d)[ \t]+(?=\d{3}(?:[ \t.,)]|$))", "", text)
+    m = _AMOUNT.match(text)
     if not m or (m.group(1) is None) != (m.group(4) is None):
         return None
     body = m.group(3).replace("'", "")  # 1'237.50 (Swiss grouping)
@@ -2655,7 +3088,8 @@ def _amount(text: str) -> str | None:
     if not body:
         return None
     frac = frac.rstrip("0")
-    return body + ("." + frac if frac else "")
+    negative = bool(m.group(1) or m.group(2) in {"-", "−"}) and any(ch != "0" for ch in body + frac)
+    return ("-" if negative else "") + body + ("." + frac if frac else "")
 
 
 def _decimal_kept(expected: str, got: str) -> bool:
@@ -2724,7 +3158,8 @@ def _value_frames(expected: str, keys: Sequence[str], got: str = "") -> list[lis
     def unframe(k: list[str]) -> list[str]:
         # line id then caption punctuation or a space ("23a: 664", "**15** 80", "5 964,240"); no line id when more of
         # a number follows it ("5,964,240", "5.5") or a space then a bare 3-digit group (digit grouping: "1 200")
-        lead = len(k) >= 2 and _LINE_ID.match(k[0]) and k[0] != exp[0]
+        digit_boxes = bool(re.fullmatch(r"[+−(\-]?\s*\d(?:[ \t]+\d){2,}(?:[ \t]*[.,][ \t]*00)?\)?", text))
+        lead = not digit_boxes and len(k) >= 2 and _LINE_ID.match(k[0]) and k[0] != exp[0]
         m = lead and re.match(r"[^0-9A-Za-z]*" + re.escape(k[0]) + _AFTER_LINE_ID, text, re.IGNORECASE)
         # a line id marked by punctuation or a letter ("2.", "23a") counts before any value; one set apart by a space
         # alone ("12 26428") only before money: a ZIP, phone or date keeps the leading number as extra text
@@ -2751,17 +3186,71 @@ def _value_frames(expected: str, keys: Sequence[str], got: str = "") -> list[lis
     return [k for k in frames if k != list(keys)]
 
 
+def _parenthesis_frame(expected: str | None, got: str, printed_value_prefix: str = "") -> str:
+    """Unsigned GT permits printed parentheses; negative GT also accepts accounting notation.
+
+    Only an entirely numeric parenthesized value is a frame. An explicit minus
+    inside it remains a sign, and surrounding instructions are left intact.
+    """
+    amount = _amount(expected or "")
+    numeric = _strip(_CURRENCY.sub("", got))
+    if amount is not None and not amount.startswith("-") and re.fullmatch(r"\(\s*\d[\d\s.,']*\)", numeric):
+        return numeric[1:-1].strip()
+    # The annotation permits one external subtraction operator. A second
+    # minus remains part of the entered value and still changes its sign.
+    raw = got.lstrip()
+    if (
+        printed_value_prefix in {"-", "−"}
+        and amount is not None
+        and not amount.startswith("-")
+        and raw.startswith(("-", "−"))
+    ):
+        remainder = raw[1:].lstrip()
+        if _amount(remainder) is not None:
+            return remainder
+    return got
+
+
 def compare_value(
-    expected: str | None, keys: Sequence[str], others: dict[str, str], got: str = "", order: str = ""
+    expected: str | None,
+    keys: Sequence[str],
+    others: dict[str, str],
+    got: str = "",
+    order: str = "",
+    printed_value_prefix: str = "",
 ) -> Verdict:
     """Severity of reading ``keys`` (raw text ``got``) where ``expected`` is due (``others``: compact values of
     other fields; ``order``: the form's day-month order, see ``date_orders``). A reading that fails as read is
     compared again without its printed frame (``_value_frames``); the better verdict counts."""
+    got = _parenthesis_frame(expected, got, printed_value_prefix)
+    ae, ag = _amount(expected or ""), _amount(got)
+    if ae is not None and re.match(r"^[+−-][ \t]*[+−-][ \t]*[$€£¥]?[ \t]*\d", got.lstrip()):
+        return Verdict("critical", "wrong value")
+    # Token equality also occurs for digit boxes and numeric answers followed by
+    # prose. Preserve polarity there even when the complete string is no amount.
+    if ae is not None and _digits(expected or "") == _digits(got):
+        numeric = _strip(_CURRENCY.sub("", got))
+        if re.match(r"^[+−-]?\s*\d|^\(\s*\d[\d\s.,']*\)", numeric):
+            negative = numeric.startswith(("-", "−", "(")) and any(c in "123456789" for c in numeric)
+            if ae.startswith("-") != negative:
+                return Verdict("critical", "wrong value")
+    if ae is not None and ag is not None and ae.startswith("-") != ag.startswith("-"):
+        return Verdict("critical", "wrong value")
     v = _compare_value(expected, keys, others, got, order)
     if v.cls == "ok" or expected is None:
         return v
     for k in _value_frames(expected, keys, got):
-        vk = _compare_value(expected, k, others, " ".join(k), order)
+        framed = " ".join(k)
+        raw_tokens = [t for t in tokenize(got) if not t.box]
+        matches = [i for i in range(len(raw_tokens) - len(k) + 1) if [t.key for t in raw_tokens[i : i + len(k)]] == k]
+        if len(matches) == 1 and k:
+            start = matches[0]
+            framed = _signed_span(got, raw_tokens[start].start, raw_tokens[start + len(k) - 1].end)
+        framed = _parenthesis_frame(expected, framed, printed_value_prefix)
+        af = _amount(framed)
+        if ae is not None and af is not None and ae.startswith("-") != af.startswith("-"):
+            return Verdict("critical", "wrong value")
+        vk = _compare_value(expected, k, others, framed, order)
         if SEV_ORDER[vk.cls] < SEV_ORDER[v.cls]:
             v = vk
     return v
@@ -3609,6 +4098,240 @@ def _repeated_id_reading(ref: Reference, out: Out, occ: list[Occ | None], x: int
     return matches[0] if len(matches) == 1 else None
 
 
+def _rule_subfield_reading(it: Item, out: Out) -> Reading | None:
+    """Read an explicit section/column path from a flattened form block.
+
+    A unique section heading owns numbered subfields until the next section.
+    A standalone subfield ID must be followed by a numeric value cell; prose
+    and duplicate sections remain ambiguous. Expected answers are not consulted.
+    """
+    path = re.fullmatch(r"([A-Za-z]+[0-9]+) col\. ([0-9]+) — (.+)", it.label)
+    if path is None:
+        return None
+    heading = word_keys(f"{path[1]} {path[3]}")
+    heads = [i for i, c in enumerate(out.cells) if c.table < 0 and word_keys(c.text) == heading]
+    if len(heads) != 1:
+        return None
+    matches: list[Reading] = []
+    for i in range(heads[0] + 1, len(out.cells)):
+        cell = out.cells[i]
+        keys = _cell_keys(out, i)
+        if cell.table >= 0 or (keys and re.fullmatch(r"[a-z]+[0-9]+", keys[0])):
+            break
+        field = _FIELD_LINE.match(cell.text)
+        if field is not None and word_keys(field["key"]) == [path[2]]:
+            toks = [t for t in _cell_tokens(out, i) if out.toks[t].start >= field.start("val")]
+            matches.append(Reading(toks, _span_text(out, toks)))
+        elif keys == [path[2]]:
+            following = next((j for j in range(i + 1, len(out.cells)) if out.cells[j].last >= out.cells[j].first), -1)
+            if following < 0 or out.cells[following].table >= 0:
+                continue
+            toks = _cell_tokens(out, following)
+            if toks and all(_isdigits(out.toks[t].key) for t in toks):
+                matches.append(Reading(toks, _span_text(out, toks)))
+    return matches[0] if len(matches) == 1 else None
+
+
+def _rule_table_slots(ref: Reference, out: Out) -> tuple[dict[int, int], set[int]]:
+    """Resolve explicit row/column rule paths without consulting expected values.
+
+    Require an exact column caption and a unique numbered row in the same grid.
+    Caption instructions may differ, but the printed row ID must agree. Ambiguous
+    candidates keep legacy matching; a conflicting row ID cannot borrow its values.
+    """
+    slots: dict[int, int] = {}
+    conflicting: set[int] = set()
+    if ref.source != "rules":
+        return slots, conflicting
+    sections: dict[int, str] = {}
+    for table, grid in enumerate(out.grids):
+        first = min((ci for row in grid for ci in row if ci >= 0), default=-1)
+        if first < 0:
+            continue
+        preceding = [c for c in out.cells[:first] if c.last >= c.first][-3:]
+        for context in reversed(preceding):
+            if context.table >= 0:
+                break
+            heading = re.match(r"^#{1,6}[ \t]+([0-9]{1,3})[ \t]+", context.text)
+            if heading is not None:
+                sections[table] = heading[1]
+                break
+            # A parser may emit a short, word-only column-header fragment
+            # before its grid. Prose, another heading or values end this scope.
+            keys = word_keys(context.text)
+            if len(keys) > 6 or any(_digits(k) for k in keys) or context.text.startswith("#"):
+                break
+    caption_scopes: dict[tuple[str, ...], list[tuple[str, str]]] = {}
+    for peer in ref.items:
+        if peer.kind == "text":
+            peer_section, peer_id, peer_caption = _caption_identity(peer.label)
+            caption_scopes.setdefault(tuple(word_keys(peer_caption)), []).append((peer_id, peer.ctx or peer_section))
+    for x, it in enumerate(ref.items):
+        if it.kind not in ("text", "box") or it.table >= 0:
+            continue
+        # A two-row form grid can print the ID and caption above its value.
+        # The exact ID/caption pair owns that cell even in interleaved output;
+        # duplicate grids remain ambiguous and expected answers are not used.
+        field_section, identifier, field_caption = _caption_identity(it.label)
+        field_scope = it.ctx or field_section
+        peers = caption_scopes.get(tuple(word_keys(field_caption)), [])
+        # A scoped grid can cross printed-column order only when the GT gives
+        # each repeated caption a distinct ID across known, distinct scopes.
+        # A lone scoped field or a reused ID keeps contextual matching.
+        distinct_scopes = (
+            len(peers) >= 2
+            and all(peer_id and scope for peer_id, scope in peers)
+            and len({peer_id for peer_id, _ in peers}) == len(peers)
+            and len({scope for _, scope in peers}) >= 2
+        )
+        if it.kind == "text" and identifier and (not field_scope or distinct_scopes):
+            field_targets: set[int] = set()
+            for grid in out.grids:
+                if len(grid) != 2 or any(len(row) != 2 or any(ci < 0 for ci in row) for row in grid):
+                    continue
+                if (
+                    _cell_keys(out, grid[0][0]) == [identifier]
+                    and _cell_keys(out, grid[0][1]) == word_keys(field_caption)
+                    and not _cell_keys(out, grid[1][0])
+                ):
+                    field_targets.add(grid[1][1])
+            if len(field_targets) == 1:
+                slots[x] = next(iter(field_targets))
+                continue
+        parts = [*it.ctx.split(" > "), it.label] if it.ctx else it.label.split(" — ")
+        if len(parts) < 2:
+            continue
+        # Some rule paths name an indexed data row rather than a printed
+        # row caption. The question band and option header identify its column;
+        # the explicit row number identifies its cell, independent of tick state.
+        descriptor = re.fullmatch(r".+? table row ([0-9]+) — (.+)", it.ctx, re.IGNORECASE)
+        if it.kind == "box" and descriptor is not None:
+            targets: set[int] = set()
+            for band in out.cells:
+                if band.table < 0 or word_keys(band.text) != word_keys(descriptor[2]):
+                    continue
+                end_col = band.col + 1
+                while (right := _grid_cell(out, band.table, band.row, end_col)) >= 0 and out.cells[right].colspanned:
+                    end_col += 1
+                headers = [
+                    h
+                    for h in out.cells
+                    if h.table == band.table
+                    and h.row == band.row + 1
+                    and band.col <= h.col < end_col
+                    and word_keys(h.text) == word_keys(it.label)
+                ]
+                if len(headers) != 1:
+                    continue
+                for row in out.grids[band.table][band.row + 2 :]:
+                    if not row or row[0] < 0 or _cell_keys(out, row[0]) != [descriptor[1]]:
+                        continue
+                    target = _grid_cell(out, band.table, out.cells[row[0]].row, headers[0].col)
+                    if target < 0:
+                        continue
+                    cell = out.cells[target]
+                    if sum(bool(out.toks[t].box) for t in range(cell.first, cell.last + 1)) == 1:
+                        targets.add(target)
+            if len(targets) == 1:
+                slots[x] = next(iter(targets))
+            continue
+        row_label = " ".join(parts[:-1])
+        _, row_id, row_caption = _caption_identity(row_label)
+        row_keys = [row_id, *word_keys(row_caption)] if row_id else word_keys(row_label)
+        column = word_keys(parts[-1])
+        if len(row_keys) < 3 or not _LINE_NO.fullmatch(row_keys[0]) or not column:
+            continue
+        candidates: set[int] = set()
+        wrong_id = False
+        caption = set(row_keys[1:])
+        for ci, cell in enumerate(out.cells):
+            if cell.table < 0 or cell.col != 0:
+                continue
+            words = _cell_keys(out, ci)
+            if not words:
+                continue
+            if not _LINE_NO.fullmatch(words[0]):
+                # A numbered section directly above the table can own several
+                # unnumbered rows. Require the complete row caption in that grid.
+                if sections.get(cell.table) != row_keys[0] or words != row_keys[1:]:
+                    continue
+                words = [sections[cell.table], *words]
+            caption_col = cell.col
+            if len(words) == 1:
+                # A dedicated first column may hold only the row number; the
+                # next cell then supplies its caption, not its answer.
+                adjacent = _grid_cell(out, cell.table, cell.row, cell.col + 1)
+                if adjacent < 0:
+                    continue
+                words += _cell_keys(out, adjacent)
+                caption_col += 1
+            if len(caption.intersection(words[1:])) / len(caption) < CLEAN_Q:
+                continue
+            headers = [
+                h
+                for h in out.cells
+                if h.table == cell.table and h.row <= cell.row and h.col > caption_col and word_keys(h.text) == column
+            ]
+            if not headers:
+                continue
+            # Repeated labels on the same row can belong to side-by-side forms.
+            # Without a local column-group boundary, neither label owns the slot.
+            if len({h.col for h in headers if h.row == cell.row}) > 1:
+                continue
+            # A band spanning code and answer cells does not identify one value
+            # column. Keep the existing matcher for this ambiguous structure.
+            headers = [
+                h
+                for h in headers
+                if (right := _grid_cell(out, h.table, h.row, h.col + 1)) < 0 or not out.cells[right].colspanned
+            ]
+            if not headers:
+                continue
+            # Same-row option labels also occur in ordinary data rows. Treat
+            # them as headers only when a separate, unlabelled value row follows.
+            leading = [_grid_cell(out, cell.table, cell.row + 1, c) for c in range(caption_col + 1)]
+            if any(c < 0 or _cell_keys(out, c) for c in leading):
+                headers = [h for h in headers if h.row < cell.row]
+            if not headers:
+                continue
+            nearest = max(h.row for h in headers)
+            cols = {h.col for h in headers if h.row == nearest}
+            if len(cols) != 1:
+                continue
+            value_row = cell.row + int(nearest == cell.row)
+            target = _grid_cell(out, cell.table, value_row, next(iter(cols)))
+            if target < 0 or target == ci:
+                continue
+            target_cell = out.cells[target]
+            # A separate code printed after the row caption precedes the input
+            # boxes. A column before that code may contain printed allowances.
+            if _isdigits(row_keys[-1]):
+                code_cells = [
+                    out.cells[c]
+                    for c in set(out.grids[cell.table][cell.row])
+                    if c >= 0 and _cell_keys(out, c) == [row_keys[-1]]
+                ]
+                if any(c.col >= target_cell.col for c in code_cells):
+                    continue
+            if (
+                it.kind == "box"
+                and sum(bool(out.toks[t].box) for t in range(target_cell.first, target_cell.last + 1)) != 1
+            ):
+                continue
+            if words[0] != row_keys[0]:
+                # A lettered sub-row can inherit its numeric question ID from a
+                # heading. These two identifier levels are not contradictory.
+                wrong_id |= words[0][0].isdigit() and row_keys[0][0].isdigit()
+            else:
+                candidates.add(target)
+        if len(candidates) == 1:
+            slots[x] = next(iter(candidates))
+        elif not candidates and wrong_id:
+            conflicting.add(x)
+    counts = Counter(slots.values())
+    return {x: c for x, c in slots.items() if counts[c] == 1}, conflicting
+
+
 def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mirrored in JavaScript
     items = ref.items
     occ, used = locate(ref, out)
@@ -3685,8 +4408,13 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
             # line to the caption below, unless that line above is an earlier caption's slot holding its value
             val = items[x].value
 
-            def ok(toks: list[int], val: str | None = val) -> bool:
-                return compare_value(val, [out.toks[t].key for t in toks], {}, _span_text(out, toks)).cls == "ok"
+            def ok(toks: list[int], val: str | None = val, prefix: str = items[x].printed_value_prefix) -> bool:
+                return (
+                    compare_value(
+                        val, [out.toks[t].key for t in toks], {}, _span_text(out, toks), printed_value_prefix=prefix
+                    ).cls
+                    == "ok"
+                )
 
             nxt = _next_cell(out, out.tcell[o.end])
             if not "".join(word_keys(val or "")) or not any(ok(rd.toks) for rd in read_before(out, o, stop, taken)):
@@ -3719,6 +4447,25 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
             words = [t for t in rd.toks if not out.toks[t].box]
             keys = [out.toks[t].key for t in words]
             variants.append((rd, keys, rd.text))
+            _, printed_id, _ = _caption_identity(it.label)
+            if printed_id and len(words) > 1:
+                first, second, last = (out.toks[t] for t in (words[0], words[1], words[-1]))
+                if out.tcell[words[0]] == out.tcell[words[1]] and first.key == printed_id:
+                    gap = out.cells[out.tcell[words[0]]].text[first.end : second.start]
+                    text_answer = not _isdigits(second.key)
+                    empty_cents = keys[1:] == ["00"] and re.fullmatch(r"[ \t]+(?:\[_{2,}\])?[.,]", gap)
+                    if text_answer or empty_cents:
+                        variants.append((rd, keys[1:], _span_text(out, words[1:])))
+                if (
+                    last.key == printed_id
+                    and out.tcell[words[-2]] == out.tcell[words[-1]]
+                    and _MONEY_MARK.search(it.value or "")
+                    and _amount(it.value or "") is not None
+                ):
+                    cell_text = out.cells[out.tcell[words[-1]]].text
+                    gap = cell_text[out.toks[words[-2]].end : last.start]
+                    if gap and gap.isspace():
+                        variants.append((rd, keys[:-1], _span_text(out, words[:-1])))
             if keys and keys[0] in ids:
                 # the printed line number repeated before the value
                 variants.append((rd, keys[1:], _span_text(out, words[1:])))
@@ -3736,7 +4483,7 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
                 else:
                     v = Verdict("critical", "signature invented") if has else Verdict("ok", "")
             else:
-                v = compare_value(it.value, keys, others, got_text if keys else "", orders[x])
+                v = compare_value(it.value, keys, others, got_text if keys else "", orders[x], it.printed_value_prefix)
                 # past a blank marker ([___] SQ FT), up to 3 words of printed form text: each printed on the form,
                 # a unit or format hint, a _FORM_TEXT_WORDS word or a 1-2 letter code (CT, OR), not all numbers
                 # (after_blank admits digits only inside a worded hint), no email or web address. A name, a
@@ -3915,13 +4662,25 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
             if below in caps:
                 column_cells[caps[below]] = above
 
+    rule_slots, conflicting_rows = _rule_table_slots(ref, out)
+    column_cells.update(rule_slots)
+    owned.update(rule_slots.values())
+    for x in conflicting_rows:
+        column_cells.pop(x, None)
+        occ[x] = None
+        ev(x, "field row id mismatch", "major", "conflicting printed row identifier")
+
     item_readings: dict[int, list[Reading]] = {}
     for x, it in enumerate(items):
         if it.kind not in ("text", "sig"):
             continue
         readings: list[Reading] = []
         o = occ[x]
-        if x in column_cells:
+        subfield = _rule_subfield_reading(it, out) if ref.source == "rules" and it.kind == "text" else None
+        if subfield is not None:
+            located.add(x)
+            readings = [subfield]
+        elif x in column_cells:
             located.add(x)
             toks = _cell_tokens(out, column_cells[x])
             readings = [Reading(toks, _span_text(out, toks))]
@@ -4008,7 +4767,14 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
                 readings = [
                     rd
                     for rd in read_slot(out, ao, stop, owned, (False, False), ids_at, values=values)
-                    if compare_value(it.value, [out.toks[t].key for t in rd.toks], {}, rd.text).cls == "ok"
+                    if compare_value(
+                        it.value,
+                        [out.toks[t].key for t in rd.toks],
+                        {},
+                        rd.text,
+                        printed_value_prefix=it.printed_value_prefix,
+                    ).cls
+                    == "ok"
                 ]
                 if readings:
                     located.add(x)
@@ -4640,6 +5406,10 @@ def _printed_ids(it: Item, out: Out, o: Occ | None) -> set[str]:
         k = out.toks[o.start - 1].key
         if _LINE_NO.match(k):
             ids.add(k)
+    if it.kind == "text" and _is_blank(word_keys(it.value or "")):
+        _, printed_id, _ = _caption_identity(it.label)
+        if printed_id and not _isdigits(printed_id):
+            ids.add(printed_id)
     ids.discard("")
     return ids
 

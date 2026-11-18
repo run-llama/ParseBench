@@ -7,6 +7,26 @@ All notable changes to `parse-bench` are recorded here. The format follows
 ## [Unreleased]
 
 ### Scoring
+- Form rules support a source-verified `printed_value_prefix` for a subtraction operator outside an
+  unsigned answer box. This is opt-in; unannotated and entered negative signs remain significant.
+- Form matching handles split caption hints, explicitly numbered two-row field grids and date-header
+  tiers without skipping blank answer rows. Unambiguous OCR/LaTeX checkbox marks retain option ownership.
+  Printed instructions before a currency-marked answer and numbered blank-slot markers stay outside values.
+- Preserve numeric signs in form values through token extraction and printed-frame normalization.
+  Wrong explicit signs now fail; telephone-code parentheses, identifier hyphens and Markdown list markers
+  retain their formatting meaning. Digit-box amounts retain their first digit. Numeric parentheses
+  are accepted as an unsigned printed frame or an accounting negative; explicit minus remains significant.
+- Form rule references normalize explicit question/option checkbox labels, tolerate split printed IDs
+  such as `14 a` versus `14a`, and resolve unambiguous numbered table rows against their column captions,
+  including shared Yes/No checkbox headers. Unique captions can match without a section prefix;
+  uniquely owned `caption: value` fields can recover from GT ordering differences.
+  These fixes can move existing Forms scores; compare saved outputs with the same scorer version.
+  Table matching uses captions and row IDs, not expected values; swapped values remain errors.
+  Repeated inline headers and relocated bracketed field codes preserve answer boundaries;
+  ambiguous side-by-side header groups retain contextual matching. Indexed checkbox rows,
+  inherited section headings and explicit numbered subfields preserve local ownership. Reordered
+  possessive parent sections and mixed Yes/No question labels retain their own answers. Printed
+  field codes and date-format header hints no longer become entered values in the audited cases.
 - A layout page the provider returned no layout for scores 0 instead of being left out of the average, as a document
   with no layout at all already did; a provider that skips hard pages no longer scores above one that attempts them.
   The leaderboard re-score now re-scores those dimensions instead of keeping their old value. Two scorer crashes that
