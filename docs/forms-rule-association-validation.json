@@ -1,0 +1,405 @@
+{
+  "baseline_commit": "a237f0f3684055461b8968d5dc3a4aad04ddd697",
+  "baseline_sha256": "722f7440eff21ace1aacf662dbcf09c3d24c02a1e4f93e6d1e7bbb852e63e20c",
+  "outputs_revision": "23ebd7c4fb2a7b61d2ff02e0e955ceee36b863dd",
+  "additional_provider_revision": "21ecc920c6969f69353d4be51d27a4346979f645",
+  "dataset": "Local 600-page forms/fillable_forms snapshot; T1 page 7 l125 printed_value_prefix added",
+  "outputs": 33591,
+  "providers": 56,
+  "errors": 0,
+  "increased": 1942,
+  "decreased": 87,
+  "unchanged": 31562,
+  "changed_source_pages": 155,
+  "source_sha256": "15b58b8cfa47a6a336cdbc667b7e28f03f730de80352ef0643f6daacde378ed2",
+  "parse_metric_tests_passed": 4431,
+  "parse_metric_tests_skipped": 1,
+  "ruff": "passed",
+  "mypy_existing_errors": 40,
+  "mypy_new_errors": 0,
+  "swap_control_pairs": 275,
+  "both_swapped_values_detected": 273,
+  "swap_detections_lost": 0,
+  "followup_increased": 239,
+  "followup_decreased": 1,
+  "all_changed_outputs_adjudicated": false,
+  "accounting_parentheses_decision": "Accept unsigned printed frame and negative accounting representation; preserve explicit minus checks.",
+  "gt_changes": [
+    {
+      "file": "forms/filled__canada--01_T1-5006-R--p7__typed.test.json",
+      "rule_id": "l125",
+      "before_sha256": "919f33c346de6a92afad5b1ad84fa352b5a54d7aee917a24fbbbe41835ab0034",
+      "after_sha256": "b5a9dbb5ba26f6d66be17499ef232731665020fe4515da153ffeaab7b0d6c6d7",
+      "change": "Add printed_value_prefix minus; value unchanged; forms.jsonl synchronized."
+    }
+  ],
+  "published": false,
+  "audit_date": "2026-11-18",
+  "candidate_sha256": "15b58b8cfa47a6a336cdbc667b7e28f03f730de80352ef0643f6daacde378ed2",
+  "replay_candidate_sha256": "15b58b8cfa47a6a336cdbc667b7e28f03f730de80352ef0643f6daacde378ed2",
+  "audit_replay_directory": "/tmp/form-final-audit/pr-candidate",
+  "replay_method": "Full 33,591-output frozen replay plus a scope-guard overlay: all outputs parsed, every exact 2x2 grid rescored; AST diff confined to _rule_table_slots. See scope_guard_replay.",
+  "review_status": "PR review candidate. Original 17 decreases visually reviewed: 15 recovered, two retained. Not every changed output visually adjudicated. No release published.",
+  "new_regression_red_green": {
+    "failed_without_fixes": 12,
+    "passing_controls": 5,
+    "all_pass_with_fixes": true
+  },
+  "per_provider": [
+    {
+      "provider": "anthropic_haiku_5_5_parse_with_layout",
+      "outputs": 600,
+      "before": 79.78963329339491,
+      "after": 80.43554125783704
+    },
+    {
+      "provider": "anthropic_opus_5_5_parse_with_layout",
+      "outputs": 600,
+      "before": 82.76356119507601,
+      "after": 83.6367353343517
+    },
+    {
+      "provider": "anthropic_sonnet_5_5_parse_with_layout_file",
+      "outputs": 600,
+      "before": 82.19340991682613,
+      "after": 82.91987006177357
+    },
+    {
+      "provider": "azure_di_layout",
+      "outputs": 600,
+      "before": 80.36206155868264,
+      "after": 80.93199031644609
+    },
+    {
+      "provider": "chandra2_vllm",
+      "outputs": 600,
+      "before": 78.7268959215832,
+      "after": 79.22875367050644
+    },
+    {
+      "provider": "databricks_ai_parse",
+      "outputs": 600,
+      "before": 77.28261200101414,
+      "after": 77.694669479089
+    },
+    {
+      "provider": "datalab_accurate",
+      "outputs": 600,
+      "before": 80.60430554970202,
+      "after": 81.2475834419302
+    },
+    {
+      "provider": "datalab_balanced",
+      "outputs": 600,
+      "before": 80.64809111420895,
+      "after": 81.22619351015098
+    },
+    {
+      "provider": "datalab_fast",
+      "outputs": 600,
+      "before": 80.36871940388862,
+      "after": 80.90616953969986
+    },
+    {
+      "provider": "dots_ocr_1_5_parse",
+      "outputs": 600,
+      "before": 65.60745287369767,
+      "after": 66.08230917913829
+    },
+    {
+      "provider": "extend_parse",
+      "outputs": 600,
+      "before": 86.5323839339112,
+      "after": 87.0663342671398
+    },
+    {
+      "provider": "extend_parse_2",
+      "outputs": 600,
+      "before": 86.37451990467565,
+      "after": 86.94016399021488
+    },
+    {
+      "provider": "extend_parse_light",
+      "outputs": 600,
+      "before": 85.73378721415241,
+      "after": 86.30465425658872
+    },
+    {
+      "provider": "falconocr_pipeline",
+      "outputs": 600,
+      "before": 69.2195541158249,
+      "after": 69.4686953219393
+    },
+    {
+      "provider": "gemini_4_argon_thinking_low_parse_with_layout_file",
+      "outputs": 600,
+      "before": 81.96212747873523,
+      "after": 82.83142021063361
+    },
+    {
+      "provider": "gemma4_e4b_vllm_with_layout",
+      "outputs": 600,
+      "before": 62.51356103041806,
+      "after": 62.637084266561025
+    },
+    {
+      "provider": "google_gemini_3_1_flash_lite_parse_with_layout_file",
+      "outputs": 600,
+      "before": 76.79195608641976,
+      "after": 77.28612688390955
+    },
+    {
+      "provider": "google_gemini_3_5_flash_lite_parse_with_layout_file",
+      "outputs": 600,
+      "before": 74.50392218588591,
+      "after": 74.80730735220914
+    },
+    {
+      "provider": "google_gemini_3_5_flash_parse_with_layout_file",
+      "outputs": 600,
+      "before": 81.75753028730479,
+      "after": 82.54483829749081
+    },
+    {
+      "provider": "google_gemini_3_6_flash_parse_with_layout_file",
+      "outputs": 600,
+      "before": 82.4146980111478,
+      "after": 83.23980040643939
+    },
+    {
+      "provider": "google_gemini_3_7_flash_thinking_low_parse_with_layout_file",
+      "outputs": 600,
+      "before": 80.8383730870024,
+      "after": 81.70079456942915
+    },
+    {
+      "provider": "google_gemini_3_8_flash_thinking_low_parse_with_layout_file",
+      "outputs": 600,
+      "before": 81.1098823082416,
+      "after": 81.92334055474586
+    },
+    {
+      "provider": "google_gemini_3_flash_thinking_minimal_parse_with_layout_file",
+      "outputs": 600,
+      "before": 78.0210986406668,
+      "after": 78.73843075465876
+    },
+    {
+      "provider": "hunyuanocr_1_5",
+      "outputs": 600,
+      "before": 73.0464677559825,
+      "after": 73.06272440797127
+    },
+    {
+      "provider": "infinity_parser2_flash_deep",
+      "outputs": 600,
+      "before": 77.17585798588196,
+      "after": 77.56127782747419
+    },
+    {
+      "provider": "infinity_parser2_pro_deep",
+      "outputs": 600,
+      "before": 77.9679715415544,
+      "after": 78.44855993528009
+    },
+    {
+      "provider": "jinaocr_vllm",
+      "outputs": 600,
+      "before": 73.38123864277716,
+      "after": 73.74072605553802
+    },
+    {
+      "provider": "kdl_frontier_nano_v2",
+      "outputs": 600,
+      "before": 73.95848775648984,
+      "after": 74.26239497650177
+    },
+    {
+      "provider": "landingai_parse",
+      "outputs": 600,
+      "before": 82.20360661458123,
+      "after": 82.65712461399477
+    },
+    {
+      "provider": "lightonocr3_0_8b_vllm",
+      "outputs": 600,
+      "before": 78.47323554772262,
+      "after": 78.93365970996764
+    },
+    {
+      "provider": "lightonocr3_4b_vllm",
+      "outputs": 600,
+      "before": 79.13833688743084,
+      "after": 79.71178430427805
+    },
+    {
+      "provider": "llamaparse_agentic",
+      "outputs": 600,
+      "before": 85.54300447839115,
+      "after": 86.09109647385533
+    },
+    {
+      "provider": "llamaparse_agentic_plus",
+      "outputs": 600,
+      "before": 86.04451162309826,
+      "after": 86.67213190832214
+    },
+    {
+      "provider": "llamaparse_cost_effective",
+      "outputs": 600,
+      "before": 85.92527394021482,
+      "after": 86.35174286811748
+    },
+    {
+      "provider": "mineru2605pro_vllm",
+      "outputs": 600,
+      "before": 74.72700257027005,
+      "after": 75.23428499661708
+    },
+    {
+      "provider": "minicpm_ocr_sdk",
+      "outputs": 600,
+      "before": 71.49574215699833,
+      "after": 71.79684983921692
+    },
+    {
+      "provider": "mistral_ocr_4_1",
+      "outputs": 600,
+      "before": 79.77452783787655,
+      "after": 80.29695738097915
+    },
+    {
+      "provider": "mistral_ocr_4_1_annotation",
+      "outputs": 600,
+      "before": 79.85758339343211,
+      "after": 80.38001293653471
+    },
+    {
+      "provider": "muse_ember_1_0_reasoning_low_parse_with_layout_file",
+      "outputs": 600,
+      "before": 82.21347106926657,
+      "after": 82.92717154913102
+    },
+    {
+      "provider": "nemotron_parse_3_5_sdk",
+      "outputs": 600,
+      "before": 73.84563046732997,
+      "after": 74.05999777055631
+    },
+    {
+      "provider": "openai_gpt_5_6_luna_reasoning_low_parse_with_layout",
+      "outputs": 598,
+      "before": 78.693261681997,
+      "after": 79.30007913915256
+    },
+    {
+      "provider": "openai_gpt_5_6_terra_reasoning_low_parse_with_layout",
+      "outputs": 598,
+      "before": 80.2762695701141,
+      "after": 80.91570037344681
+    },
+    {
+      "provider": "openai_gpt_6_1_terra_reasoning_low_parse_with_layout_file",
+      "outputs": 600,
+      "before": 83.7498994331201,
+      "after": 84.45042699293668
+    },
+    {
+      "provider": "openai_gpt_6_luna_reasoning_low_parse_with_layout",
+      "outputs": 598,
+      "before": 80.65545996785453,
+      "after": 81.40678459536193
+    },
+    {
+      "provider": "paddleocr_vl_1_6_pipeline",
+      "outputs": 600,
+      "before": 71.52975481240573,
+      "after": 71.88732398497368
+    },
+    {
+      "provider": "pulse_ultra_2",
+      "outputs": 599,
+      "before": 80.83649947069871,
+      "after": 81.51663940999578
+    },
+    {
+      "provider": "qwen3_5_4b_vllm_layout",
+      "outputs": 600,
+      "before": 69.67645764139854,
+      "after": 70.02714058224832
+    },
+    {
+      "provider": "qwen3_8_27b_parse_with_layout",
+      "outputs": 600,
+      "before": 72.51304718952281,
+      "after": 72.81077264784051
+    },
+    {
+      "provider": "qwen3_8_27b_thinking_parse_with_layout",
+      "outputs": 598,
+      "before": 73.59284402506012,
+      "after": 74.07052198043925
+    },
+    {
+      "provider": "reducto",
+      "outputs": 600,
+      "before": 84.03961787016188,
+      "after": 84.66926366203415
+    },
+    {
+      "provider": "reducto_agentic",
+      "outputs": 600,
+      "before": 85.10552026110231,
+      "after": 85.60217736523214
+    },
+    {
+      "provider": "reducto_r1",
+      "outputs": 600,
+      "before": 83.27163856692857,
+      "after": 84.01593745119068
+    },
+    {
+      "provider": "reducto_r1_mini",
+      "outputs": 600,
+      "before": 82.63312618452522,
+      "after": 83.20841333755989
+    },
+    {
+      "provider": "surya2_sdk",
+      "outputs": 600,
+      "before": 78.0836243266298,
+      "after": 78.6680450633529
+    },
+    {
+      "provider": "teleocr_vllm",
+      "outputs": 600,
+      "before": 72.92266947107979,
+      "after": 73.21839191279574
+    },
+    {
+      "provider": "unlimitedocr2",
+      "outputs": 600,
+      "before": 74.22865833284172,
+      "after": 74.66968650635893
+    }
+  ],
+  "schema_sha256": "0320fb9a239d1b230a5ea2be05d0b460cfc0317c1d600d4910f0b8ba9e413c25",
+  "gt_manifest_sha256": "e1ff5ec7d50fa178362ea82bbf910ab94f445321febfe15590ef15d513ddf386",
+  "original_followup_decreases_reviewed": 17,
+  "original_followup_decreases_recovered": 15,
+  "annotation_replay_outputs": 56,
+  "annotation_changed_scores": 0,
+  "legacy_annotation_changed_scores": 0,
+  "scope_guard_replay": {
+    "outputs": 33591,
+    "replayed": 2149,
+    "errors": 0,
+    "changed_scores": 7,
+    "changed_functions": [
+      "_rule_table_slots"
+    ],
+    "candidate_sha256": "15b58b8cfa47a6a336cdbc667b7e28f03f730de80352ef0643f6daacde378ed2",
+    "base_candidate_sha256": "8238fba6c00e61b0552969f65f6153add50ae5b2acdc196eccdd6faeaf2d22cc"
+  },
+  "release_published": false
+}
