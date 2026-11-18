@@ -6,6 +6,8 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-11-18
+
 ### Scoring
 - Form rules support a source-verified `printed_value_prefix` for a subtraction operator outside an
   unsigned answer box. This is opt-in; unannotated and entered negative signs remain significant.
