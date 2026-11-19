@@ -6,6 +6,15 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+### Scoring
+- Text/TAL scores complete Mermaid `flowchart` / `graph` blocks by their visible node, group and edge
+  labels. Directives, internal IDs and repeated edge references no longer count as document text.
+  Incorrect, missing and additional labels remain scored. Unsupported, malformed and unclosed blocks
+  retain their previous treatment; ordinary code blocks are unchanged. This can move existing Text
+  scores on Mermaid outputs; compare runs using the same scorer version. No GT migration is required.
+- Resolve explicitly labelled flowchart nodes declared after an edge reference when their IDs contain
+  underscores, keeping the identifier out of the visible label.
+
 ## [2.1.1] - 2026-11-18
 
 ### Scoring

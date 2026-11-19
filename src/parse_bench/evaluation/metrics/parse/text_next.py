@@ -41,6 +41,7 @@ from typing import Any
 import regex
 from rapidfuzz.distance import LCSseq, Levenshtein
 
+from parse_bench.evaluation.metrics.parse.mermaid_text import project_mermaid_text
 from parse_bench.schemas.evaluation import MetricValue
 from parse_bench.schemas.parse_output import ParseOutput
 
@@ -1441,6 +1442,8 @@ def score_text_next(ref_md: str, hyp_md: str) -> TextNextResult:
     The standalone digit groups must match exactly and the reference must use one spelling. Keep the original
     reading too: retokenizing a date can change an unrelated gap's alignment, sentence boundaries or denominator.
     """
+    ref_md = project_mermaid_text(ref_md)
+    hyp_md = project_mermaid_text(hyp_md)
     date_forms: dict[str, set[str]] = {}
     for date in _DOTTED_DATE.finditer(ref_md):
         date_forms.setdefault(".".join(date.groups()), set()).add(date.group())
