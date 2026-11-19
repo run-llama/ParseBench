@@ -11,11 +11,14 @@ Pulse (Ultra 2),Document Parsers,84.04,86.02,88.68,84.80,86.80,77.09,80.84,1.500
 Extend (Parse Light),Document Parsers,82.46,78.21,78.65,81.39,85.35,85.29,85.86,0.625,yes
 Datalab (Accurate),Document Parsers,82.63,91.08,92.54,90.38,67.83,73.32,80.62,1.000,yes
 Datalab (Balanced),Document Parsers,82.35,90.21,92.57,89.62,67.60,73.50,80.59,0.400,yes
+GPT-6.2 sol (medium),Vision Models,80.92,90.62,90.54,94.82,78.86,52.33,78.33,2.468,yes
+Gemini 4 neon (low),Vision Models,80.59,91.37,88.44,95.22,41.44,89.05,78.01,6.204,yes
 KDL-Frontier-Parser-nano-v2,Open Weight,80.13,80.21,84.58,80.54,73.55,88.28,73.60,,yes
 Datalab (Fast),Document Parsers,79.61,87.10,92.06,84.15,61.47,72.63,80.27,0.400,yes
 Infinity-Parser2 Pro,Open Weight,78.50,85.55,78.70,86.27,55.64,87.04,77.79,,yes
 GPT-5.6 terra (low),Vision Models,78.25,80.95,87.86,79.64,76.30,64.66,80.07,3.116,yes
 LightOnOCR-3 4B,Open Weight,78.39,84.30,81.44,78.25,62.90,84.25,79.19,,yes
+GPT-6.2 sol (low),Vision Models,78.00,90.76,90.25,93.78,63.42,51.40,78.42,2.289,yes
 Databricks AI Parse,Document Parsers,77.75,79.19,79.30,81.27,64.20,85.56,77.00,0.438,yes
 Gemini 3 Flash (minimal),Vision Models,77.73,86.66,86.12,89.00,57.97,68.20,78.42,0.885,yes
 Chandra 2,Open Weight,77.54,77.18,88.80,85.60,62.48,72.44,78.73,,yes

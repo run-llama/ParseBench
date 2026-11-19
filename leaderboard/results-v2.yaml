@@ -283,3 +283,18 @@ rows:
   status: verified
   pipeline: qwen3_8_27b_thinking_parse_with_layout
   results_revision: 21ecc920c6969f69353d4be51d27a4346979f645
+- provider: Gemini 4 neon (low)
+  status: verified
+  pipeline: gemini_4_neon_thinking_low_parse_with_layout_file
+  results_revision: refs/pr/15
+  run_dates: '2026-11-19'
+- provider: GPT-6.2 sol (low)
+  status: verified
+  pipeline: openai_gpt_6_2_sol_reasoning_low_parse_with_layout_file
+  results_revision: refs/pr/16
+  run_dates: '2026-11-17'
+- provider: GPT-6.2 sol (medium)
+  status: verified
+  pipeline: openai_gpt_6_2_sol_reasoning_med_parse_with_layout_file
+  results_revision: refs/pr/17
+  run_dates: '2026-11-17'
