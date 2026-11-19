@@ -9,7 +9,7 @@ Anthropic Haiku 4.5 (Thinking),VLM - Proprietary,51.21,78.53,27.78,83.10,55.53,1
 Google Gemini 3 Flash (Thinking Minimal),VLM - Proprietary,72.47,89.64,63.63,89.29,64.15,55.63,0.65,0.49,0.84,0.56,0.69,,yes
 Google Gemini 3 Flash (Thinking High),VLM - Proprietary,73.98,91.19,64.05,89.74,62.56,62.37,2.41,2.38,2.29,2.25,2.70,,yes
 Google Gemini 3 Flash (Thinking Medium),VLM - Proprietary,74.07,91.03,61.56,88.28,67.95,61.53,1.98,2.23,2.01,1.74,1.97,,yes
-GLM-5.3 Flash,VLM - Proprietary,70.55,89.19,54.59,88.18,79.02,41.78,0.44,0.39,0.49,0.42,0.47,,yes
+GLM-5.3 Flash,VLM - Proprietary,69.36,89.19,54.59,88.18,79.02,35.81,0.44,0.39,0.49,0.42,0.47,,yes
 OpenAI GPT-6.1 Sol (Reasoning Low),VLM - Proprietary,69.63,92.46,37.16,88.89,74.78,54.85,1.95,1.43,2.58,1.63,2.16,,yes
 OpenAI GPT-6.1 Terra (Reasoning Medium),VLM - Proprietary,73.64,93.07,59.71,89.32,73.18,52.94,1.09,0.93,1.39,0.87,1.16,,no
 OpenAI GPT-6.1 Terra (Reasoning Low),VLM - Proprietary,69.77,92.18,45.12,89.57,72.58,49.40,0.96,0.72,1.30,0.78,1.04,,no
@@ -36,10 +36,10 @@ Anthropic Fable 5.1,VLM - Proprietary,77.81,91.53,66.93,90.77,76.02,63.81,16.05,
 Anthropic Sonnet 5,VLM - Proprietary,61.16,86.65,60.53,86.51,64.93,7.18,3.18,2.79,3.82,2.60,3.52,,no
 Anthropic Sonnet 5.5,VLM - Proprietary,69.21,91.07,37.69,91.24,71.63,54.44,2.74,2.10,3.39,2.41,3.06,,yes
 Google Gemini 3.1 Pro,VLM - Proprietary,67.32,91.13,40.43,89.26,44.91,70.85,8.49,6.69,9.69,7.73,10.54,,yes
-Google Gemini 3.1 Pro (Thinking Low),VLM - Proprietary,59.77,90.35,11.43,86.80,45.58,64.69,2.50,1.56,3.22,2.15,3.07,,yes
+Google Gemini 3.1 Pro (Thinking Low),VLM - Proprietary,59.77,90.35,11.43,86.79,45.58,64.69,2.50,1.56,3.22,2.15,3.07,,yes
 Google Gemini 3.1 Flash Lite,VLM - Proprietary,56.45,85.52,10.69,89.15,48.60,48.29,0.29,0.19,0.37,0.27,0.31,,yes
 Google Gemini 3.1 Flash Lite (Thinking Medium),VLM - Proprietary,56.66,83.48,14.35,87.27,56.17,42.02,0.32,0.21,0.40,0.30,0.37,,yes
-Anthropic Haiku 5.5,VLM - Proprietary,56.02,86.85,10.13,89.83,65.64,27.63,0.14,0.11,0.19,0.13,0.15,,yes
+Anthropic Haiku 5.5,VLM - Proprietary,56.06,86.85,10.13,89.83,65.64,27.85,0.14,0.11,0.19,0.13,0.15,,yes
 Google Gemini 3.1 Flash Lite (Thinking High),VLM - Proprietary,55.84,76.80,30.89,82.84,56.61,32.08,1.04,0.86,1.18,0.97,1.12,,yes
 Google Gemini 3.5 Flash Lite,VLM - Proprietary,53.11,73.50,6.08,82.48,48.56,54.92,0.56,0.34,0.74,0.40,0.74,,yes
 Google Gemini 3.5 Flash Lite (Thinking High),VLM - Proprietary,59.49,83.35,19.27,86.48,54.05,54.30,1.18,0.91,1.47,0.96,1.37,,yes
@@ -95,7 +95,7 @@ Mistral OCR 4,Commercial - IDP,58.38,74.03,1.86,90.01,60.32,65.69,0.4,,,,,,yes
 Databricks AI Parse,Commercial - IDP,70.11,86.46,71.67,88.38,44.74,59.30,0.35,0.38,0.30,0.30,0.41,,yes
 Nutrient DWS (Agentic),Commercial - IDP,76.43,72.13,83.46,84.45,64.66,77.47,1.80,,,,,,no
 Infinity-Parser2-Pro,VLM - Open Weight,71.19,86.39,58.16,89.66,47.12,74.64,,,,,,infly/Infinity-Parser2-Pro,yes
-Infinity-Parser2-Flash,VLM - Open Weight,68.63,82.88,52.67,88.61,44.04,74.95,,,,,,infly/Infinity-Parser2-Flash,yes
+Infinity-Parser2-Flash,VLM - Open Weight,68.61,82.76,52.67,88.61,44.04,74.95,,,,,,infly/Infinity-Parser2-Flash,yes
 OvisOCR3,VLM - Open Weight,71.81,80.18,62.50,89.12,53.29,73.94,,,,,,ATH-MaaS/OvisOCR3,no
 Qwen3-VL-8B-Instruct,VLM - Open Weight,61.97,74.61,28.18,87.63,64.23,55.18,,,,,,Qwen/Qwen3-VL-8B-Instruct,no
 MiniCPM-OCR 1.0,VLM - Open Weight,61.74,74.21,37.55,82.62,43.81,70.50,,,,,,openbmb/MiniCPM-OCR-1.0,no
@@ -120,7 +120,7 @@ Nemotron-3.5-Parse,VLM - Open Weight,75.07,84.62,63.85,88.04,69.06,69.78,,,,,,nv
 LightOnOCR-3-4B,VLM - Open Weight,75.34,83.63,66.35,90.07,68.08,68.59,,,,,,lightonai/LightOnOCR-3-4B,yes
 LightOnOCR-3-0.8B,VLM - Open Weight,74.56,84.42,64.55,88.82,66.44,68.59,,,,,,lightonai/LightOnOCR-3-0.8B,yes
 LightOnOCR-3-1B,VLM - Open Weight,70.93,84.82,56.38,88.61,64.47,60.38,,,,,,lightonai/LightOnOCR-3-1B,yes
-Qianfan-OCR,VLM - Open Weight,42.25,72.30,0.90,76.74,40.53,20.76,,,,,,baidu/Qianfan-OCR,yes
+Qianfan-OCR,VLM - Open Weight,42.22,72.15,0.90,76.74,40.53,20.76,,,,,,baidu/Qianfan-OCR,yes
 MinerU2.5-Pro-2605-1.2B,VLM - Open Weight,69.06,77.61,59.12,88.23,47.15,73.21,,,,,,opendatalab/MinerU2.5-Pro-2605-1.2B,yes
 Unlimited-OCR,VLM - Open Weight,33.12,70.25,1.01,87.18,0.23,6.91,,,,,,baidu/Unlimited-OCR,yes
 Jina-OCR-v1,VLM - Open Weight,45.72,74.90,7.52,85.55,60.64,0.00,,,,,,jinaai/jina-ocr-v1,yes
@@ -148,11 +148,11 @@ DeepSeek V4.1 Flash (Thinking High),VLM - Open Weight,64.38,82.84,51.11,86.92,73
 DeepSeek V4.1 Flash (No Thinking),VLM - Open Weight,55.10,79.68,20.46,87.71,66.05,21.58,,,,,,deepseek-ai/DeepSeek-V4.1-Flash,yes
 MarkItDown,Open Source - Local,18.63,15.77,2.02,64.54,0.91,9.90,,,,,,,no
 OpenDataLoader,Open Source - Local,29.40,35.18,0.92,66.06,34.07,10.77,,,,,,,no
-PyMuPDF4LLM,Open Source - Local,50.47,56.93,1.63,75.25,56.66,61.89,,,,,,,yes
+PyMuPDF4LLM,Open Source - Local,50.31,56.93,1.63,75.25,56.66,61.09,,,,,,,yes
 PyMuPDF (Text),Open Source - Local,16.02,0.00,0.00,68.28,0.95,10.86,,,,,,,no
 PyMuPDF (HTML),Open Source - Local,16.62,0.00,0.00,55.63,18.26,9.20,,,,,,,no
 pypdf,Open Source - Local,14.87,0.00,0.00,62.50,0.91,10.92,,,,,,,no
 pdf-inspector,Open Source - Local,26.59,26.64,5.29,56.06,35.07,9.91,,,,,,,no
 LiteParse (no OCR),Open Source - Local,36.9,42.4,1.8,70.0,38.5,31.8,,,,,,,no
 Warp Ingest,Open Source - Local,39.33,57.50,2.45,72.24,42.94,21.50,,,,,,,yes
-Upstage Document Parse 2 (Enhanced),VLM - Proprietary,80.63,89.48,77.50,87.67,76.68,71.84,3,3,3,3,3,,yes
+Upstage Document Parse 2 (Enhanced),VLM - Proprietary,80.64,89.48,77.50,87.68,76.68,71.84,3,3,3,3,3,,yes

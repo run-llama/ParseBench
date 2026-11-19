@@ -12,8 +12,8 @@
 
 results_repo: llamaindex/ParseBench-2-results
 data_repo: llamaindex/ParseBench-2
-data_revision: f0757ac998ef9eb9c3c346ef170fee175b6a7d75
-scored_with: c61ff10646107900fdd400c6b3048e5f15f88cc2
+data_revision: 2d9a2344660647e87dc272458ea1978428f895eb
+scored_with: d7efdbc864e2e55f9793063a90936123fc769004
 rows:
 - provider: LlamaParse (Agentic Plus)
   status: verified
