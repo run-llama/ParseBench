@@ -177,6 +177,25 @@ uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 | `google_docai` | Document AI OCR | `GOOGLE_DOCAI_PROJECT_ID`, `GOOGLE_DOCAI_PROCESSOR_ID` |
 | **`google_docai_layout`** | Document AI Layout (In paper: *Google Cloud Document AI*) | `GOOGLE_DOCAI_PROJECT_ID`, `GOOGLE_DOCAI_LAYOUT_PROCESSOR_ID` |
 
+### Webcite
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `webcite` | Document extraction API, Markdown with element boxes | `WEBCITE_API_KEY` |
+
+Sign up at [webcite.co](https://webcite.co) and create an API key in the dashboard. No extra
+install is needed; the provider uses `httpx`. Each document is uploaded unchanged with
+`POST /upload` and read with `POST /extract`. Reads are charged in credits; see
+[webcite.co/pricing](https://webcite.co/pricing). `/extract` is rate limited per plan by minute
+and by day; the provider waits out short HTTP 429 windows, and a run stopped by the daily limit
+can be continued with the same command, which skips documents that already have a result. Set
+`WEBCITE_BASE_URL` to use another API root.
+
+```bash
+uv run parse-bench run webcite --test --max_concurrent 2
+uv run parse-bench run webcite --dataset parsebench-2
+```
+
 ### Reducto
 
 | Pipeline | Description | Env Var |

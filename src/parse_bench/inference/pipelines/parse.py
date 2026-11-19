@@ -3275,6 +3275,18 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
 
     # =========================================================================
+    # Webcite Pipelines
+    # =========================================================================
+    register_fn(
+        PipelineSpec(
+            pipeline_name="webcite",
+            provider_name="webcite",
+            product_type=ProductType.PARSE,
+            config={"timeout": 300},
+        )
+    )
+
+    # =========================================================================
     # Cohere Parse Pipelines
     # =========================================================================
     register_fn(
