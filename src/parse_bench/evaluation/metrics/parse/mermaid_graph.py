@@ -77,16 +77,24 @@ class Graph:
     groups: dict[str, str] = field(default_factory=dict)  # group id -> title
     errors: list[str] = field(default_factory=list)
     source: str = ""
+    # Text projection must preserve source when the permissive graph parser loses labels.
+    text_projection_safe: bool = True
+    _explicit_labels: dict[str, str] = field(default_factory=dict, repr=False)
 
     def node(self, node_id: str, label: str | None = None, group: str | None = None) -> Node:
         """Return the node, creating it; the first explicit label wins over the bare id."""
+        if label is not None:
+            cleaned = clean_label(label)
+            if node_id in self._explicit_labels and self._explicit_labels[node_id] != cleaned:
+                self.text_projection_safe = False
+            self._explicit_labels[node_id] = cleaned
         n = self.nodes.get(node_id)
         if n is None:
             # A bare id stands in for its label; ``Buying_Box`` reads as "Buying Box".
             n = Node(id=node_id, label=clean_label(label) if label else node_id.replace("_", " "), group=group)
             self.nodes[node_id] = n
         else:
-            if label and n.label == n.id:
+            if label and n.label == n.id.replace("_", " "):
                 n.label = clean_label(label)
             if group and n.group is None:
                 n.group = group
@@ -404,11 +412,15 @@ def _parse_flowchart(lines: list[str]) -> Graph:
                 group_stack.append(gid)
                 continue
             if re.match(r"^end\b", stmt, re.I):
+                if stmt.lower() != "end" or not group_stack:
+                    graph.text_projection_safe = False
                 if group_stack:
                     group_stack.pop()
                 continue
             group = group_stack[-1] if group_stack else None
             _parse_flow_statement(stmt, graph, group)
+    if group_stack:
+        graph.text_projection_safe = False
     return graph
 
 
