@@ -61,16 +61,16 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 
 | Rank | Provider | Category | Overall | Text | Formatting | Tables | Charts | Visual Ground. | Forms | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | LlamaParse (Agentic Plus) | Document Parsers | 90.82 | 90.22 | 93.60 | 94.72 | 92.58 | 88.23 | 85.56 | 2.81¢ |
-| 2 | Claude Opus 5.5 | Vision Models | 86.96 | 92.62 | 89.38 | 94.20 | 74.12 | 89.17 | 82.25 | 6.49¢ |
-| 3 | LlamaParse (Agentic) | Document Parsers | 86.87 | 86.96 | 92.75 | 89.90 | 77.39 | 89.17 | 85.05 | 1.25¢ |
-| 4 | Reducto (r-1) | Document Parsers | 86.09 | 82.42 | 92.45 | 90.97 | 78.45 | 89.48 | 82.79 | 1.00¢ |
-| 5 | LlamaParse (Cost Effective) | Document Parsers | 85.44 | 85.47 | 91.94 | 87.22 | 73.07 | 89.49 | 85.47 | 0.38¢ |
-| 6 | Gemini 4 argon (low) | Vision Models | 85.17 | 89.60 | 89.22 | 92.85 | 68.20 | 89.75 | 81.40 | 2.68¢ |
-| 7 | Reducto | Document Parsers | 84.84 | 81.77 | 82.70 | 84.92 | 89.07 | 85.93 | 84.66 | 3.00¢ |
-| 8 | Extend (Parse 2) | Document Parsers | 84.04 | 80.13 | 83.39 | 84.20 | 85.08 | 85.47 | 85.95 | 2.50¢ |
-| 9 | Pulse (Ultra 2) | Document Parsers | 83.92 | 86.02 | 88.68 | 84.80 | 86.80 | 77.09 | 80.13 | 1.50¢ |
-| 10 | Datalab (Accurate) | Document Parsers | 82.52 | 91.08 | 92.54 | 90.38 | 67.83 | 73.32 | 79.94 | 1.00¢ |
+| 1 | LlamaParse (Agentic Plus) | Document Parsers | 90.93 | 90.22 | 93.60 | 94.72 | 92.58 | 88.23 | 86.22 | 2.81¢ |
+| 2 | Claude Opus 5.5 | Vision Models | 87.11 | 92.62 | 89.38 | 94.20 | 74.12 | 89.17 | 83.16 | 6.49¢ |
+| 3 | LlamaParse (Agentic) | Document Parsers | 86.96 | 86.96 | 92.75 | 89.90 | 77.39 | 89.17 | 85.62 | 1.25¢ |
+| 4 | Reducto (r-1) | Document Parsers | 86.23 | 82.42 | 92.45 | 90.97 | 78.45 | 89.48 | 83.58 | 1.00¢ |
+| 5 | LlamaParse (Cost Effective) | Document Parsers | 85.52 | 85.47 | 91.94 | 87.22 | 73.07 | 89.49 | 85.92 | 0.38¢ |
+| 6 | Gemini 4 argon (low) | Vision Models | 85.32 | 89.60 | 89.22 | 92.85 | 68.20 | 89.75 | 82.31 | 2.68¢ |
+| 7 | Reducto | Document Parsers | 84.93 | 81.77 | 82.70 | 84.92 | 89.07 | 85.93 | 85.19 | 3.00¢ |
+| 8 | Extend (Parse 2) | Document Parsers | 84.14 | 80.13 | 83.39 | 84.20 | 85.08 | 85.47 | 86.54 | 2.50¢ |
+| 9 | Pulse (Ultra 2) | Document Parsers | 84.04 | 86.02 | 88.68 | 84.80 | 86.80 | 77.09 | 80.84 | 1.50¢ |
+| 10 | Datalab (Accurate) | Document Parsers | 82.63 | 91.08 | 92.54 | 90.38 | 67.83 | 73.32 | 80.62 | 1.00¢ |
 <!-- LEADERBOARD-V2:END -->
 
 Verified rows are re-scored from their published outputs in [ParseBench-2-results](https://huggingface.co/datasets/llamaindex/ParseBench-2-results) whenever the scorers change (see [leaderboard/README.md](leaderboard/README.md)); rows marked † carry the scores reported in the ParseBench 2 paper until their outputs are published. Systems that do not score all six dimensions are not ranked. To add an open-weight model to the [Hugging Face leaderboard](https://huggingface.co/datasets/llamaindex/ParseBench-2), see [Submit Results to the Leaderboard](https://huggingface.co/datasets/llamaindex/ParseBench-2#submit-results-to-the-leaderboard).
@@ -85,7 +85,7 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | 1 | LlamaParse Agentic Plus | LlamaParse | 86.69 | 93.27 | 92.19 | 89.74 | 82.84 | 75.43 | 5.62¢ |
 | 2 | LlamaParse Agentic | LlamaParse | 82.83 | 90.90 | 81.20 | 87.84 | 84.81 | 69.42 | 1.25¢ |
 | 3 | Pulse Ultra 2 † | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
-| 4 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.63 | 89.48 | 77.50 | 87.67 | 76.68 | 71.84 | 3.00¢ |
+| 4 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.64 | 89.48 | 77.50 | 87.68 | 76.68 | 71.84 | 3.00¢ |
 | 5 | anyformat (Standard) | Commercial - Startup APIs | 80.05 | 86.84 | 85.01 | 86.39 | 79.25 | 62.74 | 4.30¢ |
 | 6 | KDL-Frontier-Parser-nano-v2 | VLM - Open Weight | 79.03 | 86.19 | 69.14 | 87.59 | 76.91 | 75.33 | — |
 | 7 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 78.80 | 94.26 | 70.89 | 91.25 | 77.06 | 60.56 | 6.13¢ |
