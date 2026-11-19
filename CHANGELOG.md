@@ -6,6 +6,8 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-11-18
+
 ### Scoring
 - Text/TAL scores complete Mermaid `flowchart` / `graph` blocks by their visible node, group and edge
   labels. Directives, internal IDs and repeated edge references no longer count as document text.
