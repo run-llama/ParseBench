@@ -1296,7 +1296,7 @@ dependencies = [
     { name = "pillow" },
     { name = "py-cpuinfo" },
     { name = "pybase64" },
-    { name = "pymupdf" },
+    { name = "pymupdf", version = "1.28.2", source = { registry = "https://pypi.org/simple" } },
     { name = "pypdf" },
     { name = "qwen-vl-utils" },
     { name = "scikit-learn" },
@@ -2596,7 +2596,8 @@ anthropic = [
     { name = "anthropic" },
     { name = "pdf2image" },
     { name = "pillow" },
-    { name = "pymupdf" },
+    { name = "pymupdf", version = "1.28.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-parse-bench-runners'" },
+    { name = "pymupdf", version = "2.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
 ]
 anyformat = [
     { name = "httpx" },
@@ -2635,7 +2636,8 @@ google = [
     { name = "google-genai" },
     { name = "pdf2image" },
     { name = "pillow" },
-    { name = "pymupdf" },
+    { name = "pymupdf", version = "1.28.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-parse-bench-runners'" },
+    { name = "pymupdf", version = "2.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
 ]
 landingai = [
     { name = "landingai-ade" },
@@ -2650,7 +2652,8 @@ llamaparse = [
 local = [
     { name = "pdf2image" },
     { name = "pillow" },
-    { name = "pymupdf" },
+    { name = "pymupdf", version = "1.28.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-parse-bench-runners'" },
+    { name = "pymupdf", version = "2.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
     { name = "pypdf" },
     { name = "pytesseract" },
 ]
@@ -2658,10 +2661,11 @@ openai = [
     { name = "openai" },
     { name = "pdf2image" },
     { name = "pillow" },
-    { name = "pymupdf" },
+    { name = "pymupdf", version = "1.28.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-parse-bench-runners'" },
+    { name = "pymupdf", version = "2.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
 ]
 pymupdf4llm = [
-    { name = "pymupdf4llm" },
+    { name = "pymupdf", version = "2.1", source = { registry = "https://pypi.org/simple" } },
     { name = "rapidocr" },
 ]
 reducto = [
@@ -2685,7 +2689,7 @@ runners = [
     { name = "openai" },
     { name = "pdf2image" },
     { name = "pillow" },
-    { name = "pymupdf" },
+    { name = "pymupdf", version = "1.28.2", source = { registry = "https://pypi.org/simple" } },
     { name = "pypdf" },
     { name = "pytesseract" },
     { name = "reductoai" },
@@ -2768,8 +2772,8 @@ requires-dist = [
     { name = "pymupdf", marker = "extra == 'google'", specifier = ">=1.24.0" },
     { name = "pymupdf", marker = "extra == 'local'", specifier = ">=1.24.0" },
     { name = "pymupdf", marker = "extra == 'openai'", specifier = ">=1.24.0" },
+    { name = "pymupdf", marker = "extra == 'pymupdf4llm'", specifier = "==2.1" },
     { name = "pymupdf", marker = "extra == 'runners'", specifier = ">=1.24.0" },
-    { name = "pymupdf4llm", marker = "extra == 'pymupdf4llm'", specifier = "==1.28.2" },
     { name = "pypdf", marker = "extra == 'local'", specifier = ">=6.4.0" },
     { name = "pypdf", marker = "extra == 'runners'", specifier = ">=6.4.0" },
     { name = "pypdfium2", specifier = ">=4.30.0" },
@@ -2780,7 +2784,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "python-levenshtein", specifier = ">=0.25.0" },
     { name = "rapidfuzz", specifier = ">=3.0.0" },
-    { name = "rapidocr", marker = "extra == 'pymupdf4llm'", specifier = "==3.9.2" },
+    { name = "rapidocr", marker = "extra == 'pymupdf4llm'", specifier = "==3.10.0" },
     { name = "reductoai", marker = "extra == 'reducto'", specifier = ">=0.13.0" },
     { name = "reductoai", marker = "extra == 'runners'", specifier = ">=0.13.0" },
     { name = "regex", specifier = ">=2024.0.0" },
@@ -3381,6 +3385,17 @@ wheels = [
 name = "pymupdf"
 version = "1.28.2"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32'",
+    "python_full_version < '3.13' and sys_platform == 'win32'",
+    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
+    "python_full_version < '3.13' and sys_platform == 'emscripten'",
+    "python_full_version == '3.13.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
 sdist = { url = "https://files.pythonhosted.org/packages/a3/fb/b6761fa2d5266f2cdb24c3b91f4023070ab7848381417678e7a289a1d52a/pymupdf-1.28.2.tar.gz", hash = "sha256:5e0be7908a715aa20333caddd73f1d6f01e4cd0c26e869fa2dd0b7f344da2249", size = 87903557, upload-time = "2026-08-06T21:43:23.321Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b4/51/550c9a75c4ff3245cb4ecb7bb95cbe2ab7374230b8e2b7a1f7259444150b/pymupdf-1.28.2-cp310-abi3-macosx_10_15_x86_64.whl", hash = "sha256:5fc315b425ff1f7afdd1ea2f348205cb19b806767daae7ce4d64115799c2bae1", size = 24645079, upload-time = "2026-08-06T21:37:25.001Z" },
@@ -3396,37 +3411,60 @@ wheels = [
 ]
 
 [[package]]
+name = "pymupdf"
+version = "2.1"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32'",
+    "python_full_version < '3.13' and sys_platform == 'win32'",
+    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
+    "python_full_version < '3.13' and sys_platform == 'emscripten'",
+    "python_full_version == '3.13.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
+dependencies = [
+    { name = "networkx", marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
+    { name = "numpy", marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
+    { name = "onnxruntime", marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
+    { name = "psutil", marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
+    { name = "pymupdf-layout", marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
+    { name = "pymupdf4llm", marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
+    { name = "pyyaml", marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
+    { name = "tabulate", marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/13/d9/5ae3cce31a4a62de4f6979331b4d8d5b86a8f2520f06754cf5e69065c887/pymupdf-2.1.tar.gz", hash = "sha256:9ac95f98016e83eafb8f1d786396f9c60e400d559590596e5b2df9eb6384948b", size = 88893521, upload-time = "2026-11-02T17:17:53.36Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/36/5c/e636dacbb4d3d39985e20904e3f13712c181e0e9bec6553953583a6723b1/pymupdf-2.1-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:1bb2284bde6067f05f83961ea678480060870dc966ad520bcf97da0b0eccf40c", size = 67177399, upload-time = "2026-11-02T17:15:19.686Z" },
+    { url = "https://files.pythonhosted.org/packages/10/f9/bf895749cbe37a881f4e3d6eb29b6112bedf366829f3709c94c1e3b6ac22/pymupdf-2.1-cp311-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:5a1a1fee36d5598013614e06eef25aaa68819d828f5401170dbcaf6f2714d1dd", size = 68308665, upload-time = "2026-11-02T17:15:32.475Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/dc/e244c162ab621a45bfe36e33fe432264ef7e40592f739474864df66a2dd8/pymupdf-2.1-cp311-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:a9efa2e9e5f469d3b5749199329739cfef1ff1d1846538ced4885c544eecbcd9", size = 68983787, upload-time = "2026-11-02T17:15:45.378Z" },
+    { url = "https://files.pythonhosted.org/packages/9d/1a/397ef60ed67c5b99c8584d2f07c3970b0cd693283212a233b06737f7c859/pymupdf-2.1-cp311-abi3-win_amd64.whl", hash = "sha256:e1122bbc3a1212396f0d70d19f78e084991b59ebdfc9d846c28ca8b509de01ad", size = 63020050, upload-time = "2026-11-02T17:16:01.425Z" },
+]
+
+[[package]]
 name = "pymupdf-layout"
-version = "1.28.2"
+version = "2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "networkx" },
-    { name = "numpy" },
-    { name = "onnxruntime" },
-    { name = "pymupdf" },
-    { name = "pyyaml" },
+    { name = "pymupdf", version = "2.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
+    { name = "pymupdf4llm", marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/84/cf9030e29adbfa9fb555d925af1e0f212d54810e50711bd059e6e71c7cb1/pymupdf_layout-1.28.2-cp310-abi3-macosx_10_9_x86_64.whl", hash = "sha256:2a7368b5b0d75acb0835fae40a4d6e6c30ba457b388fedc75f06619a581ba17f", size = 42928696, upload-time = "2026-08-06T21:40:10.372Z" },
-    { url = "https://files.pythonhosted.org/packages/16/1f/f03250cb18d4942d16f335d90a7eef2411b29097ba52531e0062edf16186/pymupdf_layout-1.28.2-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:d55e9b9150e1e9f182063b93092f0ba2c2475b51ea6da656e9d6edad0dd4054d", size = 42927631, upload-time = "2026-08-06T21:40:38.474Z" },
-    { url = "https://files.pythonhosted.org/packages/75/82/6cbf0331e148db48bf609c165dbe900cf3c1158546c5d09d4ad7fd4d6b17/pymupdf_layout-1.28.2-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:fc7716682bfde26c002a7309cda0c520f3d2466dce368054d4fc2b653a74e8bc", size = 42937884, upload-time = "2026-08-06T21:41:03.992Z" },
-    { url = "https://files.pythonhosted.org/packages/03/65/6b92d25678c64839fb2066ee98d6d1f164d820ba045d83c77e79021cda98/pymupdf_layout-1.28.2-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:4b44a1d8ebf897b0e862ee2d73e7df73099f1c047fc024d2dd24ef0632d2cb5f", size = 42939266, upload-time = "2026-08-06T21:41:31.835Z" },
-    { url = "https://files.pythonhosted.org/packages/db/a0/f429e4c398db6f88071e305434d67f8c6455498f4c7ebb372b730553f073/pymupdf_layout-1.28.2-cp310-abi3-win_amd64.whl", hash = "sha256:a765d3ba0b1622e8d5794772ad4303d824386f04b382a5d31c999a828ed4a089", size = 42938028, upload-time = "2026-08-06T21:41:59.15Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/13/7a1edc4029348e728114cf37837dd121a7439defd668caa087d128b5df2d/pymupdf_layout-2.1-py3-none-any.whl", hash = "sha256:e7e00bc50ec9113d36bdbb0dd5cdafa5f4d61e22e598960fc187ee4f721f5095", size = 1044, upload-time = "2026-11-02T17:16:05.112Z" },
 ]
 
 [[package]]
 name = "pymupdf4llm"
-version = "1.28.2"
+version = "2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "psutil" },
-    { name = "pymupdf" },
-    { name = "pymupdf-layout" },
-    { name = "tabulate" },
+    { name = "pymupdf", version = "2.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
+    { name = "pymupdf-layout", marker = "extra == 'extra-11-parse-bench-pymupdf4llm' or extra != 'extra-11-parse-bench-runners'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/31/be/6f78a076947529c13bd0660cbe9e61f0155c903aa0c17fd9751733dccc36/pymupdf4llm-1.28.2.tar.gz", hash = "sha256:02681698ef67bda9a2acd5d9e1115d4e88be0eb9c5d68926e5e3cd98cd351874", size = 2091728, upload-time = "2026-08-06T21:43:27.654Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7d/93/0ec4c33150f127d19b306d876b969755f02ed721f3a9337fd1f4fe4a1c85/pymupdf4llm-1.28.2-py3-none-any.whl", hash = "sha256:55c06c07d128f94c4d9271bd427d16ee219779e7d796a7b9da4e110be3004d96", size = 176403, upload-time = "2026-08-06T21:39:44.118Z" },
+    { url = "https://files.pythonhosted.org/packages/38/19/21e262de4e1ddbcd552889e5f04147f83ed219dd13d1e0e0db46ab4d2347/pymupdf4llm-2.1-py3-none-any.whl", hash = "sha256:2fe8bb344444c6a8ef41fd745d2d10f6da59df6e104ef20f35d51dd26914b5fb", size = 1023, upload-time = "2026-11-02T17:16:04.153Z" },
 ]
 
 [[package]]
@@ -3655,13 +3693,13 @@ wheels = [
 
 [[package]]
 name = "rapidocr"
-version = "3.9.2"
+version = "3.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorlog" },
     { name = "numpy" },
     { name = "omegaconf" },
-    { name = "opencv-python" },
+    { name = "opencv-python-headless" },
     { name = "pillow" },
     { name = "pyclipper" },
     { name = "pyyaml" },
@@ -3671,7 +3709,7 @@ dependencies = [
     { name = "tqdm" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/ed/0ee9b9281986974be9d2406ae0134c8d7c91d2fc613f16ffda9701eeda6f/rapidocr-3.9.2-py3-none-any.whl", hash = "sha256:04d6b8d151f823d930bd91910555f57bea897c0c44fa6794267b94cf9c1ef9a0", size = 27275208, upload-time = "2026-07-21T10:59:01.599Z" },
+    { url = "https://files.pythonhosted.org/packages/59/07/203065283bba0c5e9c10af3602dc25ab3e59ee54dc2d1d22c8faeabf5ed8/rapidocr-3.10.0-py3-none-any.whl", hash = "sha256:2fc34e26cd0f48514804a94f8832283039c7334076bff60768b1fed9ad068050", size = 27288134, upload-time = "2026-10-08T15:07:45.98Z" },
 ]
 
 [[package]]
