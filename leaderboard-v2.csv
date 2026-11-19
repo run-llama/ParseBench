@@ -11,8 +11,11 @@ Pulse (Ultra 2),Document Parsers,84.04,86.02,88.68,84.80,86.80,77.09,80.84,1.500
 Extend (Parse Light),Document Parsers,82.46,78.21,78.65,81.39,85.35,85.29,85.86,0.625,yes
 Datalab (Accurate),Document Parsers,82.63,91.08,92.54,90.38,67.83,73.32,80.62,1.000,yes
 Datalab (Balanced),Document Parsers,82.35,90.21,92.57,89.62,67.60,73.50,80.59,0.400,yes
+GPT-6.2 sol (medium),Vision Models,82.12,90.54,90.54,94.91,78.86,53.92,83.93,2.468,yes
+Gemini 4 neon (low),Vision Models,81.67,91.30,88.44,95.23,41.44,90.31,83.29,6.204,yes
 KDL-Frontier-Parser-nano-v2,Open Weight,80.13,80.21,84.58,80.54,73.55,88.28,73.60,,yes
 Datalab (Fast),Document Parsers,79.61,87.10,92.06,84.15,61.47,72.63,80.27,0.400,yes
+GPT-6.2 sol (low),Vision Models,79.12,90.65,90.25,93.86,63.42,52.91,83.61,2.289,yes
 Infinity-Parser2 Pro,Open Weight,78.50,85.55,78.70,86.27,55.64,87.04,77.79,,yes
 GPT-5.6 terra (low),Vision Models,78.25,80.95,87.86,79.64,76.30,64.66,80.07,3.116,yes
 LightOnOCR-3 4B,Open Weight,78.39,84.30,81.44,78.25,62.90,84.25,79.19,,yes
