@@ -88,7 +88,7 @@ The self-contained source-image report and GT change log are at
 in `parsebench-form-sign-and-visual-audit.html` and the archived follow-up report.
 
 
-## Printed prefixes in blank fields (unreleased)
+## Printed prefixes in blank fields (CLI 2.1.3)
 
 A sparse text-field rule with `value: ""` may declare a source-verified literal
 `printed_value_prefix`, such as `"DE"` in a blank domestic IBAN. The headline Forms
@@ -103,5 +103,5 @@ that tree instead; it must represent printed text as static nodes and writable
 slots as fields. Legacy per-rule diagnostics do not apply this headline tolerance.
 Dataset v2.07 proposes the blank-IBAN annotation in
 [HF PR #8](https://huggingface.co/datasets/llamaindex/ParseBench-2/discussions/8).
-CLI 2.1.2 does not yet apply the literal-prefix tolerance. Pin dataset and scorer
+CLI 2.1.3 applies the literal-prefix tolerance; CLI 2.1.2 does not. Pin dataset and scorer
 versions together; full-provider rescoring for this change has not been run.
