@@ -418,6 +418,14 @@ These pipelines require you to deploy the model on your own infrastructure (e.g.
 |---|---|---|
 | `ovisocr3_vllm` | OvisOCR3 on vLLM with the model card settings (official structured parse plus a chart-parsing pass per chart region; layout) | `OVISOCR3_SERVER_URL` |
 
+### OCRia-1
+
+Open-weight 4B document parser ([llamaindex/OCRia-1](https://huggingface.co/llamaindex/OCRia-1)) served with vLLM. Layout boxes come from the box server that ships with the model (`examples/serve_boxes.py`: Docling's Heron layout regions plus PDF text-layer word positions); by default only layout pages are boxed. See the provider module docstring for the exact `vllm serve` and box-server commands.
+
+| Pipeline | Description | Env Var |
+|---|---|---|
+| `ocria_1` | vLLM OpenAI-compatible endpoint (page transcription) + optional box server (layout) | `OCRIA_ENDPOINT_URL`, `OCRIA_GROUNDING_URL` |
+
 ### Surya OCR 2
 
 | Pipeline | Description | Env Var |

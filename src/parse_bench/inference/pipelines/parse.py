@@ -2972,6 +2972,25 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # OCRia-1 (llamaindex/OCRia-1, 4B, BF16): one vLLM endpoint for the text; layout boxes from the
+    # model's box server (examples/serve_boxes.py in the model repo: Heron regions + PDF word positions).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="ocria_1",
+            provider_name="ocria_1",
+            product_type=ProductType.PARSE,
+            config={
+                "endpoint_url": "",  # via OCRIA_ENDPOINT_URL
+                "model": "",  # via OCRIA_MODEL (default ocria-1)
+                "grounding_url": "",  # via OCRIA_GROUNDING_URL (unset = no layout boxes)
+                "dpi": 300,
+                "max_tokens": 24576,
+                "max_model_len": 32768,
+                "timeout": 1800,
+            },
+        )
+    )
+
     # =========================================================================
     # florin-parser-nano (florin-inc/florin-parser-nano, fine-tune of
     # KDLAI/KDL-Frontier-Parser-nano; same serving requirements)

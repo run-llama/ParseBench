@@ -56,6 +56,7 @@ _PROVIDER_MODULES = [
     "nemotron_omni",
     "nemotron_parse_3_5",
     "nutrient_dws",
+    "ocria_1",
     "openai",
     "ovisocr2",
     "ovisocr3",
