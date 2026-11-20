@@ -438,6 +438,26 @@ def _normalize_key_for_match(key: str) -> str:
     return _HIERARCHY_DASH_RE.sub(" ", key).lower()
 
 
+# Alignment score credited to a column paired on a word affix (second pass).
+_AFFIX_KEY_SIMILARITY = 0.92
+
+
+def _is_word_affix(a: str, b: str) -> bool:
+    """True when the shorter key is the longer one's leading or trailing whole words.
+
+    One side often keeps a title or unit word in a column key that the other
+    side dropped or split differently: "weekdays north station" vs "north
+    station", "rate age" vs "age". The fuzzy ratio is length-relative and falls
+    under the threshold for such pairs, which unmatches the column and zeroes
+    every cell under it. Cells are still compared by value once columns pair.
+    """
+    short, long_ = sorted((a.split(), b.split()), key=len)
+    n = len(short)
+    if not n or n == len(long_):
+        return False
+    return long_[:n] == short or long_[-n:] == short
+
+
 def _align_columns_header_core(
     gt_keys: list[str],
     pred_keys: list[str],
@@ -451,6 +471,7 @@ def _align_columns_header_core(
     gt_norm = [_normalize_key_for_match(k) for k in gt_keys]
     pred_norm = [_normalize_key_for_match(k) for k in pred_keys]
     sim = np.zeros((n_gt, n_pred))
+    affix = np.zeros((n_gt, n_pred), dtype=bool)
     for i, gk in enumerate(gt_keys):
         for j, pk in enumerate(pred_keys):
             gk_empty = _is_empty_or_nan(gk) or gk in gt_synthetic
@@ -470,6 +491,7 @@ def _align_columns_header_core(
                 sim[i, j] = 1.0
             else:
                 sim[i, j] = fuzz.ratio(gt_norm[i], pred_norm[j]) / 100.0
+                affix[i, j] = not gk_empty and _is_word_affix(gt_norm[i], pred_norm[j])
 
     row_ind, col_ind = linear_sum_assignment(-sim)
 
@@ -479,6 +501,16 @@ def _align_columns_header_core(
         if sim[r, c] >= _COLUMN_MATCH_THRESHOLD:
             mapping[gt_keys[r]] = pred_keys[c]
             scores.append(sim[r, c])
+            affix[r, :] = False
+            affix[:, c] = False
+
+    # Second pass over columns the fuzzy pass left unpaired: pair on a word affix
+    # only when each side has exactly one affix candidate, so the bonus can neither
+    # pull a column off a fuzzy match nor pick arbitrarily between two candidates.
+    for r, c in zip(*np.nonzero(affix), strict=True):
+        if affix[r].sum() == 1 and affix[:, c].sum() == 1:
+            mapping[gt_keys[r]] = pred_keys[c]
+            scores.append(_AFFIX_KEY_SIMILARITY)
 
     alignment_score = float(np.mean(scores)) if scores else 0.0
     return mapping, alignment_score
