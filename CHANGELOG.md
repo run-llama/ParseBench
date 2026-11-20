@@ -6,6 +6,14 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.1.3] - 2026-11-19
+
+### Scoring
+- Forms accepts an explicitly annotated `printed_value_prefix` alone in an otherwise blank field
+  (for example the preprinted `DE` in a blank IBAN). Omission or spaced character boxes are accepted;
+  additional digits or other entered content still fail. Unannotated fields and the existing external
+  subtraction-operator behavior are unchanged. This opt-in support is required by the v2.07 dataset candidate.
+
 ## [2.1.2] - 2026-11-18
 
 ### Scoring

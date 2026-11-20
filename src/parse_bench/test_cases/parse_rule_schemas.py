@@ -445,8 +445,9 @@ class ParseFormFieldRule(ParseRuleBase):
     value_max_diffs: int | float = 0
     value: str | bool | list[str] = ""
     value_type: Literal["text", "checkbox", "signature"] = "text"
-    # A source-verified subtraction operator outside an unsigned answer slot.
-    printed_value_prefix: Literal["-", "−"] | None = None
+    # Source-verified print outside the entered value: an external subtraction
+    # operator, or a literal prefix in an otherwise blank field (e.g. IBAN DE).
+    printed_value_prefix: str | None = None
 
 
 class ParseFormattingRule(ParseRuleBase):

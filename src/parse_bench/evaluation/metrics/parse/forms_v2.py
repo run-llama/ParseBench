@@ -3222,6 +3222,11 @@ def compare_value(
     """Severity of reading ``keys`` (raw text ``got``) where ``expected`` is due (``others``: compact values of
     other fields; ``order``: the form's day-month order, see ``date_orders``). A reading that fails as read is
     compared again without its printed frame (``_value_frames``); the better verdict counts."""
+    # A blank slot may already contain a printed prefix. Accept that literal
+    # alone (including spaced character boxes); extra entered text still fails.
+    if not expected and printed_value_prefix and printed_value_prefix not in {"-", "−"}:
+        if "".join(got.split()).casefold() == "".join(printed_value_prefix.split()).casefold():
+            got, keys = "", []
     got = _parenthesis_frame(expected, got, printed_value_prefix)
     ae, ag = _amount(expected or ""), _amount(got)
     if ae is not None and re.match(r"^[+−-][ \t]*[+−-][ \t]*[$€£¥]?[ \t]*\d", got.lstrip()):
@@ -4472,6 +4477,23 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
         blank_due = it.value is None if it.kind == "text" else not it.state
         own_caption = "".join(word_keys(it.label))
         for rd, keys, got_text in variants:
+            # Printed prefixes cannot hide a numeric continuation on the next
+            # line. Use the existing longer reading; located captions and owned
+            # cells remain boundaries, so another field's value is untouched.
+            if (
+                blank_due
+                and it.printed_value_prefix not in {"", "-", "−"}
+                and "".join(got_text.split()).casefold() == "".join(it.printed_value_prefix.split()).casefold()
+                and rd.toks
+                and any(
+                    longer.toks[: len(rd.toks)] == rd.toks
+                    and (tail := longer.toks[len(rd.toks) :])
+                    and all(_isdigits(out.toks[t].key) and not stop[t] and out.tcell[t] not in owned for t in tail)
+                    and out.cells[out.tcell[tail[0]]].line == out.cells[out.tcell[rd.toks[-1]]].line + 1
+                    for longer in readings
+                )
+            ):
+                continue
             if blank_due and "".join(keys) in captions:
                 keys = []  # a blank slot read as a printed caption (a repeated block the reference lists fewer times)
             elif it.kind == "text" and keys and "".join(keys) == own_caption != "".join(word_keys(it.value or "")):
