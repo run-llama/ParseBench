@@ -29,7 +29,7 @@ from parse_bench.evaluation.metrics.parse.test_rules import (
     WordBagRule,
     create_test_rule,
 )
-from parse_bench.evaluation.metrics.parse.utils import normalize_text
+from parse_bench.evaluation.metrics.parse.utils import normalize_text, strip_md_links_outside_code
 from parse_bench.schemas.evaluation import MetricValue
 from parse_bench.schemas.parse_output import ParseOutput
 from parse_bench.test_cases.parse_rule_schemas import (
@@ -183,6 +183,11 @@ class RuleBasedMetric(Metric):
             ``chart_table_cache``.
         :return: MetricValue with pass rate and per-rule results
         """
+        # v1 rules split or tokenize the raw markdown and would read a link's URL as
+        # text, so they get [label](url) reduced to its label (outside code).
+        # text-v2.1 rules parse links with markdown-it themselves and get the raw text.
+        raw_actual = actual
+        actual = strip_md_links_outside_code(actual) if actual else actual
         chart_table_cache = kwargs.get("chart_table_cache")
         if not isinstance(chart_table_cache, ChartTableCache):
             kwargs["chart_table_cache"] = ChartTableCache()
@@ -401,7 +406,8 @@ class RuleBasedMetric(Metric):
                         rule.actual_words = missing_specific_word_cache[0]
                         rule.apostrophe_stripped_content = missing_specific_word_cache[1]
                     # Pass pre-normalized content to avoid redundant normalization
-                    result = rule.run(actual, normalized_content=normalized_actual)
+                    rule_actual = raw_actual if rule_data.get("text_normalization") == "text-v2.1" else actual
+                    result = rule.run(rule_actual, normalized_content=normalized_actual)
 
                     # Disarm the alarm
                     if use_alarm:

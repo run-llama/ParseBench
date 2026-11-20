@@ -1,0 +1,94 @@
+"""A Markdown link ``[label](url)`` is scored as its label, in text rules and in table cells."""
+
+import pytest
+
+from parse_bench.evaluation.metrics.parse.rule_based_metric import RuleBasedMetric
+from parse_bench.evaluation.metrics.parse.table_record_match_metric import TableRecordMatchMetric
+from parse_bench.evaluation.metrics.parse.test_rules import MissingSpecificSentenceRule
+from parse_bench.evaluation.metrics.parse.text_v21 import reference_rules
+from parse_bench.evaluation.metrics.parse.utils import (
+    MD_LINK_RE,
+    normalize_cell_text,
+    normalize_text,
+    strip_md_links_outside_code,
+)
+
+
+def test_linked_words_satisfy_the_sentence_rule() -> None:
+    rule = MissingSpecificSentenceRule(
+        {"type": "missing_specific_sentence", "sentence": "See the annual report for details."}
+    )
+    passed, _ = rule.run("See the [annual report](https://example.com/ar_2024.pdf) for details.")
+    assert passed
+
+
+def test_link_label_replaces_the_link_in_normalized_text() -> None:
+    assert normalize_text("see [the report](<https://example.com/a b.pdf>) now") == "see the report now"
+
+
+def test_image_markdown_is_not_read_as_a_link() -> None:
+    assert normalize_text("![chart](img.png)") == "![chart](img.png)"
+
+
+def test_link_in_a_table_cell_scores_as_its_label() -> None:
+    gt = "<table><tr><th>Doc</th><th>Year</th></tr><tr><td>Rate filing</td><td>2024</td></tr></table>"
+    pred = (
+        "<table><tr><th>Doc</th><th>Year</th></tr>"
+        "<tr><td>[Rate filing](https://example.com/f.pdf)</td><td>2024</td></tr></table>"
+    )
+    assert TableRecordMatchMetric().compute(expected=gt, actual=pred)[0].value == pytest.approx(1.0)
+    assert normalize_cell_text("[Rate filing](https://example.com/f.pdf)") == "Rate filing"
+
+
+def test_link_url_does_not_split_sentences_in_the_rule_metric() -> None:
+    rules = [
+        {
+            "type": "unexpected_sentence",
+            "bag_of_sentence": {"See the annual report for details.": 1},
+        }
+    ]
+    actual = "See the [annual report](https://example.com/ar_2024.pdf) for details."
+    assert RuleBasedMetric().compute(expected=rules, actual=actual).value == pytest.approx(1.0)
+
+
+def test_url_with_balanced_parentheses_is_removed_whole() -> None:
+    assert normalize_text("see [Foo](https://example.org/wiki/Foo_(bar)) next") == "see foo next"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "\\[a\\](b)",  # escaped brackets are printed text
+        "on the interval [0, 1](see note) only",  # destination with spaces is prose
+        "[a\n\nb](u)",  # a label never spans a paragraph break
+        "[a [b] c](u)",  # nested brackets
+        "[![logo](img.png)](https://example.com)",  # image inside a link
+    ],
+)
+def test_bracket_paren_text_that_is_not_a_link_is_kept(text: str) -> None:
+    assert MD_LINK_RE.sub(r"\1", text) == text
+
+
+def test_label_wrapped_across_one_line_is_still_a_link() -> None:
+    assert normalize_text("See the [annual\nreport](https://example.com/a) now") == "see the annual report now"
+
+
+def test_links_inside_code_are_kept_verbatim() -> None:
+    text = "Call `cb[i](x)` once.\n\n```js\nhandlers[0](event)\n```\n\nSee [docs](https://example.com)."
+    assert strip_md_links_outside_code(text) == text.replace("[docs](https://example.com)", "docs")
+
+
+def test_unclosed_fence_does_not_protect_the_rest_of_the_text() -> None:
+    assert strip_md_links_outside_code("```\nSee [docs](https://example.com).") == "```\nSee docs."
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "Intro.\n\n```python\nhandlers[0](event)\n",  # unclosed fence (truncated output)
+        "Intro.\n\n    handlers[0](event)\n\nEnd.",  # indented code
+        "Use `x\nhandlers[0](event)` here.",  # code span across a line break
+    ],
+)
+def test_text_v21_rules_read_the_raw_prediction(reference: str) -> None:
+    assert RuleBasedMetric().compute(expected=reference_rules(reference), actual=reference).value == pytest.approx(1.0)
