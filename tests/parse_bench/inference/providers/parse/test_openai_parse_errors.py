@@ -41,6 +41,7 @@ def _provider_for_model(model: str) -> OpenAIProvider:
         ("gpt-6-astra", (10.0, 50.0)),
         ("gpt-6-sol", (2.0, 10.0)),
         ("gpt-6-luna", (0.1, 0.5)),
+        ("gpt-6.2-sol", (2.0, 10.0)),
         ("gpt-4.5-preview", (75.0, 150.0)),
     ],
 )
@@ -109,6 +110,17 @@ def test_gpt61_sol_bills_fresh_cached_and_cache_write_tokens_instead_of_zero_cos
         "thinking_tokens": 50,
     }
     assert _provider_for_model("gpt-6.1-sol")._estimate_cost_usd(usage) == pytest.approx(0.00303)
+
+
+def test_gpt62_sol_bills_fresh_cached_and_cache_write_tokens() -> None:
+    usage = {
+        "input_tokens": 1000,
+        "cached_tokens": 300,
+        "cache_write_tokens": 200,
+        "output_tokens": 100,
+        "thinking_tokens": 50,
+    }
+    assert _provider_for_model("gpt-6.2-sol")._estimate_cost_usd(usage) == pytest.approx(0.00303)
 
 
 def test_gpt56_intermittent_permission_401_is_retryable() -> None:

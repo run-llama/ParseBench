@@ -60,6 +60,8 @@ uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 
 | Pipeline | Description | Env Var |
 |---|---|---|
+| `openai_gpt_6_2_sol_reasoning_low_parse_with_layout_file` | GPT-6.2 Sol, low reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
+| `openai_gpt_6_2_sol_reasoning_med_parse_with_layout_file` | GPT-6.2 Sol, medium reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
 | `openai_gpt_6_1_sol_reasoning_low_parse_with_layout_file` | GPT-6.1 Sol, low reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
 | `openai_gpt_6_1_terra_reasoning_low_parse_with_layout_file` | GPT-6.1 Terra, low reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
 | `openai_gpt_6_1_terra_reasoning_med_parse_with_layout_file` | GPT-6.1 Terra, medium reasoning + layout, PDF file mode | `OPENAI_API_KEY` |
@@ -134,6 +136,7 @@ uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 | `google_gemini_3_6_flash_no_thinking_parse_with_layout` | Gemini 3.6 Flash, minimal thinking + layout, image mode | `GOOGLE_GEMINI_API_KEY` |
 | `google_gemini_3_7_flash_thinking_high_parse_with_layout_file` | Gemini 3.7 Flash, high thinking + layout, file mode | `GOOGLE_GEMINI_API_KEY` |
 | `gemini_4_argon_thinking_low_parse_with_layout_file` | Gemini 4 Argon, low thinking + layout, file mode (ParseBench 2 leaderboard) | `GOOGLE_GEMINI_API_KEY` |
+| `gemini_4_neon_thinking_low_parse_with_layout_file` | Gemini 4 Neon, low thinking + layout, file mode (ParseBench 2 leaderboard) | `GOOGLE_GEMINI_API_KEY` |
 
 ### Meta Muse
 

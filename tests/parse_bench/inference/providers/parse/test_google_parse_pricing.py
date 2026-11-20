@@ -29,6 +29,7 @@ def _provider_for_model(model: str) -> GoogleProvider:
 @pytest.mark.parametrize(
     ("model", "expected"),
     [
+        ("gemini-4-neon", (3.00, 15.00)),
         ("gemini-3.7-flash", (0.75, 3.75)),
         ("gemini-3.8-flash", (0.75, 3.75)),
         ("gemini-3.5-flash", (1.50, 9.00)),
@@ -49,6 +50,7 @@ def test_get_pricing(model: str, expected: tuple[float, float]) -> None:
 @pytest.mark.parametrize(
     ("model", "expected"),
     [
+        ("gemini-4-neon", (0.15, 0.0)),
         ("gemini-3.5-flash", (0.15, 1.00)),
         ("gemini-3.5-flash-lite", (0.03, 1.00)),
         ("gemini-3.6-flash", (0.15, 1.00)),

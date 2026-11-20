@@ -2166,6 +2166,21 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Gemini 4 Neon - Parse with Layout File - Thinking Low (ParseBench 2 leaderboard)
+    register_fn(
+        PipelineSpec(
+            pipeline_name="gemini_4_neon_thinking_low_parse_with_layout_file",
+            provider_name="google",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "gemini-4-neon",
+                "max_tokens": 32768,
+                "mode": "parse_with_layout_file",
+                "thinking_level": "low",
+            },
+        )
+    )
+
     # Gemini - Parse with Layout File - thinking-level sweep. Adds levels for models
     # whose other layout-file pipelines are registered above; each config matches that
     # model's sibling except for thinking_level.
@@ -2489,6 +2504,22 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                     "max_tokens": 32768,
                     "mode": "parse_with_layout_file",
                     "reasoning_effort": _terra_effort,
+                },
+            )
+        )
+
+    # OpenAI GPT-6.2 Sol - Parse with Layout File
+    for _gpt62_name_effort, _gpt62_effort in (("low", "low"), ("med", "medium")):
+        register_fn(
+            PipelineSpec(
+                pipeline_name=f"openai_gpt_6_2_sol_reasoning_{_gpt62_name_effort}_parse_with_layout_file",
+                provider_name="openai",
+                product_type=ProductType.PARSE,
+                config={
+                    "model": "gpt-6.2-sol",
+                    "max_tokens": 32768,
+                    "mode": "parse_with_layout_file",
+                    "reasoning_effort": _gpt62_effort,
                 },
             )
         )
