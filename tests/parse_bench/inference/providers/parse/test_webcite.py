@@ -1,5 +1,6 @@
 """Tests for the Webcite provider: normalization, layout boxes, retries and the layout adapter."""
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import httpx
 import pytest
 
 from parse_bench.evaluation.layout_adapters.adapters import WebciteLayoutAdapter
+from parse_bench.inference.pipelines import get_pipeline
 from parse_bench.inference.providers.base import ProviderConfigError, ProviderPermanentError, ProviderTransientError
 from parse_bench.inference.providers.parse import webcite
 from parse_bench.inference.providers.parse.webcite import WebciteProvider
@@ -248,3 +250,34 @@ def test_fractional_credit_charge_is_recorded_as_reported(provider: WebciteProvi
     raw = _run(provider, tmp_path, handler)
     assert raw.raw_output["credits_used"] == 0.7325
     assert webcite._credits(True, 1) is None and webcite._credits(float("nan"), 1) is None
+
+
+@pytest.mark.parametrize(("pipeline", "mode"), [("webcite", "standard"), ("webcite_lite", "lite")])
+def test_each_pipeline_sends_its_read_mode(pipeline: str, mode: str) -> None:
+    spec = get_pipeline(pipeline)
+    assert spec.provider_name == "webcite" and spec.product_type == ProductType.PARSE
+    assert spec.config["mode"] == mode
+
+
+@pytest.mark.parametrize("mode", ["standard", "lite"])
+def test_extract_request_carries_the_configured_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
+) -> None:
+    monkeypatch.setenv("WEBCITE_API_KEY", "test-key")
+    configured = WebciteProvider("webcite", {"base_url": "https://api.example.test/api/v1", "mode": mode})
+    bodies: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/upload"):
+            return httpx.Response(200, json={"data": {"asset_id": "a1"}})
+        bodies.append(json.loads(request.read()))
+        return httpx.Response(200, json=SCANNED)
+
+    _run(configured, tmp_path, handler)
+    assert bodies == [{"asset_id": "a1", "mode": mode}]
+
+
+def test_unknown_mode_is_a_configuration_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("WEBCITE_API_KEY", "test-key")
+    with pytest.raises(ProviderConfigError):
+        WebciteProvider("webcite", {"mode": "fast"})

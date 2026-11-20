@@ -1,11 +1,15 @@
 """Provider for Webcite document extraction (PARSE).
 
 Webcite's public API takes a file in two calls: ``POST /upload`` (multipart field ``file``) stores it
-and returns ``data.asset_id``, then ``POST /extract`` with ``{"asset_id": ...}`` reads it into
+and returns ``data.asset_id``, then ``POST /extract`` with ``{"asset_id": ..., "mode": ...}`` reads it into
 whole-document ``markdown`` plus per-page ``units``. A unit carries the page ``text`` and, when the
 page was read with element geometry, ``elements`` (type, Markdown and a normalized
 ``[x0, y0, x1, y1]`` box, top-left origin) and the page ``geometry``. Both calls authenticate with
 the ``x-api-key`` header and report the credits charged in ``usage.credits``.
+
+``mode`` selects the read: ``standard`` is the higher-accuracy read and ``lite`` the faster, lower-cost read.
+The ``webcite`` pipeline sends ``standard`` and ``webcite_lite`` sends ``lite``, so a run reads the same way for
+any account whatever its default.
 
 A failed read comes back as HTTP 200 with ``state: "error"`` and empty ``markdown``; ``normalize``
 raises on it, so the document is recorded as failed and scores zero.
@@ -70,6 +74,7 @@ _VIRTUAL_PAGE_DIM = 1000.0
 
 _MIME_TYPES = {".pdf": "application/pdf", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
 _TRANSIENT_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
+_MODES = ("standard", "lite")
 
 
 @register_provider("webcite")
@@ -83,6 +88,8 @@ class WebciteProvider(Provider):
             - timeout: per-request timeout in seconds (default: 900; the ``webcite`` pipeline sets 300)
             - max_attempts: attempts per call for transient failures (default: 3)
             - max_rate_limit_waits: extra waits allowed on HTTP 429 (default: 20)
+            - mode: ``standard`` or ``lite``, sent with every ``/extract`` request (default: not sent,
+              which leaves the account's default)
         """
         super().__init__(provider_name, base_config)
         try:
@@ -99,6 +106,9 @@ class WebciteProvider(Provider):
         self._timeout = float(self.base_config.get("timeout", 900))
         self._max_attempts = int(self.base_config.get("max_attempts", 3))
         self._max_rate_limit_waits = int(self.base_config.get("max_rate_limit_waits", 20))
+        self._mode = self.base_config.get("mode")
+        if self._mode not in (None, *_MODES):
+            raise ProviderConfigError(f"Webcite mode must be one of {', '.join(_MODES)}, got {self._mode!r}")
         # A retried document reuses its uploaded asset instead of uploading (and paying for) it again.
         self._assets: dict[str, tuple[str, float | None]] = {}
         self._assets_lock = threading.Lock()
@@ -179,7 +189,8 @@ class WebciteProvider(Provider):
         headers = {"x-api-key": self._api_key}
         with self._httpx.Client(base_url=self._base_url, headers=headers, timeout=self._timeout) as client:
             asset_id, upload_credits = self._upload(client, path, mime)
-            extracted = self._post(client, "/extract", json={"asset_id": asset_id})
+            body = {"asset_id": asset_id, **({"mode": self._mode} if self._mode else {})}
+            extracted = self._post(client, "/extract", json=body)
         completed_at = datetime.now()
 
         return RawInferenceResult(
@@ -199,7 +210,7 @@ class WebciteProvider(Provider):
                 )
                 or None,
                 "credits_used": _credits(upload_credits, (extracted.get("usage") or {}).get("credits")),
-                "_config": {"provider": "webcite", "base_url": self._base_url},
+                "_config": {"provider": "webcite", "base_url": self._base_url, "mode": self._mode},
             },
             started_at=started_at,
             completed_at=completed_at,

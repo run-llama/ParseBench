@@ -3313,7 +3313,15 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
             pipeline_name="webcite",
             provider_name="webcite",
             product_type=ProductType.PARSE,
-            config={"timeout": 300},
+            config={"timeout": 300, "mode": "standard"},
+        )
+    )
+    register_fn(
+        PipelineSpec(
+            pipeline_name="webcite_lite",
+            provider_name="webcite",
+            product_type=ProductType.PARSE,
+            config={"timeout": 300, "mode": "lite"},
         )
     )
 

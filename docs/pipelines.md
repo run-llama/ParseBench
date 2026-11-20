@@ -184,11 +184,14 @@ uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 
 | Pipeline | Description | Env Var |
 |---|---|---|
-| `webcite` | Document extraction API, Markdown with element boxes | `WEBCITE_API_KEY` |
+| `webcite` | Document extraction API, standard read (higher accuracy), Markdown with element boxes | `WEBCITE_API_KEY` |
+| `webcite_lite` | Document extraction API, lite read (faster, lower cost), Markdown with element boxes | `WEBCITE_API_KEY` |
 
 Sign up at [webcite.co](https://webcite.co) and create an API key in the dashboard. No extra
 install is needed; the provider uses `httpx`. Each document is uploaded unchanged with
-`POST /upload` and read with `POST /extract`. Reads are charged in credits; see
+`POST /upload` and read with `POST /extract`. Each pipeline sends its read mode with every
+request (`mode: "standard"` for `webcite`, `mode: "lite"` for `webcite_lite`), so a run reads the
+same way whatever the account's default. Reads are charged in credits; see
 [webcite.co/pricing](https://webcite.co/pricing). `/extract` is rate limited per plan by minute
 and by day; the provider waits out short HTTP 429 windows, and a run stopped by the daily limit
 can be continued with the same command, which skips documents that already have a result. Set
@@ -197,6 +200,7 @@ can be continued with the same command, which skips documents that already have 
 ```bash
 uv run parse-bench run webcite --test --max_concurrent 2
 uv run parse-bench run webcite --dataset parsebench-2
+uv run parse-bench run webcite_lite --dataset parsebench-2
 ```
 
 ### Reducto
