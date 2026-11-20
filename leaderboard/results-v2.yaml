@@ -28,7 +28,7 @@ rows:
 - provider: Webcite (Lite)
   status: verified
   pipeline: webcite_lite
-  results_revision: refs/pr/TODO
+  results_revision: refs/pr/18
   run_dates: 2026-11-19 to 2026-11-20
 - provider: LlamaParse (Agentic)
   status: verified
