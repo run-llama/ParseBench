@@ -61,16 +61,16 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 
 | Rank | Provider | Category | Overall | Text | Formatting | Tables | Charts | Visual Ground. | Forms | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | LlamaParse (Agentic Plus) | Document Parsers | 90.93 | 90.22 | 93.60 | 94.72 | 92.58 | 88.23 | 86.22 | 2.81¢ |
-| 2 | Claude Opus 5.5 | Vision Models | 87.11 | 92.62 | 89.38 | 94.20 | 74.12 | 89.17 | 83.16 | 6.49¢ |
-| 3 | LlamaParse (Agentic) | Document Parsers | 86.96 | 86.96 | 92.75 | 89.90 | 77.39 | 89.17 | 85.62 | 1.25¢ |
-| 4 | Reducto (r-1) | Document Parsers | 86.23 | 82.42 | 92.45 | 90.97 | 78.45 | 89.48 | 83.58 | 1.00¢ |
-| 5 | LlamaParse (Cost Effective) | Document Parsers | 85.52 | 85.47 | 91.94 | 87.22 | 73.07 | 89.49 | 85.92 | 0.38¢ |
-| 6 | Gemini 4 argon (low) | Vision Models | 85.32 | 89.60 | 89.22 | 92.85 | 68.20 | 89.75 | 82.31 | 2.68¢ |
-| 7 | Reducto | Document Parsers | 84.93 | 81.77 | 82.70 | 84.92 | 89.07 | 85.93 | 85.19 | 3.00¢ |
-| 8 | Extend (Parse 2) | Document Parsers | 84.14 | 80.13 | 83.39 | 84.20 | 85.08 | 85.47 | 86.54 | 2.50¢ |
-| 9 | Pulse (Ultra 2) | Document Parsers | 84.04 | 86.02 | 88.68 | 84.80 | 86.80 | 77.09 | 80.84 | 1.50¢ |
-| 10 | Datalab (Accurate) | Document Parsers | 82.63 | 91.08 | 92.54 | 90.38 | 67.83 | 73.32 | 80.62 | 1.00¢ |
+| 1 | Webcite | Document Parsers | 91.74 | 91.43 | 92.69 | 95.21 | 93.05 | 87.69 | 90.38 | 3.11¢ |
+| 2 | LlamaParse (Agentic Plus) | Document Parsers | 90.93 | 90.22 | 93.60 | 94.72 | 92.58 | 88.23 | 86.22 | 2.81¢ |
+| 3 | Webcite (Lite) | Document Parsers | 88.75 | 89.46 | 91.38 | 90.64 | 88.87 | 85.34 | 86.79 | 0.51¢ |
+| 4 | Claude Opus 5.5 | Vision Models | 87.11 | 92.62 | 89.38 | 94.20 | 74.12 | 89.17 | 83.16 | 6.49¢ |
+| 5 | LlamaParse (Agentic) | Document Parsers | 86.96 | 86.96 | 92.75 | 89.90 | 77.39 | 89.17 | 85.62 | 1.25¢ |
+| 6 | Reducto (r-1) | Document Parsers | 86.23 | 82.42 | 92.45 | 90.97 | 78.45 | 89.48 | 83.58 | 1.00¢ |
+| 7 | LlamaParse (Cost Effective) | Document Parsers | 85.52 | 85.47 | 91.94 | 87.22 | 73.07 | 89.49 | 85.92 | 0.38¢ |
+| 8 | Gemini 4 argon (low) | Vision Models | 85.32 | 89.60 | 89.22 | 92.85 | 68.20 | 89.75 | 82.31 | 2.68¢ |
+| 9 | Reducto | Document Parsers | 84.93 | 81.77 | 82.70 | 84.92 | 89.07 | 85.93 | 85.19 | 3.00¢ |
+| 10 | Extend (Parse 2) | Document Parsers | 84.14 | 80.13 | 83.39 | 84.20 | 85.08 | 85.47 | 86.54 | 2.50¢ |
 <!-- LEADERBOARD-V2:END -->
 
 Verified rows are re-scored from their published outputs in [ParseBench-2-results](https://huggingface.co/datasets/llamaindex/ParseBench-2-results) whenever the scorers change (see [leaderboard/README.md](leaderboard/README.md)); rows marked † carry the scores reported in the ParseBench 2 paper until their outputs are published. Systems that do not score all six dimensions are not ranked. To add an open-weight model to the [Hugging Face leaderboard](https://huggingface.co/datasets/llamaindex/ParseBench-2), see [Submit Results to the Leaderboard](https://huggingface.co/datasets/llamaindex/ParseBench-2#submit-results-to-the-leaderboard).
