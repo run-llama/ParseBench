@@ -1,6 +1,7 @@
 Provider,Category,Overall,Text,Formatting,Tables,Charts,Visual_Grounding,Forms,Cost_Per_Page,Verified
 Webcite,Document Parsers,91.74,91.43,92.69,95.21,93.05,87.69,90.38,3.110,yes
 LlamaParse (Agentic Plus),Document Parsers,90.93,90.22,93.60,94.72,92.58,88.23,86.22,2.813,yes
+Webcite (Lite),Document Parsers,88.75,89.46,91.38,90.64,88.87,85.34,86.79,0.511,yes
 LlamaParse (Agentic),Document Parsers,86.96,86.96,92.75,89.90,77.39,89.17,85.62,1.250,yes
 Claude Opus 5.5,Vision Models,87.11,92.62,89.38,94.20,74.12,89.17,83.16,6.492,yes
 Reducto (r-1),Document Parsers,86.23,82.42,92.45,90.97,78.45,89.48,83.58,1.000,yes
