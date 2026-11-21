@@ -65,6 +65,7 @@ MODEL_REPO = "llamaindex/OCRia-1"
 DPI = 300
 MAX_TOKENS = 24576
 MAX_MODEL_LEN = 32768
+MAX_PIXELS = 80_000_000  # vLLM's image loader refuses images over Pillow's ~89M-pixel guard (large-format sheets)
 PAGE_SEPARATOR = "\n\n"
 _IMG_FRAC = (0.6, 0.4, 0.25)  # image downscale per retry when the page alone overflows the context
 _OVER_INPUT_RE = re.compile(r"max_tokens must be at least 1, got (-?\d+)")
@@ -359,12 +360,12 @@ class OCRia1Provider(Provider):
 
     # ------------------------------------------------------------------ rendering
 
-    def _pages(self, source_path: Path) -> list[tuple[Any, list[dict] | None]]:
-        """(PIL image, text-layer words or None) per page."""
+    def _pages(self, source_path: Path) -> list[tuple[Any, list[dict] | None, float]]:
+        """(PIL image, text-layer words or None, render DPI) per page."""
         from PIL import Image
 
         if source_path.suffix.lower() != ".pdf":
-            return [(Image.open(source_path).convert("RGB"), None)]
+            return [(Image.open(source_path).convert("RGB"), None, float(self._dpi))]
         import pypdfium2 as pdfium
 
         with _PDFIUM_LOCK:
@@ -375,7 +376,11 @@ class OCRia1Provider(Provider):
                 out = []
                 for i in range(len(pdf)):
                     pg = pdf[i]
-                    out.append((pg.render(scale=self._dpi / 72).to_pil().convert("RGB"), page_words(pg, self._dpi)))
+                    scale = self._dpi / 72
+                    w, h = pg.get_size()
+                    if w * h * scale * scale > MAX_PIXELS:  # render large sheets smaller; words follow the same scale
+                        scale = (MAX_PIXELS / (w * h)) ** 0.5
+                    out.append((pg.render(scale=scale).to_pil().convert("RGB"), page_words(pg, scale * 72), scale * 72))
             finally:
                 pdf.close()
         return out
@@ -468,10 +473,10 @@ class OCRia1Provider(Provider):
         boxes = self._wants_boxes(request)
 
         def one(page) -> dict:
-            image, words = page
+            image, words, dpi = page
             b64 = _png_b64(image)
             gen = self._transcribe(client, b64)
-            rec = {**gen, "width_px": image.width, "height_px": image.height}
+            rec = {**gen, "width_px": image.width, "height_px": image.height, "dpi": dpi}
             if boxes:
                 rec["layout"] = self._boxes(b64, gen["answer"], words)
             return rec
@@ -500,7 +505,7 @@ class OCRia1Provider(Provider):
             raise ProviderPermanentError("OCRia1Provider only supports PARSE.")
         raw = raw_result.raw_output
         recs = raw.get("pages") or []
-        scale = 72.0 / float(raw.get("dpi") or DPI)  # pixels -> PDF points
+        doc_dpi = float(raw.get("dpi") or DPI)
         pages = [PageIR(page_index=i, markdown=ocria_postprocess(r.get("answer", ""))) for i, r in enumerate(recs)]
         # the document's markdown post-processes the joined raw answers (one wrapper per document, as scored)
         markdown = ocria_postprocess(PAGE_SEPARATOR.join(r.get("answer", "") for r in recs))
@@ -510,6 +515,7 @@ class OCRia1Provider(Provider):
             lay = r.get("layout")
             if not lay:
                 continue
+            scale = 72.0 / float(r.get("dpi") or doc_dpi)  # pixels -> PDF points (large sheets render below 300 DPI)
             items = []
             for it in lay.get("items") or []:
                 x0, y0, x1, y1 = (float(v) * scale for v in it["box"])
