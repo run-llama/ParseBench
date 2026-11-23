@@ -301,5 +301,5 @@ rows:
 - provider: LiteParse + OCRia-nano-1
   status: verified
   pipeline: liteparse_ocria_nano
-  results_revision: refs/pr/19
+  results_revision: e7cd5e1b785f617409416af564ceafeb2f43776d
   run_dates: '2026-11-23'
