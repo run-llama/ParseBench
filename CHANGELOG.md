@@ -6,6 +6,24 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+### Scoring
+- Layout: block HTML returned as element text by vendor adapters (Datalab, Chandra) is reduced to plain text before
+  word matching; tags and attributes (`<p block-type="Text">`) were counted as words. Only lowercase HTML tags are
+  stripped (inline tags without a space, block tags as a space; `<sub>` / `<sup>` kept for the metric), so template
+  placeholders such as `<PL Number>` and XML samples in document text are unchanged. Re-scoring the published
+  ParseBench-2 outputs raises layout for `datalab_accurate` (73.3 -> 82.4) and `chandra2_vllm` (72.4 -> 80.6); every
+  other published system moves by at most 0.02.
+- LiteParse: `merged_table` (learned-table), `page_header` and `page_footer` blocks now reach the layout metric
+  (they were dropped).
+
+### Providers
+- `indra`: Indra (`indra-ocr`) run locally through its CLI (`INDRA_OCR_BIN`); pipeline `indra`.
+- `marker`: Marker (`marker-pdf`) run locally (`MARKER_PYTHON`), as opposed to Datalab's hosted API; pipeline
+  `marker_fast`.
+- `liteparse`: `ocr_backend` and `keep_headers_footers` options; pipelines `liteparse_tesseract` and
+  `liteparse_ocria_nano` (LiteParse with its OCRia-nano-1 models, `lit models pull ocria-nano`).
+- New optional dependency group `indra` (Pillow, for image inputs).
+
 ## [2.1.3] - 2026-11-19
 
 ### Scoring

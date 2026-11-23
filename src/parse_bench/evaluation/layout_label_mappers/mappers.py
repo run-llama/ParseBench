@@ -390,6 +390,8 @@ class DotsOcrLabelMapper(LayoutLabelMapper):
 
 @register_layout_label_mapper(
     "liteparse",
+    "indra",
+    "marker",
     "hpd_parsing",
     "minicpm_ocr",
     "model:liteparse_layout",

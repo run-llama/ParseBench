@@ -93,3 +93,36 @@ def test_adapter_resolves_and_scales_to_points() -> None:
     assert (round(x1, 2), round(y1, 2), round(x2, 2), round(y2, 2)) == (61.2, 79.2, 367.2, 95.04)
     assert layout.predictions[2].content is not None
     assert adapter.to_layout_output(result, page_filter=2).predictions == []
+
+
+def test_build_layout_pages_keeps_merged_tables_and_furniture() -> None:
+    page = {
+        "page_index": 0,
+        "width": 100.0,
+        "height": 100.0,
+        "blocks": [
+            {"kind": "page_header", "text": "Annual report", "bbox": {"x": 10, "y": 2, "width": 50, "height": 4}},
+            {
+                "kind": "merged_table",
+                "rows": [[{"text": "a"}, {"text": "b"}], [{"text": "1"}, {"text": "2"}]],
+                "header_rows": 1,
+                "bbox": {"x": 10, "y": 20, "width": 80, "height": 30},
+            },
+            {"kind": "page_footer", "text": "7", "bbox": {"x": 48, "y": 95, "width": 4, "height": 3}},
+        ],
+    }
+    items = _build_layout_pages([page])[0].items
+    assert [item.type for item in items] == ["Page-header", "Table", "Page-footer"]
+    assert items[1].value == "a | b\n1 | 2"
+
+
+def test_cli_args_ocr_backend_and_keep_headers_footers() -> None:
+    from parse_bench.inference.providers.parse.liteparse import LiteParseProvider
+
+    provider = LiteParseProvider(
+        "liteparse", {"ocr_enabled": True, "ocr_backend": "ocria-nano", "keep_headers_footers": True}
+    )
+    args = provider._build_cli_args("doc.pdf", "markdown")
+    assert args[args.index("--ocr-backend") + 1] == "ocria-nano"
+    assert "--keep-headers-footers" in args and "--no-ocr" not in args
+    assert "--keep-headers-footers" not in LiteParseProvider("liteparse", {})._build_cli_args("doc.pdf", "markdown")
