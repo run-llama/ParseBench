@@ -6,6 +6,11 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-11-23
+
+### Scoring
+- Charts: accept explicit per-point relative and absolute tolerances in GT; annotations without overrides keep existing scoring. Overrides remain attached to their points when color groups are merged.
+
 ## [2.2.0] - 2026-11-22
 
 ### Scoring
