@@ -54,6 +54,7 @@ dots.mocr,Open Weight,64.14,86.29,80.63,83.40,0.78,67.88,65.83,,yes
 Gemini 3.1 Flash-Lite,Vision Models,63.64,83.90,79.28,79.77,12.22,49.95,76.70,0.389,yes
 Qwen3.8 27B,Open Weight,62.52,81.57,77.24,36.73,41.33,66.10,72.18,,yes
 Gemini 3.5 Flash-Lite,Vision Models,62.18,79.10,78.68,72.24,5.05,63.90,74.11,0.717,yes
+LiteParse + OCRia-nano-1,Open Weight,59.25,68.50,82.18,59.49,3.16,72.39,69.79,,yes
 Falcon-OCR,Open Weight,57.82,64.58,75.93,72.57,0.69,64.56,68.60,,yes
 jina-ocr-v1,Open Weight,48.65,75.13,79.87,55.00,8.74,0.00,73.17,,yes
 Qwen3.5-4B,Open Weight,42.92,77.32,74.77,12.86,6.88,16.14,69.57,,yes

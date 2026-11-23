@@ -298,3 +298,8 @@ rows:
   pipeline: openai_gpt_6_2_sol_reasoning_med_parse_with_layout_file
   results_revision: 75320d70d67cbc778bdd9b5dd497729b0e4f729d
   run_dates: '2026-11-17'
+- provider: LiteParse + OCRia-nano-1
+  status: verified
+  pipeline: liteparse_ocria_nano
+  results_revision: refs/pr/19
+  run_dates: '2026-11-23'
