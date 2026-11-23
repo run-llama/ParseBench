@@ -6,6 +6,8 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-22
+
 ### Scoring
 - Layout: block HTML returned as element text by vendor adapters (Datalab, Chandra) is reduced to plain text before
   word matching; tags and attributes (`<p block-type="Text">`) were counted as words. Only lowercase HTML tags are
