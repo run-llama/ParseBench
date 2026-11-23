@@ -445,6 +445,7 @@ class OCRia1Provider(Provider):
             self._grounding_url + "/ground",
             json={"image_png_b64": b64, "answer": answer, "words": words},
             timeout=self._timeout,
+            follow_redirects=True,  # hosted servers (e.g. Modal) answer long requests with 303 to a result URL
         )
         if r.status_code >= 500:
             raise ProviderTransientError(f"box server {r.status_code}: {r.text[:300]}")
