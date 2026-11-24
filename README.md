@@ -67,10 +67,10 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | 4 | Reducto (r-1) | Document Parsers | 86.23 | 82.42 | 92.45 | 90.97 | 78.45 | 89.48 | 83.58 | 1.00¢ |
 | 5 | LlamaParse (Cost Effective) | Document Parsers | 85.52 | 85.47 | 91.94 | 87.22 | 73.07 | 89.49 | 85.92 | 0.38¢ |
 | 6 | Gemini 4 argon (low) | Vision Models | 85.32 | 89.60 | 89.22 | 92.85 | 68.20 | 89.75 | 82.31 | 2.68¢ |
-| 7 | Reducto | Document Parsers | 84.93 | 81.77 | 82.70 | 84.92 | 89.07 | 85.93 | 85.19 | 3.00¢ |
-| 8 | Extend (Parse 2) | Document Parsers | 84.14 | 80.13 | 83.39 | 84.20 | 85.08 | 85.47 | 86.54 | 2.50¢ |
-| 9 | Pulse (Ultra 2) | Document Parsers | 84.04 | 86.02 | 88.68 | 84.80 | 86.80 | 77.09 | 80.84 | 1.50¢ |
-| 10 | Datalab (Accurate) | Document Parsers | 82.63 | 91.08 | 92.54 | 90.38 | 67.83 | 73.32 | 80.62 | 1.00¢ |
+| 7 | OCRia-1 | Open Weight | 85.24 | 87.87 | 91.59 | 86.28 | 77.63 | 85.96 | 82.09 | — |
+| 8 | Reducto | Document Parsers | 84.93 | 81.77 | 82.70 | 84.92 | 89.07 | 85.93 | 85.19 | 3.00¢ |
+| 9 | Extend (Parse 2) | Document Parsers | 84.14 | 80.13 | 83.39 | 84.20 | 85.08 | 85.47 | 86.54 | 2.50¢ |
+| 10 | Pulse (Ultra 2) | Document Parsers | 84.04 | 86.02 | 88.68 | 84.80 | 86.80 | 77.09 | 80.84 | 1.50¢ |
 <!-- LEADERBOARD-V2:END -->
 
 Verified rows are re-scored from their published outputs in [ParseBench-2-results](https://huggingface.co/datasets/llamaindex/ParseBench-2-results) whenever the scorers change (see [leaderboard/README.md](leaderboard/README.md)); rows marked † carry the scores reported in the ParseBench 2 paper until their outputs are published. Systems that do not score all six dimensions are not ranked. To add an open-weight model to the [Hugging Face leaderboard](https://huggingface.co/datasets/llamaindex/ParseBench-2), see [Submit Results to the Leaderboard](https://huggingface.co/datasets/llamaindex/ParseBench-2#submit-results-to-the-leaderboard).
@@ -83,15 +83,15 @@ _Top 10 by Overall score. For the full sortable, filterable leaderboard, see [pa
 | Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|
 | 1 | LlamaParse Agentic Plus | LlamaParse | 86.69 | 93.27 | 92.19 | 89.74 | 82.84 | 75.43 | 5.62¢ |
-| 2 | LlamaParse Agentic | LlamaParse | 82.83 | 90.90 | 81.20 | 87.84 | 84.81 | 69.42 | 1.25¢ |
-| 3 | Pulse Ultra 2 † | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
-| 4 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.64 | 89.48 | 77.50 | 87.68 | 76.68 | 71.84 | 3.00¢ |
-| 5 | anyformat (Standard) | Commercial - Startup APIs | 80.05 | 86.84 | 85.01 | 86.39 | 79.25 | 62.74 | 4.30¢ |
-| 6 | KDL-Frontier-Parser-nano-v2 | VLM - Open Weight | 79.03 | 86.19 | 69.14 | 87.59 | 76.91 | 75.33 | — |
-| 7 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 78.80 | 94.26 | 70.89 | 91.25 | 77.06 | 60.56 | 6.13¢ |
-| 8 | oi-parser † | Commercial - Startup APIs | 78.30 | 92.62 | 78.28 | 86.17 | 66.88 | 67.53 | — |
-| 9 | Anthropic Fable 5.1 | VLM - Proprietary | 77.81 | 91.53 | 66.93 | 90.77 | 76.02 | 63.81 | 16.05¢ |
-| 10 | LlamaParse Cost Effective | LlamaParse | 77.68 | 86.72 | 73.98 | 87.32 | 78.14 | 62.22 | 0.38¢ |
+| 2 | OCRia-1 | VLM - Open Weight | 84.65 | 91.80 | 82.47 | 90.27 | 85.50 | 73.23 | — |
+| 3 | LlamaParse Agentic | LlamaParse | 82.83 | 90.90 | 81.20 | 87.84 | 84.81 | 69.42 | 1.25¢ |
+| 4 | Pulse Ultra 2 † | Commercial - Startup APIs | 81.60 | 90.35 | 89.70 | 87.63 | 73.97 | 66.35 | 1.50¢ |
+| 5 | Upstage Document Parse 2 (Enhanced) | VLM - Proprietary | 80.64 | 89.48 | 77.50 | 87.68 | 76.68 | 71.84 | 3.00¢ |
+| 6 | anyformat (Standard) | Commercial - Startup APIs | 80.05 | 86.84 | 85.01 | 86.39 | 79.25 | 62.74 | 4.30¢ |
+| 7 | KDL-Frontier-Parser-nano-v2 | VLM - Open Weight | 79.03 | 86.19 | 69.14 | 87.59 | 76.91 | 75.33 | — |
+| 8 | Anthropic Opus 5.5 (Effort High) | VLM - Proprietary | 78.80 | 94.26 | 70.89 | 91.25 | 77.06 | 60.56 | 6.13¢ |
+| 9 | oi-parser † | Commercial - Startup APIs | 78.30 | 92.62 | 78.28 | 86.17 | 66.88 | 67.53 | — |
+| 10 | Anthropic Fable 5.1 | VLM - Proprietary | 77.81 | 91.53 | 66.93 | 90.77 | 76.02 | 63.81 | 16.05¢ |
 
 † Unverified: no published outputs in [ParseBench-results](https://huggingface.co/datasets/llamaindex/ParseBench-results); scores as submitted.
 <!-- LEADERBOARD:END -->

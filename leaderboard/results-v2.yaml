@@ -239,6 +239,11 @@ rows:
   status: verified
   pipeline: dots_ocr_1_5_parse
   results_revision: dd3cd89ad0b318c286604fec7dd63e62a0701baa
+- provider: OCRia-1
+  status: verified
+  pipeline: ocria_1
+  results_revision: 497e243f68cd861c80b5a1405e20758992d4a8de
+  run_dates: '2026-11-20'
 - provider: KDL-Frontier-Parser-nano-v2
   status: verified
   pipeline: kdl_frontier_nano_v2

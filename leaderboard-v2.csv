@@ -5,6 +5,7 @@ Claude Opus 5.5,Vision Models,87.11,92.62,89.38,94.20,74.12,89.17,83.16,6.492,ye
 Reducto (r-1),Document Parsers,86.23,82.42,92.45,90.97,78.45,89.48,83.58,1.000,yes
 LlamaParse (Cost Effective),Document Parsers,85.52,85.47,91.94,87.22,73.07,89.49,85.92,0.375,yes
 Gemini 4 argon (low),Vision Models,85.32,89.60,89.22,92.85,68.20,89.75,82.31,2.683,yes
+OCRia-1,Open Weight,85.24,87.87,91.59,86.28,77.63,85.96,82.09,,yes
 Reducto,Document Parsers,84.93,81.77,82.70,84.92,89.07,85.93,85.19,3.001,yes
 Extend (Parse 2),Document Parsers,84.14,80.13,83.39,84.20,85.08,85.47,86.54,2.501,yes
 Pulse (Ultra 2),Document Parsers,84.04,86.02,88.68,84.80,86.80,77.09,80.84,1.500,yes
