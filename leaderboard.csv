@@ -37,7 +37,7 @@ Anthropic Fable 5.1,VLM - Proprietary,77.81,91.53,66.93,90.77,76.02,63.81,16.05,
 Anthropic Sonnet 5,VLM - Proprietary,61.16,86.65,60.53,86.51,64.93,7.18,3.18,2.79,3.82,2.60,3.52,,no
 Anthropic Sonnet 5.5,VLM - Proprietary,69.21,91.07,37.69,91.24,71.63,54.44,2.74,2.10,3.39,2.41,3.06,,yes
 Google Gemini 3.1 Pro,VLM - Proprietary,67.32,91.13,40.43,89.26,44.91,70.85,8.49,6.69,9.69,7.73,10.54,,yes
-Google Gemini 3.1 Pro (Thinking Low),VLM - Proprietary,59.77,90.35,11.43,86.79,45.58,64.69,2.50,1.56,3.22,2.15,3.07,,yes
+Google Gemini 3.1 Pro (Thinking Low),VLM - Proprietary,59.77,90.35,11.43,86.80,45.58,64.69,2.50,1.56,3.22,2.15,3.07,,yes
 Google Gemini 3.1 Flash Lite,VLM - Proprietary,56.45,85.52,10.69,89.15,48.60,48.29,0.29,0.19,0.37,0.27,0.31,,yes
 Google Gemini 3.1 Flash Lite (Thinking Medium),VLM - Proprietary,56.66,83.48,14.35,87.27,56.17,42.02,0.32,0.21,0.40,0.30,0.37,,yes
 Anthropic Haiku 5.5,VLM - Proprietary,56.06,86.85,10.13,89.83,65.64,27.85,0.14,0.11,0.19,0.13,0.15,,yes
@@ -78,9 +78,9 @@ Azure Document Intelligence (Layout),Commercial - IDP,56.76,85.97,1.27,84.55,40.
 anyformat (Standard),Commercial - Startup APIs,80.05,86.84,85.01,86.39,79.25,62.74,4.3,,,,,,yes
 Reducto (Agentic),Commercial - Startup APIs,70.87,80.20,72.37,87.65,45.40,68.71,4.76,6,3.4,4.2,5,,yes
 Pulse Ultra 2,Commercial - Startup APIs,81.60,90.35,89.70,87.63,73.97,66.35,1.5,,,,,,no
-Datalab Accurate,Commercial - Startup APIs,72.88,90.66,63.20,85.76,73.41,51.38,1,,,,,,yes
-Datalab Balanced,Commercial - Startup APIs,72.82,91.02,63.12,85.70,72.94,51.31,0.4,,,,,,yes
-Datalab Fast,Commercial - Startup APIs,62.92,85.15,54.85,84.64,42.47,47.48,0.4,,,,,,yes
+Datalab Accurate,Commercial - Startup APIs,76.72,90.66,63.20,85.76,73.41,70.58,1,,,,,,yes
+Datalab Balanced,Commercial - Startup APIs,76.69,91.02,63.12,85.70,72.94,70.67,0.4,,,,,,yes
+Datalab Fast,Commercial - Startup APIs,65.86,85.15,54.85,84.64,42.47,62.21,0.4,,,,,,yes
 Reducto,Commercial - Startup APIs,67.83,70.33,56.99,86.37,56.75,68.71,2.38,3,1.7,2.1,2.5,,no
 Reducto (r-1-mini),Commercial - Startup APIs,66.10,88.23,1.47,88.73,75.82,76.25,0.1,0.1,0.1,0.1,0.1,,yes
 Reducto (r-1),Commercial - Startup APIs,61.49,85.00,2.74,88.91,73.51,57.31,1,1,1,1,1,,yes
@@ -93,7 +93,7 @@ oi-parser,Commercial - Startup APIs,78.30,92.62,78.28,86.17,66.88,67.53,,,,,,,no
 DocAI,Commercial - Startup APIs,60.74,51.39,60.45,80.42,42.12,69.32,1.00,,,,,,no
 Mistral OCR 4 (Annotation),Commercial - IDP,68.23,73.94,40.11,89.55,66.37,71.17,0.5,,,,,,no
 Mistral OCR 4,Commercial - IDP,58.38,74.03,1.86,90.01,60.32,65.69,0.4,,,,,,yes
-Databricks AI Parse,Commercial - IDP,70.11,86.46,71.67,88.38,44.74,59.30,0.35,0.38,0.30,0.30,0.41,,yes
+Databricks AI Parse,Commercial - IDP,70.12,86.46,71.67,88.38,44.74,59.34,0.35,0.38,0.30,0.30,0.41,,yes
 Nutrient DWS (Agentic),Commercial - IDP,76.43,72.13,83.46,84.45,64.66,77.47,1.80,,,,,,no
 Infinity-Parser2-Pro,VLM - Open Weight,71.19,86.39,58.16,89.66,47.12,74.64,,,,,,infly/Infinity-Parser2-Pro,yes
 Infinity-Parser2-Flash,VLM - Open Weight,68.61,82.76,52.67,88.61,44.04,74.95,,,,,,infly/Infinity-Parser2-Flash,yes
@@ -107,7 +107,7 @@ Dots.mocr,VLM - Open Weight,54.18,85.03,0.84,89.99,40.11,54.91,,,,,,rednote-hila
 HPD-Parsing,VLM - Open Weight,53.40,73.79,0.79,82.19,45.69,64.52,,,,,,PaddlePaddle/HPD-Parsing,yes
 Falcon-OCR,VLM - Open Weight,52.07,74.70,0.82,78.59,47.91,58.32,,,,,,tiiuae/Falcon-OCR,no
 Docling-models,VLM - Open Weight,50.65,66.41,52.76,66.93,1.03,66.11,,,,,,docling-project/docling-models,no
-Chandra-ocr-2,VLM - Open Weight,70.59,89.20,62.77,85.45,64.37,51.18,,,,,,datalab-to/chandra-ocr-2,yes
+Chandra-ocr-2,VLM - Open Weight,74.07,89.20,62.77,85.45,64.37,68.58,,,,,,datalab-to/chandra-ocr-2,yes
 PaddleOCR-VL-1.6,VLM - Open Weight,50.90,67.79,50.62,82.39,44.92,8.78,,,,,,PaddlePaddle/PaddleOCR-VL-1.6,yes
 PaddleOCR-VL-1.5,VLM - Open Weight,49.36,67.61,43.38,82.46,44.55,8.79,,,,,,PaddlePaddle/PaddleOCR-VL-1.5,yes
 Surya OCR 2,VLM - Open Weight,60.63,82.74,19.04,87.84,63.59,49.93,,,,,,datalab-to/surya-ocr-2,yes
