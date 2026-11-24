@@ -242,7 +242,7 @@ rows:
 - provider: OCRia-1
   status: verified
   pipeline: ocria_1
-  results_revision: refs/pr/20
+  results_revision: 497e243f68cd861c80b5a1405e20758992d4a8de
   run_dates: '2026-11-20'
 - provider: KDL-Frontier-Parser-nano-v2
   status: verified
