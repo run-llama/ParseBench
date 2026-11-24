@@ -1407,6 +1407,14 @@ def alt_as_text(ref_keys: Sequence[str], md: str, figures: bool = True) -> str:
         dup = len(keys) >= ALT_DUP_MIN and _covered(keys, ref_keys) >= ALT_DUP_SHARE
         keep = (dup and _covered(keys, body) < ALT_DUP_SHARE) or (not dup and _junk(plain, toks))
         if keep and dup:
+            # Explicitly quoted lettering is transcription; the surrounding description is not.
+            # Keep the entire quotation and adjacent parenthetical citation, including errors.
+            quoted = regex.search(r'\b(?:reading|reads|says)\s+["“]([^"”]+)["”](\s*\([^()]*\))?', plain, regex.I)
+            if quoted and len(regex.findall(r'["“][^"”]+["”]', plain)) == 1:
+                lettering = quoted.group(1) + (quoted.group(2) or "")
+                lettering_keys = [t.key for t in tokenize(lettering)[0]]
+                if len(lettering_keys) >= ALT_DUP_MIN and _covered(lettering_keys, ref_keys) >= ALT_DUP_SHARE:
+                    plain, keys = lettering, lettering_keys
             body.extend(["\n", *keys])  # a second alt repeating it is then a repeat of the body
         return "\n\n" + plain + "\n\n" if keep else None
 

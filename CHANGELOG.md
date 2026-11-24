@@ -6,6 +6,9 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+### Scoring
+- Text: separate explicitly quoted lettering from surrounding image-alt narration when recovering printed text. Preserve errors inside the quotation and its adjacent parenthetical citation. This can change existing text scores; rescore saved outputs with the same dataset to compare.
+
 ## [2.2.1] - 2026-11-23
 
 ### Scoring
