@@ -863,3 +863,20 @@ def test_sub_page_wrapper_does_not_make_table_only_reference_text_applicable(con
     case.expected_markdown = "<sub_page>" + content + "</sub_page>"
     metrics = NextScorers().evaluate(_inference_result(_output(content)), case).metrics
     assert not any(m.metric_name.startswith("text_next") for m in metrics)
+
+
+@pytest.mark.parametrize(
+    "lettering", ["Anyone who wants to be first must be last", "Anyone who wants to be first must be first"]
+)
+def test_quoted_poster_alt_excludes_description_but_keeps_transcription_errors(lettering: str) -> None:
+    ref = "Our community as leader.\n\nAnyone who wants to be first must be last. (Mark 9:35)"
+    out = (
+        f'Our community as leader.\n\n![photo: poster reading "{lettering}." '
+        "(Mark 9:35) above a hilltop silhouette](a.jpg)"
+    )
+    result = score_text_next(ref, out)
+    if lettering.endswith("last"):
+        assert result.score == 1.0
+    else:
+        assert result.score < 1.0
+    assert all("hilltop" not in example[2] for example in result.events.examples)

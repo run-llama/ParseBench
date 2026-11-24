@@ -12,8 +12,8 @@
 
 results_repo: llamaindex/ParseBench-2-results
 data_repo: llamaindex/ParseBench-2
-data_revision: 2d9a2344660647e87dc272458ea1978428f895eb
-scored_with: d7efdbc864e2e55f9793063a90936123fc769004
+data_revision: 2e95407575ba1ad6aa90842258482a561fae1b33
+scored_with: d6209dab930702c63f6dcf23eca02501a948d76b
 rows:
 - provider: Webcite
   status: verified
