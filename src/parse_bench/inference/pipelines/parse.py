@@ -1503,6 +1503,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    register_fn(
+        PipelineSpec(
+            pipeline_name="hy4_flash_parse_with_layout",
+            provider_name="tencent_hy",
+            product_type=ProductType.PARSE,
+            config={
+                "model": "hy4-flash",
+                "mode": "parse_with_layout",
+                "max_tokens": 32768,
+                "reasoning_effort": "high",
+            },
+        )
+    )
+
     # =========================================================================
     # Qwen3.5-4B vLLM
     # =========================================================================

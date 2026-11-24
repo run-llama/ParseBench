@@ -10,18 +10,25 @@ from parse_bench.evaluation.layout_adapters.adapters import TencentHYLayoutAdapt
 from parse_bench.evaluation.layout_adapters.registry import create_layout_adapter_for_result
 from parse_bench.inference.pipelines import get_pipeline
 from parse_bench.inference.providers.parse.tencent_hy import TencentHYParseProvider
+from parse_bench.inference.providers.registry import create_provider
 from parse_bench.schemas.pipeline_io import InferenceRequest, InferenceResult
 from parse_bench.schemas.product import ProductType
 
 
-def _run_hy4_page(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, content: str) -> InferenceResult:
+def _run_hy4_page(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    content: str,
+    *,
+    pipeline_name: str = "hy4_parse_with_layout",
+) -> InferenceResult:
     """Run the registered hy4 pipeline on one 1000x2000 page against a fake TokenHub response.
 
     Usage: 1000 prompt tokens (400 cached) and 500 completion tokens (300 of them reasoning).
     """
     monkeypatch.setenv("TENCENT_TOKENHUB_API_KEY", "sk-test")
-    pipeline = get_pipeline("hy4_parse_with_layout")
-    provider = TencentHYParseProvider(pipeline.provider_name, pipeline.config)
+    pipeline = get_pipeline(pipeline_name)
+    provider = create_provider(pipeline)
     response = SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
         usage=SimpleNamespace(
@@ -93,3 +100,26 @@ def test_hy4_empty_layout_scores_as_a_provider_failure(monkeypatch: pytest.Monke
         error=f"Worker error: {exc.value}",
     )
     assert not _is_infra_failure(failed)
+
+
+def test_hy4_flash_resolves_to_tencent_hy_and_bills_flash_rate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Catches longest-prefix pricing falling back to 'hy4' (~10x overbill) and confirms
+    hy4_flash_parse_with_layout resolves to tencent_hy with model 'hy4-flash'.
+    """
+    monkeypatch.setenv("TENCENT_TOKENHUB_API_KEY", "sk-test")
+    pipeline = get_pipeline("hy4_flash_parse_with_layout")
+    assert pipeline.provider_name == "tencent_hy"
+    assert isinstance(create_provider(pipeline), TencentHYParseProvider)
+
+    result = _run_hy4_page(
+        monkeypatch,
+        tmp_path,
+        '<div data-bbox="[0,0,10,10]" data-label="Text">Hi</div>',
+        pipeline_name="hy4_flash_parse_with_layout",
+    )
+
+    assert result.raw_output["model"] == "hy4-flash"
+    expected = (600 * 0.035 + 400 * 0.0015 + 500 * 0.1405) / 1_000_000
+    assert result.raw_output["cost_usd"] == pytest.approx(expected)
+    assert TencentHYLayoutAdapter.matches(result)
+    assert isinstance(create_layout_adapter_for_result(result), TencentHYLayoutAdapter)

@@ -157,6 +157,7 @@ uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 | Pipeline | Description | Env Var |
 |---|---|---|
 | `hy4_parse_with_layout` | Tencent Hy4, parse + layout, thinking high | `TENCENT_TOKENHUB_API_KEY` |
+| `hy4_flash_parse_with_layout` | Tencent Hy4 Flash, parse + layout, thinking high | `TENCENT_TOKENHUB_API_KEY` |
 
 ### Azure Document Intelligence
 
