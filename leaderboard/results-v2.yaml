@@ -249,6 +249,11 @@ rows:
   status: verified
   pipeline: dots_ocr_1_5_parse
   results_revision: dd3cd89ad0b318c286604fec7dd63e62a0701baa
+- provider: OCRia-1
+  status: verified
+  pipeline: ocria_1
+  results_revision: 497e243f68cd861c80b5a1405e20758992d4a8de
+  run_dates: '2026-11-20'
 - provider: KDL-Frontier-Parser-nano-v2
   status: verified
   pipeline: kdl_frontier_nano_v2
@@ -308,3 +313,8 @@ rows:
   pipeline: openai_gpt_6_2_sol_reasoning_med_parse_with_layout_file
   results_revision: 75320d70d67cbc778bdd9b5dd497729b0e4f729d
   run_dates: '2026-11-17'
+- provider: LiteParse + OCRia-nano-1
+  status: verified
+  pipeline: liteparse_ocria_nano
+  results_revision: e7cd5e1b785f617409416af564ceafeb2f43776d
+  run_dates: '2026-11-23'

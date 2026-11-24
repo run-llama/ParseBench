@@ -36,6 +36,12 @@ _CLI_FLAG_MAP: dict[str, str] = {
     "dpi": "--dpi",
     "num_workers": "--num-workers",
     "image_mode": "--image-mode",
+    "ocr_backend": "--ocr-backend",
+}
+
+# Boolean base_config keys that map to bare CLI switches.
+_CLI_SWITCH_MAP: dict[str, str] = {
+    "keep_headers_footers": "--keep-headers-footers",
 }
 
 # ``lit --extract-blocks`` block kinds -> LayoutItemIR.type. Kinds with no
@@ -46,9 +52,14 @@ _BLOCK_KIND_TO_LABEL: dict[str, str] = {
     "paragraph": "Text",
     "list_item": "List-item",
     "table": "Table",
+    # a table recognised by LiteParse's learned table model (rows of cells, no separate header list)
+    "merged_table": "Table",
     "grid_fallback": "Table",
     "figure": "Picture",
     "code": "Code",
+    # running headers / footers, emitted only with ``--keep-headers-footers``
+    "page_header": "Page-header",
+    "page_footer": "Page-footer",
 }
 
 
@@ -57,7 +68,7 @@ def _block_text(block: dict[str, Any]) -> str:
     text = block.get("text")
     if isinstance(text, str) and text:
         return text
-    if block.get("kind") in {"table", "grid_fallback"}:
+    if block.get("kind") in {"table", "merged_table", "grid_fallback"}:
         rows = []
         header = block.get("header")
         if isinstance(header, list):
@@ -152,6 +163,8 @@ class LiteParseProvider(Provider):
             - `ocr_server_url`: str
             - `ocr_language`: str
             - `dpi`: float
+            - `ocr_backend`: str (e.g. "ocria-nano"; LiteParse's default is Tesseract)
+            - `keep_headers_footers`: bool (keep running headers / footers in the output)
         """
         super().__init__(provider_name, base_config)
         self._output_format = self.base_config.get("output_format", "markdown")
@@ -176,6 +189,9 @@ class LiteParseProvider(Provider):
         for key, flag in _CLI_FLAG_MAP.items():
             if key in self._flag_kwargs:
                 args.extend([flag, str(self._flag_kwargs[key])])
+        for key, switch in _CLI_SWITCH_MAP.items():
+            if self.base_config.get(key):
+                args.append(switch)
         return args
 
     def _invoke_cli(self, pdf_path: str, fmt: str) -> str:

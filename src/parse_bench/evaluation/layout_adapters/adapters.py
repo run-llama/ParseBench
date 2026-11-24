@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -2732,8 +2733,74 @@ class UnstructuredLayoutAdapter(LayoutAdapter):
         )
 
 
+# Lowercase HTML tags only: document text has its own angle brackets (template placeholders like
+# `<PL Number>`, XML samples like `<MARK Position=...>`), and vendor HTML is lowercase.
+_BLOCK_TAGS = frozenset(
+    {
+        "p",
+        "div",
+        "br",
+        "hr",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "ul",
+        "ol",
+        "li",
+        "dl",
+        "dt",
+        "dd",
+        "table",
+        "thead",
+        "tbody",
+        "tfoot",
+        "tr",
+        "td",
+        "th",
+        "caption",
+        "blockquote",
+        "pre",
+        "figure",
+        "figcaption",
+        "img",
+        "section",
+        "header",
+        "footer",
+        "article",
+        "aside",
+        "nav",
+        "math",
+        "content-ref",
+    }
+)
+# Inline tags vanish without a space ("<b>Net</b>work" stays one word); block tags become a space.
+# <sub> / <sup> stay: the layout metric reads them itself (`L<sub>1</sub>` -> `l1`).
+_INLINE_TAGS = frozenset({"a", "abbr", "b", "code", "em", "font", "i", "mark", "s", "small", "span", "strong", "u"})
+_HTML_TAG = re.compile(r"</?([a-z][a-z0-9-]*)\b[^>]*>")
+
+
+def _block_html_to_text(text: str) -> str:
+    def replace(m: re.Match[str]) -> str:
+        tag = m.group(1)
+        if tag in _INLINE_TAGS:
+            return ""
+        if tag in _BLOCK_TAGS:
+            return " "
+        return m.group(0)  # sub / sup, and anything that is not HTML markup
+
+    return html.unescape(_HTML_TAG.sub(replace, text))
+
+
 def _build_vendor_content(label: str, text: str) -> LayoutTextContent | LayoutTableContent | None:
-    """Build content object from vendor layout element."""
+    """Build content object from vendor layout element.
+
+    Vendors that return block HTML (Datalab, Chandra) carry it as the element text; it is reduced
+    to plain text here, since the layout metric tokenizes text as is and would count tags and
+    attributes (``<p block-type="Text">``) as words.
+    """
     if not text:
         return None
     normalized = label.strip().lower()
@@ -2741,6 +2808,8 @@ def _build_vendor_content(label: str, text: str) -> LayoutTextContent | LayoutTa
         return LayoutTableContent(html=text)
     if normalized == "picture":
         return None
+    if any(m.group(1) in _BLOCK_TAGS or m.group(1) in _INLINE_TAGS for m in _HTML_TAG.finditer(text)):
+        text = _block_html_to_text(text)
     return LayoutTextContent(text=text)
 
 
@@ -3826,7 +3895,7 @@ class InfinityParser2LayoutAdapter(LayoutAdapter):
         )
 
 
-@register_layout_adapter("liteparse", priority=90)
+@register_layout_adapter("liteparse", "indra", "marker", priority=90)
 class LiteParseLayoutAdapter(LayoutAdapter):
     """Extract layout predictions from LiteParse ``--extract-blocks`` output.
 

@@ -515,6 +515,56 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # LiteParse with OCR, as benchmarked in the LiteParse / ocria-nano reports: running headers and
+    # footers kept (they are part of the ParseBench-2 ground truth). `liteparse_ocria_nano` needs the
+    # ocria-nano models (`lit models pull ocria-nano`).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="liteparse_tesseract",
+            provider_name="liteparse",
+            product_type=ProductType.PARSE,
+            config={
+                "output_format": "markdown",
+                "ocr_enabled": True,
+                "keep_headers_footers": True,
+            },
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="liteparse_ocria_nano",
+            provider_name="liteparse",
+            product_type=ProductType.PARSE,
+            config={
+                "output_format": "markdown",
+                "ocr_enabled": True,
+                "ocr_backend": "ocria-nano",
+                "keep_headers_footers": True,
+            },
+        )
+    )
+
+    # Local CPU parsers. Indra: math on, running headers / footers kept (same convention as above).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="indra",
+            provider_name="indra",
+            product_type=ProductType.PARSE,
+            config={"math": True, "keep_furniture": True, "cores": 2},
+        )
+    )
+
+    # Marker run locally on CPU ("fast" is Marker's CPU mode); `datalab_*` are Datalab's hosted API.
+    register_fn(
+        PipelineSpec(
+            pipeline_name="marker_fast",
+            provider_name="marker",
+            product_type=ProductType.PARSE,
+            config={"mode": "fast"},
+        )
+    )
+
     register_fn(
         PipelineSpec(
             pipeline_name="liteparse_text",
@@ -2918,6 +2968,25 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                 "model": "kdl-frontier-parser-nano-v2",
                 "dpi": 144,
                 "timeout": 900,
+            },
+        )
+    )
+
+    # OCRia-1 (llamaindex/OCRia-1, 4B, BF16): one vLLM endpoint for the text; layout boxes from the
+    # model's box server (examples/serve_boxes.py in the model repo: Heron regions + PDF word positions).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="ocria_1",
+            provider_name="ocria_1",
+            product_type=ProductType.PARSE,
+            config={
+                "endpoint_url": "",  # via OCRIA_ENDPOINT_URL
+                "model": "",  # via OCRIA_MODEL (default ocria-1)
+                "grounding_url": "",  # via OCRIA_GROUNDING_URL (unset = no layout boxes)
+                "dpi": 300,
+                "max_tokens": 24576,
+                "max_model_len": 32768,
+                "timeout": 1800,
             },
         )
     )

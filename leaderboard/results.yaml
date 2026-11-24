@@ -608,6 +608,11 @@ rows:
 - provider: aeddix-alpine-ocr (KDL pipeline)
   status: unverified
   note: no published outputs in the results repo
+- provider: OCRia-1
+  status: verified
+  pipeline: ocria_1
+  results_revision: eaebfa6dc75da2493e67c295409f9141f8287587
+  run_dates: '2026-11-23'
 - provider: KDL-Frontier-Parser-nano-v2
   status: verified
   pipeline: kdl_frontier_nano_v2

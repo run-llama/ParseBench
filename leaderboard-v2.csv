@@ -7,6 +7,7 @@ Claude Opus 5.5,Vision Models,87.11,92.62,89.38,94.20,74.12,89.17,83.16,6.492,ye
 Reducto (r-1),Document Parsers,86.23,82.42,92.45,90.97,78.45,89.48,83.58,1.000,yes
 LlamaParse (Cost Effective),Document Parsers,85.52,85.47,91.94,87.22,73.07,89.49,85.92,0.375,yes
 Gemini 4 argon (low),Vision Models,85.32,89.60,89.22,92.85,68.20,89.75,82.31,2.683,yes
+OCRia-1,Open Weight,85.24,87.87,91.59,86.28,77.63,85.96,82.09,,yes
 Reducto,Document Parsers,84.93,81.77,82.70,84.92,89.07,85.93,85.19,3.001,yes
 Extend (Parse 2),Document Parsers,84.14,80.13,83.39,84.20,85.08,85.47,86.54,2.501,yes
 Pulse (Ultra 2),Document Parsers,84.04,86.02,88.68,84.80,86.80,77.09,80.84,1.500,yes
@@ -56,6 +57,7 @@ dots.mocr,Open Weight,64.14,86.29,80.63,83.40,0.78,67.88,65.83,,yes
 Gemini 3.1 Flash-Lite,Vision Models,63.64,83.90,79.28,79.77,12.22,49.95,76.70,0.389,yes
 Qwen3.8 27B,Open Weight,62.52,81.57,77.24,36.73,41.33,66.10,72.18,,yes
 Gemini 3.5 Flash-Lite,Vision Models,62.18,79.10,78.68,72.24,5.05,63.90,74.11,0.717,yes
+LiteParse + OCRia-nano-1,Open Weight,59.24,68.48,82.19,59.49,3.11,72.39,69.77,,yes
 Falcon-OCR,Open Weight,57.82,64.58,75.93,72.57,0.69,64.56,68.60,,yes
 jina-ocr-v1,Open Weight,48.65,75.13,79.87,55.00,8.74,0.00,73.17,,yes
 Qwen3.5-4B,Open Weight,42.92,77.32,74.77,12.86,6.88,16.14,69.57,,yes

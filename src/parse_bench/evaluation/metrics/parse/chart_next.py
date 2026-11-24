@@ -1308,16 +1308,40 @@ class ChartSpec:
     categories: list[str] = field(default_factory=list)
     series: list[tuple[str, list[str]]] = field(default_factory=list)
     relative_tolerance: float | None = None
+    point_tolerances: dict[tuple[int, int], tuple[float, float]] = field(default_factory=dict)
     optional: frozenset[int] = frozenset()  # series flagged ``optional`` (derived, e.g. the 100 - Yes of a Yes/No bar)
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> ChartSpec:
         series: list[tuple[str, list[str]]] = []
         optional: set[int] = set()
+        point_tolerances: dict[tuple[int, int], tuple[float, float]] = {}
         for s in d.get("series") or ():
             vals = s.get("values") or []
             if s.get("optional"):
                 optional.add(len(series))
+            # Optional entries align with values; null preserves the legacy tolerance at that point.
+            overrides = s.get("point_tolerances")
+            if overrides is not None:
+                if not isinstance(overrides, list) or len(overrides) != len(vals):
+                    raise ValueError("point_tolerances must be a list aligned with series values")
+                for ci, override in enumerate(overrides):
+                    if override is None:
+                        continue
+                    if not isinstance(override, Mapping) or set(override) != {
+                        "relative_tolerance",
+                        "absolute_tolerance",
+                    }:
+                        raise ValueError("Each point tolerance needs relative_tolerance and absolute_tolerance")
+                    tolerances = (override["relative_tolerance"], override["absolute_tolerance"])
+                    if any(
+                        isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0
+                        for v in tolerances
+                    ):
+                        raise ValueError("Point tolerances must be finite non-negative numbers")
+                    if ci >= len(d.get("categories") or ()) or not _js_trim(vals[ci]):
+                        raise ValueError("Point tolerance must refer to a populated category value")
+                    point_tolerances[(ci, len(series))] = (float(tolerances[0]), float(tolerances[1]))
             series.append((_js_str(s.get("name") or ""), ["" if v is None else _js_str(v) for v in vals]))
         tol = d.get("relative_tolerance")
         return cls(
@@ -1332,6 +1356,7 @@ class ChartSpec:
             series=series,
             relative_tolerance=None if tol is None else float(tol),
             optional=frozenset(optional),
+            point_tolerances=point_tolerances,
         )
 
     @property
@@ -2820,6 +2845,9 @@ class _ChartRef:
 
     def tol_at(self, ci: int, si: int) -> _Tol:
         """A partially labeled chart: printed labels are exact, the other points are read from the axis."""
+        if override := self.spec.point_tolerances.get((ci, si)):
+            # Explicit axis-read margins are in GT units and relative to GT, independent of the prediction.
+            return _Tol(override[0], override[1], False)
         return self.tol_axis if self.tol_axis is not None and (ci, si) in self.axis_read else self.tol
 
     merged: _ChartRef | None = None  # the chart with its colour-group series read as one series
@@ -2922,7 +2950,10 @@ def _merged_groups(spec: ChartSpec) -> _ChartRef | None:
                 vals[ci] = v
     rest = [s for si, s in enumerate(spec.series) if si not in group]
     name = " / ".join(spec.series[si][0] for si in group)
-    merged = replace(spec, series=[*rest, (name, vals)], optional=frozenset())
+    rest_indices = [si for si in range(len(spec.series)) if si not in group]
+    remap = {si: (len(rest) if si in group else rest_indices.index(si)) for si in range(len(spec.series))}
+    point_tolerances = {(ci, remap[si]): tol for (ci, si), tol in spec.point_tolerances.items()}
+    merged = replace(spec, series=[*rest, (name, vals)], optional=frozenset(), point_tolerances=point_tolerances)
     return _ChartRef.of(merged, virtual=len(rest))
 
 

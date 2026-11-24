@@ -2637,6 +2637,9 @@ google = [
     { name = "pillow" },
     { name = "pymupdf" },
 ]
+indra = [
+    { name = "pillow" },
+]
 landingai = [
     { name = "landingai-ade" },
 ]
@@ -2653,6 +2656,11 @@ local = [
     { name = "pymupdf" },
     { name = "pypdf" },
     { name = "pytesseract" },
+]
+ocria = [
+    { name = "httpx" },
+    { name = "openai" },
+    { name = "pillow" },
 ]
 openai = [
     { name = "openai" },
@@ -2732,6 +2740,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'anyformat'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'docling'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'llamaparse'", specifier = ">=0.28.0" },
+    { name = "httpx", marker = "extra == 'ocria'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'runners'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'upstage'", specifier = ">=0.28.0" },
     { name = "huggingface-hub", specifier = ">=0.20.0" },
@@ -2749,6 +2758,7 @@ requires-dist = [
     { name = "numba", marker = "extra == 'dev'", specifier = ">=0.59.0" },
     { name = "numba", marker = "extra == 'fast'", specifier = ">=0.59.0" },
     { name = "numpy", specifier = ">=1.24.0" },
+    { name = "openai", marker = "extra == 'ocria'", specifier = ">=1.0.0" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.0.0" },
     { name = "openai", marker = "extra == 'runners'", specifier = ">=1.0.0" },
     { name = "pandas", specifier = ">=2.0.0" },
@@ -2759,7 +2769,9 @@ requires-dist = [
     { name = "pdf2image", marker = "extra == 'runners'", specifier = ">=1.16.0" },
     { name = "pillow", marker = "extra == 'anthropic'", specifier = ">=10.0.0" },
     { name = "pillow", marker = "extra == 'google'", specifier = ">=10.0.0" },
+    { name = "pillow", marker = "extra == 'indra'", specifier = ">=10.0.0" },
     { name = "pillow", marker = "extra == 'local'", specifier = ">=10.0.0" },
+    { name = "pillow", marker = "extra == 'ocria'", specifier = ">=10.0.0" },
     { name = "pillow", marker = "extra == 'openai'", specifier = ">=10.0.0" },
     { name = "pillow", marker = "extra == 'runners'", specifier = ">=10.0.0" },
     { name = "pillow", marker = "extra == 'upstage'", specifier = ">=10.0.0" },
@@ -2792,7 +2804,7 @@ requires-dist = [
     { name = "unstructured-client", marker = "extra == 'unstructured'", specifier = ">=0.26.0" },
     { name = "warp-ingest", extras = ["ocr"], marker = "extra == 'runners'", specifier = ">=2.0.1" },
 ]
-provides-extras = ["anthropic", "anyformat", "aws", "azure", "chunkr", "datalab", "dev", "docling", "extend", "fast", "google", "landingai", "liteparse", "llamaparse", "local", "openai", "pymupdf4llm", "reducto", "runners", "unstructured", "upstage"]
+provides-extras = ["anthropic", "anyformat", "aws", "azure", "chunkr", "datalab", "dev", "docling", "extend", "fast", "google", "indra", "landingai", "liteparse", "llamaparse", "local", "ocria", "openai", "pymupdf4llm", "reducto", "runners", "unstructured", "upstage"]
 
 [[package]]
 name = "partial-json-parser"
