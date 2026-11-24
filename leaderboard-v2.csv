@@ -38,6 +38,7 @@ Nemotron Parse 3.5,Open Weight,74.26,81.11,82.04,69.62,59.99,79.34,73.46,,yes
 Qwen3.8 27B (Thinking),Open Weight,74.47,81.50,79.32,76.84,65.07,70.46,73.64,,yes
 Mistral OCR 4.1 (annotation),Document Parsers,73.97,84.44,81.90,81.89,29.85,85.93,79.79,0.500,yes
 Reducto (r-1-mini),Document Parsers,72.58,85.05,91.55,86.11,1.35,88.70,82.75,0.100,yes
+Tencent Hy4 Flash (high),Vision Models,72.31,75.59,86.85,76.21,55.08,59.21,80.94,0.149,yes
 LandingAI,Document Parsers,72.17,86.12,80.04,84.70,38.75,61.24,82.19,3.001,yes
 PaddleOCR-VL 1.6,Open Weight,71.49,73.31,79.39,73.03,57.43,74.54,71.22,,yes
 Claude Haiku 5.5,Vision Models,71.25,89.12,87.44,83.51,12.17,75.30,79.93,0.155,yes
