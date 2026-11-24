@@ -20,6 +20,9 @@ from parse_bench.inference.providers.registry import register_provider
 # Source: https://www.tencentcloud.com/document/product/1300/78937
 _TENCENT_HY_PRICING_PER_M: dict[str, tuple[float, float, float]] = {
     "hy4": (0.417, 0.021, 1.2505),
+    # 50%-off promotion through 2026-11-30 12:00:00 Beijing time;
+    # reverts to list (0.07, 0.003, 0.281) after.
+    "hy4-flash": (0.035, 0.0015, 0.1405),
 }
 
 
