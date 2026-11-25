@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 300
     steps:
       - name: Check out the base branch (trusted code only)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
@@ -50,7 +50,7 @@ jobs:
             if git cat-file -e "pr-head:$f" 2>/dev/null; then git show "pr-head:$f" > "$f"; fi
           done
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
           python-version: "3.12"
@@ -78,7 +78,7 @@ jobs:
 
       - name: Cache the ground truth
         if: steps.check.outputs.pipelines != ''
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .cache/leaderboard-gt
           key: leaderboard-gt-${{ steps.check.outputs.data_revision }}
@@ -97,7 +97,7 @@ jobs:
 
       - name: Cache the ParseBench 2 ground truth
         if: steps.check_v2.outputs.pipelines != ''
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .cache/leaderboard-gt-v2
           key: leaderboard-gt-v2-${{ steps.check_v2.outputs.data_revision }}
