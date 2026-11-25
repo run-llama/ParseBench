@@ -199,3 +199,27 @@ def test_output_tables_as_markdown_tri_state(config: dict[str, Any], explicit: b
     provider = _provider(**config)
     assert provider._explicit_output_tables_as_markdown() is explicit
     assert provider._output_tables_as_markdown() is effective
+
+
+def test_granular_bboxes_download_the_grounded_items_sidecar(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider = _provider(output_options={"granular_bboxes": ["cell", "word"]})
+    meta = {"grounded_items": {"exists": True, "presigned_url": "https://example.invalid/g.jsonl"}}
+    rows = '{"page_number": 1, "items": []}\n\n{"page_number": 2, "items": []}\n'
+    monkeypatch.setattr(
+        _FakeParsing, "get", lambda self, job_id, expand: _FakeResult({"result_content_metadata": meta})
+    )
+    fetched: list[str] = []
+
+    class _Resp:
+        text = rows
+
+        def raise_for_status(self) -> None:
+            return None
+
+    monkeypatch.setattr("httpx.get", lambda url, timeout: fetched.append(url) or _Resp())
+    with patch.object(llamaparse_module, "LlamaCloud", _fake_client_factory({})):
+        payload = provider._parse_pdf("/tmp/sample.pdf")
+        assert "grounded_items" not in _provider()._parse_pdf("/tmp/sample.pdf")
+
+    assert fetched == ["https://example.invalid/g.jsonl"]
+    assert [row["page_number"] for row in payload["grounded_items"]] == [1, 2]

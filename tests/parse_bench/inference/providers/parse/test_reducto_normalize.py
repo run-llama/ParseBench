@@ -5,6 +5,7 @@ block ``bbox.page``, and unwrapping the URL-based large-result payload whether
 it arrives as a bare chunk list or a response envelope.
 """
 
+import asyncio
 from datetime import datetime
 
 import pytest
@@ -115,3 +116,30 @@ def test_r1_page_counts_are_not_priced_at_the_r1_mini_rate() -> None:
     usage["usage_breakdown"]["parse_model"] = "R-1"
     assert _r1_mini_cost_usd(usage) is None
     assert _r1_mini_cost_usd(_r1_mini_usage(parse_pages=0)) is None
+
+
+@pytest.mark.parametrize(("config", "expected"), [({}, None), ({"return_citations": True}, True)])
+def test_return_citations_reaches_parse_settings(monkeypatch, config, expected) -> None:
+    import parse_bench.inference.providers.parse.reducto as reducto_module
+
+    calls: dict = {}
+
+    class _Parse:
+        def run(self, **kwargs):
+            calls.update(kwargs)
+            return {"job_id": "j", "result": {"chunks": []}}
+
+    class _Client:
+        parse = _Parse()
+
+        def __init__(self, api_key: str) -> None:
+            pass
+
+        def upload(self, file):
+            return "upload-1"
+
+    monkeypatch.setattr(reducto_module, "Reducto", _Client)
+    provider = ReductoProvider("reducto", {"api_key": "test-key", "model": "r-1", **config})
+    asyncio.run(provider._parse_pdf_async("/tmp/missing.pdf"))
+    assert calls["settings"].get("return_citations") is expected
+    assert calls["settings"]["model"] == "r-1"

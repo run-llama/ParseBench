@@ -6,6 +6,11 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+### Providers
+- `llamaparse`: when `output_options.granular_bboxes` is set, the `grounded_items` sidecar (table-cell, line and word
+  boxes) is downloaded into the raw output as `grounded_items`; pipeline `llamaparse_agentic_granular_bboxes`.
+- `reducto`: `return_citations` option (per-cell table boxes in `extra.cell_citations`); pipeline `reducto_r1_citations`.
+
 ## [2.2.2] - 2026-11-24
 
 ### Scoring

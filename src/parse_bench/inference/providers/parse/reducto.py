@@ -105,6 +105,8 @@ class ReductoProvider(Provider):
             - `model`: Reducto parse model to select via ``settings.model`` (e.g.
               ``"r-1"`` or ``"r-1-mini"``). Omitted by default, which runs legacy Parse. See
               https://docs.reducto.ai/parse/r-1
+            - `return_citations`: Set ``settings.return_citations`` so Table blocks carry
+              per-cell text and boxes in ``extra.cell_citations`` (default: False)
         """
         super().__init__(provider_name, base_config)
 
@@ -124,6 +126,7 @@ class ReductoProvider(Provider):
         self._advanced_chart_agent = self.base_config.get("advanced_chart_agent", False)
         # Reducto parse model selector (``settings.model``). None => legacy Parse.
         self._model = self.base_config.get("model")
+        self._return_citations = self.base_config.get("return_citations", False)
 
     def _is_pdf_file(self, file_path: str) -> bool:
         """
@@ -204,6 +207,9 @@ class ReductoProvider(Provider):
             # V3 API even though 0.22.0's SettingsParam has no `model` field yet.
             if self._model:
                 settings_config["model"] = self._model
+            # Per-cell boxes on Table blocks arrive in ``extra.cell_citations``.
+            if self._return_citations:
+                settings_config["return_citations"] = True
 
             # Parse the document (run in executor since SDK is synchronous)
             # Build kwargs dynamically — only include enhance if non-empty,
@@ -257,6 +263,7 @@ class ReductoProvider(Provider):
                 "formatting_include": self._formatting_include,
                 "advanced_chart_agent": self._advanced_chart_agent,
                 "model": self._model,
+                "return_citations": self._return_citations,
                 "total_pages": num_pages,
             }
 

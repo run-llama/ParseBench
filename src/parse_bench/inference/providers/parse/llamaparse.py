@@ -1,5 +1,6 @@
 """Provider for LlamaParse PARSE and LAYOUT_DETECTION."""
 
+import json
 import os
 import tempfile
 import time
@@ -216,6 +217,25 @@ class LlamaParseProvider(Provider):
             expand.append("forms")
         return expand
 
+    def _requests_granular_bboxes(self) -> bool:
+        output_options = self._sdk_config.get("output_options")
+        return isinstance(output_options, dict) and bool(output_options.get("granular_bboxes"))
+
+    @staticmethod
+    def _fetch_grounded_items(meta: Any) -> list[dict[str, Any]] | None:
+        """Download the ``grounded_items`` sidecar: JSONL, one row per page with granular boxes.
+
+        Granular boxes (``output_options.granular_bboxes``) are not inlined on ``items``; table
+        items in the sidecar carry ``grounding.rows[r][c]`` with the cell box and its line/word boxes.
+        """
+        if not isinstance(meta, dict) or not meta.get("presigned_url"):
+            return None
+        import httpx
+
+        response = httpx.get(meta["presigned_url"], timeout=120)
+        response.raise_for_status()
+        return [json.loads(line) for line in response.text.splitlines() if line.strip()]
+
     def _new_client(self) -> "LlamaCloud":
         client_kwargs: dict[str, Any] = {"api_key": self._api_key}
         if self._base_url:
@@ -324,6 +344,8 @@ class LlamaParseProvider(Provider):
                     presigned_url = debug_meta.get("presigned_url")
                     if isinstance(presigned_url, str) and presigned_url:
                         payload.setdefault("job_logs_url", presigned_url)
+                if self._requests_granular_bboxes():
+                    payload["grounded_items"] = self._fetch_grounded_items(content_meta.get("grounded_items"))
 
             return payload
 

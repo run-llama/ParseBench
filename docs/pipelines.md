@@ -55,6 +55,7 @@ uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 | **`llamaparse_agentic`** | Agentic tier (In paper: *LlamaParse Agentic*) | `LLAMA_CLOUD_API_KEY` |
 | **`llamaparse_cost_effective`** | Cost-effective tier (In paper: *LlamaParse Cost Effective*) | `LLAMA_CLOUD_API_KEY` |
 | `llamaparse_agentic_plus` | Agentic plus tier | `LLAMA_CLOUD_API_KEY` |
+| `llamaparse_agentic_granular_bboxes` | Agentic tier with table-cell, line and word boxes (`grounded_items` sidecar kept in the raw output) | `LLAMA_CLOUD_API_KEY` |
 
 ### OpenAI
 
@@ -188,6 +189,7 @@ uv run parse-bench run upstage_dpe_v2 --test --max_concurrent 2
 | **`reducto`** | Default Reducto (In paper: *Reducto*) | `REDUCTO_API_KEY` |
 | **`reducto_agentic`** | Agentic mode (In paper: *Reducto (Agentic)*) | `REDUCTO_API_KEY` |
 | **`reducto_r1`** | r-1 model, `settings.model="r-1"` (In paper: *Reducto (r-1)*) | `REDUCTO_API_KEY` |
+| `reducto_r1_citations` | r-1 with `settings.return_citations=true`: per-cell table boxes in `extra.cell_citations` | `REDUCTO_API_KEY` |
 | `reducto_nonagentic_change_tracking` | Non-agentic with `formatting_include=["change_tracking"]` | `REDUCTO_API_KEY` |
 | `reducto_agentic_table` | Agentic on text + table scopes | `REDUCTO_API_KEY` |
 | `reducto_agentic_chart` | Agentic on text + table + figure scopes with advanced chart agent | `REDUCTO_API_KEY` |
