@@ -40,12 +40,12 @@ jobs:
       data_revision_v2: ${{ steps.decide.outputs.data_revision_v2 }}
       pipelines_v2: ${{ steps.decide.outputs.pipelines_v2 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
           fetch-depth: 0
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
           python-version: "3.12"
@@ -109,11 +109,11 @@ jobs:
     if: needs.decide.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.decide.outputs.sha }}
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
           python-version: "3.12"
@@ -122,7 +122,7 @@ jobs:
 
       - name: Cache the ground truth
         id: gt
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .cache/leaderboard-gt
           key: leaderboard-gt-${{ needs.decide.outputs.data_revision }}
@@ -137,7 +137,7 @@ jobs:
       - name: Cache the ParseBench 2 ground truth
         id: gt_v2
         if: needs.decide.outputs.pipelines_v2 != '[]'
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .cache/leaderboard-gt-v2
           key: leaderboard-gt-v2-${{ needs.decide.outputs.data_revision_v2 }}
@@ -162,11 +162,11 @@ jobs:
       matrix:
         pipeline: ${{ fromJSON(needs.decide.outputs.pipelines) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.decide.outputs.sha }}
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
           python-version: "3.12"
@@ -175,7 +175,7 @@ jobs:
       - run: uv sync --extra runners --extra fast
 
       - name: Restore the ground truth
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .cache/leaderboard-gt
           key: leaderboard-gt-${{ needs.decide.outputs.data_revision }}
@@ -190,7 +190,7 @@ jobs:
           uv run python scripts/leaderboard/rescore.py run --pipelines "$PIPELINE" \
             --data-revision "$DATA_REVISION" --out "shard-$PIPELINE.json"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: shard-${{ matrix.pipeline }}
           path: shard-${{ matrix.pipeline }}.json
@@ -207,11 +207,11 @@ jobs:
       matrix:
         pipeline: ${{ fromJSON(needs.decide.outputs.pipelines_v2) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.decide.outputs.sha }}
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
           python-version: "3.12"
@@ -219,7 +219,7 @@ jobs:
       - run: uv sync --extra runners --extra fast
 
       - name: Restore the ParseBench 2 ground truth
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .cache/leaderboard-gt-v2
           key: leaderboard-gt-v2-${{ needs.decide.outputs.data_revision_v2 }}
@@ -234,7 +234,7 @@ jobs:
           uv run python scripts/leaderboard/rescore.py run --board v2 --pipelines "$PIPELINE" \
             --data-revision "$DATA_REVISION" --gt-cache .cache/leaderboard-gt-v2 --out "v2shard-$PIPELINE.json"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: v2shard-${{ matrix.pipeline }}
           path: v2shard-${{ matrix.pipeline }}.json
@@ -245,24 +245,24 @@ jobs:
     if: always() && needs.decide.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.decide.outputs.sha }}
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
           python-version: "3.12"
 
       - run: uv sync
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: shard-*
           path: shards
           merge-multiple: true
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         if: needs.decide.outputs.pipelines_v2 != '[]'
         with:
           pattern: v2shard-*
@@ -302,7 +302,7 @@ jobs:
           cat pr_body.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Open or update the re-score pull request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.11
         with:
           # The job checks out the decided commit, not a branch, so the base must be named.
           base: main
