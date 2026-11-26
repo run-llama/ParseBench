@@ -6,6 +6,8 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.2.3] - 2026-11-26
+
 ### Scoring
 - Text: page text an output writes inside image alt text is matched when the page prints the line more than once and the body has fewer copies than the reference (a line under a logo that the first paragraph repeats was read as a repeat of the body and reported omitted). When alt text holds an unbroken copy of page text with description around it and no number or identifier outside the copy, only the copy is read as text. This can change existing text scores; rescore saved outputs with the same dataset to compare.
 - Text: redaction markers read the same whatever their spelling. `[REDACTED]`, `[redacted]`, `[censored]`, `[redaction]`, `[blacked out]` and a bar drawn as a run of `█` all read as `[REDACTED]`; `[illegible]` and a marker left out are still charged, as a wrong or missing word: an upper-case `[REDACTED]` in a reference no longer makes another marker in its place a changed name (critical) per redaction. This can change existing text scores on pages with redactions; rescore saved outputs with the same dataset to compare.
