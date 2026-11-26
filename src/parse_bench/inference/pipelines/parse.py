@@ -80,6 +80,23 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
+    # Table-cell, line and word boxes, downloaded into raw_output["grounded_items"].
+    register_fn(
+        PipelineSpec(
+            pipeline_name="llamaparse_agentic_granular_bboxes",
+            provider_name="llamaparse",
+            product_type=ProductType.PARSE,
+            config={
+                "tier": "agentic",
+                "version": "latest",
+                "disable_cache": True,
+                "output_options": {
+                    "granular_bboxes": ["cell", "line", "word"],
+                },
+            },
+        )
+    )
+
     register_fn(
         PipelineSpec(
             pipeline_name="llamaparse_agentic_granular_bboxes_staging",
@@ -1245,6 +1262,22 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
                 "agentic": False,
                 "table_output_format": "html",
                 "model": "r-1",
+            },
+        )
+    )
+
+    # reducto_r1 plus per-cell boxes on tables (extra.cell_citations in the raw output).
+    register_fn(
+        PipelineSpec(
+            pipeline_name="reducto_r1_citations",
+            provider_name="reducto",
+            product_type=ProductType.PARSE,
+            config={
+                "ocr_system": "standard",
+                "agentic": False,
+                "table_output_format": "html",
+                "model": "r-1",
+                "return_citations": True,
             },
         )
     )
