@@ -34,6 +34,7 @@ import html
 import math
 import unicodedata
 from bisect import bisect_left
+from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -365,6 +366,13 @@ _TRANSCRIBED = _rx(
     rf"{_S}*(?::([^\]]*))?\](?:{_DEST})?",
     _I,
 )
+# A redaction marker: the page hides the text, so every spelling of the marker says the same thing. The
+# annotation guideline writes ``[REDACTED]``; outputs also write ``[censored]``, ``[redaction]``, ``[blacked out]``
+# or draw the bar itself as a run of full blocks. All read as the lower-case word ``redacted``: an upper-case
+# marker otherwise reads as a name, and another marker in its place is then charged as a changed name (critical)
+# for each redaction on the page. ``[illegible]`` is a different statement (text that is there but cannot be
+# read) and is not folded in; it costs what a wrong word costs.
+_REDACTION = _rx(r"\[[ \t]*(?:redacted|redaction|censored|blacked[ \t-]?out)[ \t]*\]|\u2588{2,}(?:[ \t]\u2588+)*", _I)
 _DOLLAR_SUP = _rx(rf"(?<![\\$])\$\^\{{?{_S}*([\p{{L}}\p{{N}}*†‡,]{{1,6}}){_S}*\}}?(?<![\\$])\$")
 # Glued to the previous word only when written glued: ``mc<sup>2</sup>`` is one token, while
 # ``2\n<sup>2024 AB</sup>`` or ``1990 <sup>25</sup>`` keep their space.
@@ -577,6 +585,7 @@ def preprocess(md: str) -> str:
     md = _PAGE_TAGS.sub("\n", md)
     md = _PAGE_NUMBER_TAG.sub(_page_number_sub, md)
     md = _TRANSCRIBED.sub(_transcribed_sub, md)
+    md = _REDACTION.sub(" [redacted] ", md)
     md = _FIGURE.sub(" ", md)
     md = _DOLLAR_SUP.sub(r"<sup>\1</sup>", md)
     md = _SUP_LINK.sub(r"\1\2\3", md)
@@ -1360,16 +1369,30 @@ def _long(text: str) -> bool:
     return len(_CJK_CHARS.sub(" ", text).split()) + len(_CJK_CHARS.findall(text)) > ALT_FREE_WORDS
 
 
-def _covered(keys: Sequence[str], other: Sequence[str]) -> float:
-    """Share of ``keys`` inside a run of K or more tokens that ``other`` also has (common words alone do not count)."""
-    if len(keys) < K:
-        return 0.0
-    grams = {tuple(other[i : i + K]) for i in range(len(other) - K + 1)}
+def _grams(keys: Sequence[str]) -> Counter[tuple[str, ...]]:
+    return Counter(tuple(keys[i : i + K]) for i in range(len(keys) - K + 1))
+
+
+def _copied(keys: Sequence[str], other: Sequence[str], need: Counter[tuple[str, ...]] | None = None) -> list[bool]:
+    """Which of ``keys`` sit inside a run of K or more tokens that ``other`` also has.
+
+    With ``need`` (run counts in the reference), ``other`` has a run only when it holds it at least as many
+    times as the reference does: a line the page prints twice is not given by one copy of it.
+    """
+    have = _grams(other)
+    grams = {g for g, n in have.items() if need is None or n >= need.get(g, 1)}
     hit = [False] * len(keys)
     for i in range(len(keys) - K + 1):
         if tuple(keys[i : i + K]) in grams:
             hit[i : i + K] = [True] * K
-    return sum(hit) / len(keys)
+    return hit
+
+
+def _covered(keys: Sequence[str], other: Sequence[str], need: Counter[tuple[str, ...]] | None = None) -> float:
+    """Share of ``keys`` that ``other`` also has in runs (``_copied``; common words alone do not count)."""
+    if len(keys) < K:
+        return 0.0
+    return sum(_copied(keys, other, need)) / len(keys)
 
 
 def _junk(text: str, toks: Sequence[Token]) -> bool:
@@ -1390,7 +1413,10 @@ def alt_as_text(ref_keys: Sequence[str], md: str, figures: bool = True) -> str:
     whatever its length. Two cases are read as text. Alt text that duplicates page text (ALT_DUP_SHARE of its
     tokens, at least ALT_DUP_MIN, in runs of K or more tokens the reference also has) and that the body does
     not already give (same test), so page content placed only inside alt is matched normally; alt text
-    repeating the body is ignored. And junk (``_junk``), charged as inserted text.
+    repeating the body is ignored. The body gives a run only when it has it as often as the reference: a line
+    printed under a logo and again in the first paragraph is still page content when the output writes one copy
+    in the body and the other inside the logo's alt text. When the alt text holds an unbroken copy of page text
+    with description around it, only the copy is read as text. And junk (``_junk``), charged as inserted text.
     """
     markers = (_DESC_LABEL, _DESC_FIGURE, *_DESC_MORE) if figures else (_DESC_LABEL, *_DESC_MORE)
     if not _ALT_IMAGE.search(md) and not _ALT_ATTR.search(md) and not any(rx.search(md) for rx in markers):
@@ -1399,13 +1425,14 @@ def alt_as_text(ref_keys: Sequence[str], md: str, figures: bool = True) -> str:
     for rx in markers:
         unmarked = rx.sub(" ", unmarked)
     body = [t.key for t in tokenize(unmarked)[0]]
+    ref_grams = _grams(ref_keys)
 
     def as_text(text: str) -> str | None:
         plain = _ALT_LABEL.sub("", text)
-        toks = tokenize(plain)[0]
+        toks, lines = tokenize(plain)
         keys = [t.key for t in toks]
         dup = len(keys) >= ALT_DUP_MIN and _covered(keys, ref_keys) >= ALT_DUP_SHARE
-        keep = (dup and _covered(keys, body) < ALT_DUP_SHARE) or (not dup and _junk(plain, toks))
+        keep = (dup and _covered(keys, body, ref_grams) < ALT_DUP_SHARE) or (not dup and _junk(plain, toks))
         if keep and dup:
             # Explicitly quoted lettering is transcription; the surrounding description is not.
             # Keep the entire quotation and adjacent parenthetical citation, including errors.
@@ -1415,6 +1442,17 @@ def alt_as_text(ref_keys: Sequence[str], md: str, figures: bool = True) -> str:
                 lettering_keys = [t.key for t in tokenize(lettering)[0]]
                 if len(lettering_keys) >= ALT_DUP_MIN and _covered(lettering_keys, ref_keys) >= ALT_DUP_SHARE:
                     plain, keys = lettering, lettering_keys
+            else:
+                # Page text copied whole inside a description ("logo: ACME — <the line under the wordmark>"): the
+                # copy is transcription, the words around it describe the picture. Only an unbroken copy on one
+                # line: a wrong word inside it leaves a gap, and the whole alt text is then read as before. So is
+                # an alt text with a number or identifier outside the copy, which may be a misread one.
+                hit = _copied(keys, ref_keys)
+                first, last = hit.index(True), len(hit) - 1 - hit[::-1].index(True)
+                whole = all(hit[first : last + 1]) and last - first + 1 >= ALT_DUP_MIN
+                around = toks[:first] + toks[last + 1 :]
+                if whole and around and not any(t.crit for t in around) and toks[first].b == toks[last].b:
+                    plain, keys = lines[toks[first].b][toks[first].s : toks[last].e], keys[first : last + 1]
             body.extend(["\n", *keys])  # a second alt repeating it is then a repeat of the body
         return "\n\n" + plain + "\n\n" if keep else None
 
