@@ -98,8 +98,8 @@ liteparse = ["liteparse>=2.14.3"]
 # pillow sizes image inputs for Indra's pixel boxes
 indra = ["pillow>=10.0.0"]
 pymupdf4llm = [
-    "pymupdf4llm==1.28.2",
-    "rapidocr==3.9.2",
+    "pymupdf==2.1",
+    "rapidocr==3.10.0",
 ]
 fast = [
     "numba>=0.59.0",
