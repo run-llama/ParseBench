@@ -216,6 +216,33 @@ def _normalize_quotes(text: str) -> str:
 # the name keeps custom elements such as <mark-down> intact.
 _TAG_REST = r"""(?:\s(?:"[^"]*"|'[^']*'|[^"'>])*)?/?>"""
 
+# Markdown link ``[label](url)`` or ``[label](<url>)`` -> label. The label has no brackets and
+# may wrap one line (no blank line); the URL has no whitespace and may hold one level of
+# balanced parentheses. Images (``![alt](src)``) and escaped brackets (``\[a\](b)``) stay.
+MD_LINK_RE = re.compile(
+    r"(?<![!\\])\[((?:[^\[\]\n]|\n(?![ \t]*\n))*)\]\((?:<[^<>\n]*>|[^\s()]*(?:\([^\s()]*\)[^\s()]*)*)\)"
+)
+
+# A fenced code block (``` or ~~~) or a one-line inline code span.
+_MD_CODE_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n.*?^[ \t]{0,3}\1[ \t]*$|(`+)[^`\n]*?\2", re.M | re.S)
+
+
+def strip_md_links_outside_code(text: str) -> str:
+    """Reduce ``[label](url)`` to ``label`` except inside code blocks and code spans.
+
+    Code is compared verbatim by some rules, so ``handlers[0](event)`` in code
+    must stay as written.
+    """
+    parts: list[str] = []
+    pos = 0
+    for m in _MD_CODE_RE.finditer(text):
+        parts.append(MD_LINK_RE.sub(r"\1", text[pos : m.start()]))
+        parts.append(m.group(0))
+        pos = m.end()
+    parts.append(MD_LINK_RE.sub(r"\1", text[pos:]))
+    return "".join(parts)
+
+
 # HTML formatting tags to strip (same set as header_accuracy_metric._FORMATTING_RE)
 _HTML_FORMATTING_RE = re.compile(
     rf"</?(?:b|i|u|s|em|strong|del|strike|mark|ins){_TAG_REST}",
@@ -539,6 +566,7 @@ def normalize_cell_text(text: str) -> str:
     in TEDS, GriTS, and header-accuracy metrics:
     - Sup/sub tag conversion (<sup>x</sup> → x, ¹ → 1, etc.)
     - HTML formatting tag removal (<b>, <i>, <mark>, <em>, <strong>, etc.)
+    - Markdown links reduced to their label ([label](url) → label)
     - Markdown bold/italic/strikethrough removal
     - Whole-cell boolean marker equivalence (✓/✗/●/[yes]/[no])
     - Unicode symbol equivalence (bullets, circled-x, etc.)
@@ -560,6 +588,8 @@ def normalize_cell_text(text: str) -> str:
     text = _HTML_FORMATTING_RE.sub("", text)
     # Strip <span> tags (keep content) — e.g. <span color="red">text</span> → text
     text = _HTML_SPAN_RE.sub("", text)
+    # Markdown link [label](url) -> label
+    text = MD_LINK_RE.sub(r"\1", text)
     # Strip markdown bold, then italic, then strikethrough
     text = _MD_BOLD_RE.sub(r"\1\2", text)
     text = _MD_ITALIC_RE.sub(r"\1\2", text)
@@ -683,6 +713,9 @@ def normalize_text(md_content: str | None) -> str:
         md_content,
         flags=re.IGNORECASE,
     )
+
+    # Markdown link [label](url) -> label
+    md_content = MD_LINK_RE.sub(r"\1", md_content)
 
     # Normalize <br>, <br/>, and <br /> to spaces
     md_content = re.sub(r"<br\s*/?>", " ", md_content)
