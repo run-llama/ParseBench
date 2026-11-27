@@ -6,6 +6,10 @@ All notable changes to `parse-bench` are recorded here. The format follows
 
 ## [Unreleased]
 
+### Scoring
+- Forms: with the page's printed text (`metadata.printed_text`, added to every Forms page in dataset v2.11), a field answer made only of printed form text (an instruction, a caption, an input mask) is not charged as a claimed value. Every word must be on the page and none may be a word of any expected value. In a blank field it is printed text in a blank field (minor) rather than an invented value (critical). Where a value is due it is a lost value (major) rather than a wrong value (critical). Without the page text, verdicts are unchanged. On the v2.11 Forms pages this raises every pipeline's forms score by 1.2–2.9 points (fillable_forms 0.4–1.8). Rescore saved outputs with the same dataset to compare.
+- Forms: a field whose best copy states no value while another copy states a wrong one is charged that wrong value once, not as a lost value plus a contradicting copy.
+
 ## [2.2.3] - 2026-11-26
 
 ### Scoring
