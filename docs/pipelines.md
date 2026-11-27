@@ -470,7 +470,7 @@ These run entirely locally and do not require API keys.
 | `pymupdf_html` | PyMuPDF HTML extraction | None |
 | `liteparse_markdown` | LiteParse Markdown (no OCR; layout blocks via `--extract-blocks`; the leaderboard's *LiteParse (no OCR)* row) | `pip install "parse-bench[liteparse]"` (or `LITEPARSE_BIN=/path/to/lit`) |
 | `liteparse_text` | LiteParse plain text (no OCR) | same as above |
-| `pymupdf4llm_markdown` | PyMuPDF4LLM Markdown with native HTML tables and RapidOCR at 150 DPI | Python 3.12, `pymupdf4llm==1.28.2`, and `rapidocr==3.9.2` |
+| `pymupdf_markdown` (v2), `pymupdf4llm_markdown` (v1) | PyMuPDF Markdown with native HTML tables and RapidOCR at 150 DPI | Python 3.12, `pymupdf==2.2`, and `rapidocr==3.10.0` |
 | `warp_ingest` | Warp-Ingest local parser | `warp-ingest[ocr]>=2.0.1` installed |
 | `tesseract_eng` | Tesseract OCR (English) | `tesseract` installed |
 | `tesseract_fast` | Tesseract OCR (fast) | `tesseract` installed |
@@ -480,9 +480,9 @@ These run entirely locally and do not require API keys.
 | `infinity_parser2_flash_deep` | Infinity-Parser2-Flash with figure deep parsing pinned on (ParseBench 2 leaderboard) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
 | `infinity_parser2_pro_deep` | Infinity-Parser2-Pro with figure deep parsing pinned on (ParseBench 2 leaderboard) | `infinity_parser2`, vLLM server at `INFINITY_PARSER2_API_URL` |
 
-Create the isolated Python environment for `pymupdf4llm_markdown` with
-`uv sync --python 3.12 --extra pymupdf4llm`, then run it with
-`uv run --python 3.12 --extra pymupdf4llm parse-bench run pymupdf4llm_markdown --max_concurrent 1`.
+Run both PyMuPDF Markdown pipelines with the `pymupdf4llm` extra and `--max_concurrent 1`. For example, run v2 with
+`uv run --python 3.12 --extra pymupdf4llm parse-bench run pymupdf_markdown --dataset parsebench-2 --max_concurrent 1`.
+The published v2 outputs were generated with RapidOCR 3.9.2.
 
 ---
 

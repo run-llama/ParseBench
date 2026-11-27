@@ -1,4 +1,4 @@
-"""Provider for PyMuPDF4LLM PARSE."""
+"""PyMuPDF Markdown provider for ParseBench v1 and v2."""
 
 import importlib
 import math
@@ -41,7 +41,7 @@ class PyMuPDF4LLMProvider(Provider):
         super().__init__(provider_name, base_config)
 
     def _markdown_options(self) -> dict[str, Any]:
-        """Build serializable options for ``pymupdf4llm.to_markdown``."""
+        """Build serializable options for ``pymupdf.Document.to_markdown``."""
         options: dict[str, Any] = {
             "page_chunks": True,
             "show_progress": False,
@@ -112,19 +112,22 @@ class PyMuPDF4LLMProvider(Provider):
     def _extract(self, pdf_path: str) -> dict[str, Any]:
         try:
             import pymupdf
-            import pymupdf4llm  # type: ignore[import-untyped]
         except ImportError as e:
-            raise ProviderConfigError("pymupdf4llm not installed. Run: pip install pymupdf4llm") from e
+            raise ProviderConfigError("Install the pymupdf4llm extra to use PyMuPDF Markdown") from e
 
         try:
             markdown_options = self._markdown_options()
             ocr_function = self._resolve_ocr_function()
-            if ocr_function is None:
-                page_chunks = pymupdf4llm.to_markdown(pdf_path, **markdown_options)
-            else:
-                page_chunks = pymupdf4llm.to_markdown(pdf_path, ocr_function=ocr_function, **markdown_options)
-            with pymupdf.open(pdf_path) as document:
+            if ocr_function is not None:
+                markdown_options["ocr_function"] = ocr_function
+            document = pymupdf.open(pdf_path)
+            try:
+                # to_markdown can close image documents, so read the dimensions first.
                 page_dimensions = [(float(page.rect.width), float(page.rect.height)) for page in document]
+                page_chunks = document.to_markdown(**markdown_options)
+            finally:
+                if not document.is_closed:
+                    document.close()
         except ProviderConfigError:
             raise
         except Exception as e:
