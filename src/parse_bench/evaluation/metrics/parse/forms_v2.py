@@ -653,6 +653,9 @@ class Reference:
     unscorable: int = 0
     # Trees may annotate only selected fields; representation does not imply coverage.
     exhaustive: bool = True
+    # The page's printed text (its PDF text layer), when the test case records it: a reading made only of
+    # printed form text is not a claimed value (see ``_form_text_reading``).
+    page_text: str = ""
 
 
 def _is_empty_value(v: Any) -> bool:
@@ -982,16 +985,22 @@ def forms_reference(metadata: Any, rules: Sequence[Any] | None = None) -> Refere
     """The forms_v2 reference of a test case: its FormNode tree, else its form_field rules."""
     meta = metadata if isinstance(metadata, dict) else {}
     forms: dict[str, Any] = meta["forms"] if isinstance(meta.get("forms"), dict) else {}
+    # the page's printed text sits beside ``forms``, not in it: a ``forms`` dict marks a tree reference elsewhere
+    page_text = meta["printed_text"] if isinstance(meta.get("printed_text"), str) else ""
     gt = forms.get("gt")
     if isinstance(gt, dict) and isinstance(gt.get("pages"), list) and gt["pages"]:
         fb: dict[str, Any] = meta["form_bench"] if isinstance(meta.get("form_bench"), dict) else {}
         excluded = list(forms.get("review_excluded_pages") or []) + list(fb.get("review_excluded_pages") or [])
         ref = reference_from_tree(gt["pages"], excluded)
         ref.exhaustive = forms.get("reference_scope") != "mapped_fields_only"
+        ref.page_text = page_text
         if any(it.kind != "anchor" for it in ref.items):
             return ref
         return None
-    return reference_from_rules(rules)
+    ref_rules = reference_from_rules(rules)
+    if ref_rules is not None:
+        ref_rules.page_text = page_text
+    return ref_rules
 
 
 # ---------------------------------------------------------------------------
@@ -4350,6 +4359,8 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
     values = frozenset(others)
     captions = {c for c in ("".join(word_keys(it.label)) for it in items if it.label) if len(c) >= 2}
     printed = _printed_words(ref)
+    page_words = _page_words(ref.page_text)
+    value_words = frozenset(k for it in items if it.kind == "text" and it.value for k in word_keys(it.value))
     events: list[Event] = []
     loss: dict[int, float] = {}
     located: set[int] = set()
@@ -4535,6 +4546,14 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
                     or all(k in own_words for k in keys)
                 ):
                     v = Verdict("minor", "printed text in a blank field")
+                # the reading is the form's own printed text (an instruction, a neighbouring caption, a line code),
+                # not a value the output claims: a blank field is not filled, a filled field's value is not found
+                if v.kind in ("invented value", "wrong value") and _form_text_reading(keys, page_words, value_words):
+                    v = (
+                        Verdict("minor", "printed text in a blank field")
+                        if v.kind == "invented value"
+                        else Verdict("major", "value lost")
+                    )
             if (rd.before and SEV_ORDER[v.cls] > SEV_ORDER["minor"]) or (rd.exact and v.cls != "ok"):
                 continue
             if rd.lines and (rd.lines > _value_lines(it.value) + PARA_SLACK or v.kind not in PARA_KINDS):
@@ -4831,6 +4850,10 @@ def score_reference(ref: Reference, out: Out) -> FormsResult:  # noqa: C901 - mi
                 for c in _copies(ref, out, x, o, used)
             ]
             best = min(versions, key=lambda b: b[0])
+            if best[1].kind == "value lost":
+                # the better version states no value (printed form text read where it is due): a copy that does
+                # state one is the field's claim, charged once as itself rather than as a contradiction
+                best = max(versions, key=lambda b: b[0])
             for other in versions:
                 if other is not best and other[1].cls == "critical" and best[1].cls != "critical":
                     ev(x, "contradicting copy", "critical", other[2].text)
@@ -5462,6 +5485,30 @@ def _printed_reading(keys: Sequence[str], printed: set[str]) -> bool:
 
 # words a form prints right after a blank box: connectors, units and worded hints ("[___] and/or", "per year",
 # "(5 digits)"), and the role or field words of signature and amount lines ("By ____ Deputy", "____ Corporate Seal")
+_DIGIT_LETTER = _rx(r"(?<=\d)(?=[^\W\d_])|(?<=[^\W\d_])(?=\d)")
+
+
+def _page_words(page_text: str) -> frozenset[str]:
+    """The words of the page's printed text, with box numbers printed against their caption (``415Calif.``)
+    also read apart."""
+    if not page_text:
+        return frozenset()
+    keys = word_keys(page_text)
+    return frozenset(keys).union(p for k in keys for p in _DIGIT_LETTER.split(k) if p)
+
+
+def _form_text_reading(keys: Sequence[str], page_words: frozenset[str], value_words: frozenset[str]) -> bool:
+    """A reading made only of the page's printed form text: every word is on the page, none is a word of any
+    expected value (a filled form prints its values too), and it holds a word, or is a number the form prints
+    as a code. Needs the page text (``Reference.page_text``); without it nothing is form text.
+    ``jeżeli kwota w poz. 185 jest równa 0`` read for an amount, ``42900`` (a line code) read for ``1,252.32``."""
+    if not page_words or not keys:
+        return False
+    if any(k not in page_words or k in value_words for k in keys):
+        return False
+    return any(not _isdigits(k) for k in keys) or all(len(k) >= 3 for k in keys)
+
+
 _FORM_TEXT_WORDS = frozenset(
     {"or", "and", "per", "plus", "of", "as", "a", "an", "the", "to", "by", "for", "at", "on"}
     | {"sq", "digits", "digit", "characters", "letters", "only", "week"}
