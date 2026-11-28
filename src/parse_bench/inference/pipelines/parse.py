@@ -608,19 +608,20 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
         )
     )
 
-    register_fn(
-        PipelineSpec(
-            pipeline_name="pymupdf4llm_markdown",
-            provider_name="pymupdf4llm",
-            product_type=ProductType.PARSE,
-            config={
-                "use_ocr": True,
-                "ocr_backend": "rapidocr",
-                "ocr_dpi": 150,
-                "table_output": "html",
-            },
+    for pipeline_name in ("pymupdf_markdown", "pymupdf4llm_markdown"):
+        register_fn(
+            PipelineSpec(
+                pipeline_name=pipeline_name,
+                provider_name="pymupdf4llm",
+                product_type=ProductType.PARSE,
+                config={
+                    "use_ocr": True,
+                    "ocr_backend": "rapidocr",
+                    "ocr_dpi": 150,
+                    "table_output": "html",
+                },
+            )
         )
-    )
 
     register_fn(
         PipelineSpec(

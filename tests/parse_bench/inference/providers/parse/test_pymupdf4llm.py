@@ -7,7 +7,7 @@ import pytest
 
 import parse_bench.inference.providers.parse.pymupdf4llm as provider_module
 from parse_bench.evaluation.layout_adapters.adapters import PyMuPDF4LLMLayoutAdapter
-from parse_bench.inference.pipelines import get_pipeline, list_pipelines
+from parse_bench.inference.pipelines import get_pipeline
 from parse_bench.inference.providers.base import ProviderConfigError
 from parse_bench.inference.providers.parse.pymupdf4llm import PyMuPDF4LLMProvider
 from parse_bench.schemas.layout_detection_output import LayoutDetectionModel
@@ -17,8 +17,12 @@ from parse_bench.schemas.pipeline_io import InferenceRequest, RawInferenceResult
 from parse_bench.schemas.product import ProductType
 
 
-def test_only_one_pymupdf4llm_pipeline_is_registered() -> None:
-    assert [name for name in list_pipelines() if name.startswith("pymupdf4llm")] == ["pymupdf4llm_markdown"]
+def test_pymupdf_markdown_pipelines_share_provider_and_config() -> None:
+    v1 = get_pipeline("pymupdf4llm_markdown")
+    v2 = get_pipeline("pymupdf_markdown")
+
+    assert v1.provider_name == v2.provider_name
+    assert v1.config == v2.config
 
 
 def test_pipeline_uses_rapidocr_and_native_html() -> None:
