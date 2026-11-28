@@ -4274,3 +4274,67 @@ class UpstageLayoutAdapter(LayoutAdapter):
             image_height=max(int(first_page.height if first_page else 1), 1),
             predictions=predictions,
         )
+
+
+@register_layout_adapter("webcite", priority=90)
+class WebciteLayoutAdapter(LayoutAdapter):
+    """Adapter that extracts LayoutOutput from Webcite ParseOutput.layout_pages.
+
+    The provider stores Webcite's element boxes as normalized segments on a virtual 1000x1000 page,
+    so pixel conversion cancels out in evaluation.
+    """
+
+    @classmethod
+    def matches(cls, inference_result: InferenceResult) -> bool:
+        if not isinstance(inference_result.output, ParseOutput) or not inference_result.output.layout_pages:
+            return False
+        raw_output = inference_result.raw_output
+        config = raw_output.get("_config", {}) if isinstance(raw_output, dict) else {}
+        return isinstance(config, dict) and config.get("provider") == "webcite"
+
+    def to_layout_output(
+        self,
+        inference_result: InferenceResult,
+        *,
+        page_filter: int | None = None,
+    ) -> LayoutOutput:
+        if isinstance(inference_result.output, LayoutOutput):
+            return filter_layout_output(inference_result.output, page_filter)
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("WebciteLayoutAdapter requires ParseOutput or LayoutOutput")
+        layout_pages = inference_result.output.layout_pages
+        if not layout_pages:
+            raise ValueError("WebciteLayoutAdapter requires non-empty layout_pages")
+
+        predictions: list[LayoutPrediction] = []
+        for lp in layout_pages:
+            if page_filter is not None and lp.page_number != page_filter:
+                continue
+            page_w = float(lp.width or 1.0)
+            page_h = float(lp.height or 1.0)
+            for item in lp.items:
+                for seg in item.layout_segments:
+                    label = seg.label or "Text"
+                    predictions.append(
+                        LayoutPrediction(
+                            bbox=[seg.x * page_w, seg.y * page_h, (seg.x + seg.w) * page_w, (seg.y + seg.h) * page_h],
+                            r=seg.r,
+                            score=float(1.0 if seg.confidence is None else seg.confidence),
+                            label=label,
+                            page=lp.page_number,
+                            content=_build_vendor_content(label, item.value),
+                            provider_metadata={"order_index": len(predictions)},
+                        )
+                    )
+
+        first_page = layout_pages[0]
+        return LayoutOutput(
+            task_type="layout_detection",
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            model=LayoutDetectionModel.WEBCITE_LAYOUT,
+            image_width=max(int(first_page.width or 1), 1),
+            image_height=max(int(first_page.height or 1), 1),
+            predictions=predictions,
+            layout_pages=[page.model_copy(update={"items": []}) for page in layout_pages],
+        )

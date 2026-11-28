@@ -298,6 +298,7 @@ class LayoutDetectionModel(StrEnum):
     PULSE_LAYOUT = "pulse_layout"
     REDUCTO_LAYOUT = "reducto_layout"
     TEXTRACT_LAYOUT = "textract_layout"
+    WEBCITE_LAYOUT = "webcite_layout"
     LANDINGAI_LAYOUT = "landingai_layout"
     EXTEND_LAYOUT = "extend_layout"
     AZURE_DI_LAYOUT = "azure_di_layout"
@@ -416,6 +417,10 @@ LAYOUT_MODEL_INFO: dict[LayoutDetectionModel, dict[str, str]] = {
     LayoutDetectionModel.REDUCTO_LAYOUT: {
         "name": "Reducto Layout",
         "hf_url": "https://www.reducto.ai/",
+    },
+    LayoutDetectionModel.WEBCITE_LAYOUT: {
+        "name": "Webcite Layout",
+        "hf_url": "https://webcite.co/",
     },
     LayoutDetectionModel.TEXTRACT_LAYOUT: {
         "name": "AWS Textract Layout",

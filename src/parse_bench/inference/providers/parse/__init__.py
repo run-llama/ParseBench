@@ -76,6 +76,7 @@ _PROVIDER_MODULES = [
     "unstructured",
     "upstage",
     "warp_ingest",
+    "webcite",
     "wevisdoc",
     "oi_parser",
 ]

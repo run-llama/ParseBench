@@ -15,11 +15,21 @@ data_repo: llamaindex/ParseBench-2
 data_revision: 2e95407575ba1ad6aa90842258482a561fae1b33
 scored_with: d6209dab930702c63f6dcf23eca02501a948d76b
 rows:
+- provider: Webcite
+  status: verified
+  pipeline: webcite
+  results_revision: refs/pr/14
+  run_dates: '2026-11-18'
 - provider: LlamaParse (Agentic Plus)
   status: verified
   pipeline: llamaparse_agentic_plus
   results_revision: 23bfeda85210ab620b6302562aaa83c4927bff9e
   run_dates: 2026-11-02 to 2026-11-11
+- provider: Webcite (Lite)
+  status: verified
+  pipeline: webcite_lite
+  results_revision: refs/pr/18
+  run_dates: 2026-11-19 to 2026-11-20
 - provider: LlamaParse (Agentic)
   status: verified
   pipeline: llamaparse_agentic
